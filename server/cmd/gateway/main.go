@@ -60,6 +60,9 @@ func run() int {
 	channelStore := store.NewChannelStore(pool)
 	channelHandler := handler.NewChannelHandler(channelStore, userStore, log)
 
+	messageStore := store.NewMessageStore(pool)
+	messageHandler := handler.NewMessageHandler(messageStore, channelStore, log)
+
 	mux := http.NewServeMux()
 
 	// Public auth routes
@@ -90,6 +93,11 @@ func run() int {
 	mux.Handle("DELETE /api/channels/{id}/members/{user_id}", jwtMiddleware(http.HandlerFunc(channelHandler.RemoveMember)))
 	mux.Handle("GET /api/channels/{id}/members", jwtMiddleware(http.HandlerFunc(channelHandler.ListMembers)))
 	mux.Handle("POST /api/channels/{id}/leave", jwtMiddleware(http.HandlerFunc(channelHandler.LeaveChannel)))
+
+	// Message routes (JWT protected)
+	mux.Handle("POST /api/channels/{id}/messages", jwtMiddleware(http.HandlerFunc(messageHandler.SendMessage)))
+	mux.Handle("GET /api/channels/{id}/messages", jwtMiddleware(http.HandlerFunc(messageHandler.FetchMessages)))
+	mux.Handle("POST /api/channels/{id}/read", jwtMiddleware(http.HandlerFunc(messageHandler.MarkRead)))
 
 	// CORS middleware for development
 	corsHandler := corsMiddleware(mux)
