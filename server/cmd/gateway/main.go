@@ -69,6 +69,8 @@ func run() int {
 	messageStore := store.NewMessageStore(pool)
 	messageHandler := handler.NewMessageHandler(messageStore, channelStore, log)
 
+	syncHandler := handler.NewSyncHandler(channelStore, messageStore, log)
+
 	// Redis connection for routing.
 	redisCtx, redisCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	rdb, err := store.NewRedisClient(redisCtx, cfg.Redis.Addr, cfg.Redis.Password, cfg.Redis.DB)
@@ -134,6 +136,9 @@ func run() int {
 	mux.Handle("POST /api/channels/{id}/messages", jwtMiddleware(http.HandlerFunc(messageHandler.SendMessage)))
 	mux.Handle("GET /api/channels/{id}/messages", jwtMiddleware(http.HandlerFunc(messageHandler.FetchMessages)))
 	mux.Handle("POST /api/channels/{id}/read", jwtMiddleware(http.HandlerFunc(messageHandler.MarkRead)))
+
+	// Sync route (JWT protected)
+	mux.Handle("POST /api/sync", jwtMiddleware(http.HandlerFunc(syncHandler.Sync)))
 
 	// CORS middleware for development
 	corsHandler := corsMiddleware(mux)
