@@ -1,6 +1,17 @@
 package gateway
 
-import "time"
+import (
+	"context"
+	"time"
+)
+
+// ChannelSeqStore is the minimal interface needed to look up server-side channel seqs.
+// Implemented by store.ChannelStore.
+type ChannelSeqStore interface {
+	// GetMemberChannelSeqs returns the current seq for each channel the user belongs to.
+	// Returns map[channel_id]seq.
+	GetMemberChannelSeqs(ctx context.Context, userID int64) (map[int64]int64, error)
+}
 
 // ---- Inbound (client → server) ----
 

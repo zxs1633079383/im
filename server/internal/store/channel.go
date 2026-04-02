@@ -228,6 +228,31 @@ func (s *ChannelStore) ListByUserWithPreview(ctx context.Context, userID int64) 
 	return result, rows.Err()
 }
 
+// GetMemberChannelSeqs returns the current server seq for every channel the
+// user belongs to. Used by the heartbeat to compute the pong diff.
+func (s *ChannelStore) GetMemberChannelSeqs(ctx context.Context, userID int64) (map[int64]int64, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT c.id, c.seq
+		FROM channels c
+		JOIN channel_members cm ON cm.channel_id = c.id
+		WHERE cm.user_id = $1
+	`, userID)
+	if err != nil {
+		return nil, fmt.Errorf("get member channel seqs: %w", err)
+	}
+	defer rows.Close()
+
+	m := make(map[int64]int64)
+	for rows.Next() {
+		var id, seq int64
+		if err := rows.Scan(&id, &seq); err != nil {
+			return nil, fmt.Errorf("scan channel seq: %w", err)
+		}
+		m[id] = seq
+	}
+	return m, rows.Err()
+}
+
 // Update sets the name and/or avatar_url of a channel.
 // Pass empty string to leave a field unchanged.
 func (s *ChannelStore) Update(ctx context.Context, channelID int64, name, avatarURL string) error {
