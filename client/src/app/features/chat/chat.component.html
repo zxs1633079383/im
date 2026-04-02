@@ -1,5 +1,5 @@
 <div class="chat-window">
-  <div class="message-list" #messageList>
+  <div class="message-list" #messageList (scroll)="onScroll($event)">
     @if (visibleMessages().length === 0) {
       <div class="empty-state">No messages yet. Say hello!</div>
     }

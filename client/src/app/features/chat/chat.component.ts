@@ -40,6 +40,7 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
 
   private channelId = 0;
   private shouldScrollToBottom = false;
+  isLoadingOlder = false;
 
   ngOnInit(): void {
     this.route.paramMap.subscribe(params => {
@@ -133,6 +134,49 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
       this.messageService.removeOptimistic(clientMsgId);
     } finally {
       this.sending.set(false);
+    }
+  }
+
+  /** The seq of the oldest message currently displayed (skipping optimistic ones). */
+  get oldestSeq(): number {
+    const msgs = this.messageService.messages().filter(m => m.seq > 0);
+    return msgs.length > 0 ? msgs[0].seq : 0;
+  }
+
+  /**
+   * Scroll event handler on the message list container.
+   * When the user reaches the very top (scrollTop === 0), trigger hole detection.
+   */
+  onScroll(event: Event): void {
+    const el = event.target as HTMLElement;
+    if (el.scrollTop === 0) {
+      this.onScrolledToTop();
+    }
+  }
+
+  /**
+   * Called when the message list scroll container reaches the top.
+   * Triggers count-based hole detection and prepends older messages.
+   */
+  async onScrolledToTop(): Promise<void> {
+    const channelId = this.messageService.activeChannelId();
+    if (!channelId || this.isLoadingOlder) return;
+
+    const pivot = this.oldestSeq;
+    if (pivot <= 1) return; // already at the beginning
+
+    this.isLoadingOlder = true;
+    try {
+      const older = await this.messageService.detectAndFillHole(channelId, pivot);
+      if (older.length > 0) {
+        this.messageService.messages.update(current => {
+          const existingSeqs = new Set(current.map(m => m.seq));
+          const newOnes = older.filter(m => !existingSeqs.has(m.seq));
+          return [...newOnes, ...current];
+        });
+      }
+    } finally {
+      this.isLoadingOlder = false;
     }
   }
 

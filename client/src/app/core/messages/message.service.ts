@@ -132,6 +132,74 @@ export class MessageService {
     this.activeChannelId.set(null);
   }
 
+  /**
+   * Called when the user scrolls up past the oldest message currently displayed.
+   * Uses count-based hole detection against the in-memory message list, then fetches
+   * from server when a gap is found or there are not enough local messages.
+   *
+   * @param channelId  The channel being viewed.
+   * @param pivotSeq   The seq of the oldest currently-displayed message.
+   * @param pageSize   How many older messages to load (default 30).
+   * @returns          The older messages to prepend (empty if already at the beginning).
+   */
+  async detectAndFillHole(channelId: number, pivotSeq: number, pageSize = 30): Promise<Message[]> {
+    // 1. Check local in-memory messages for messages older than pivotSeq.
+    const localMsgs = this.messages()
+      .filter(m => m.seq > 0 && m.seq < pivotSeq)
+      .sort((a, b) => a.seq - b.seq);
+
+    // Take the most recent `pageSize` of those (closest to pivotSeq).
+    const localPage = localMsgs.slice(-pageSize);
+    const localSeqs = localPage.map(m => m.seq);
+
+    // 2. Check continuity: are there gaps in the local sequence?
+    const hasGap = this.hasSequenceGap(localSeqs, pivotSeq);
+
+    // 3. If we have enough continuous messages locally, return them directly.
+    if (!hasGap && localPage.length >= pageSize) {
+      return localPage;
+    }
+
+    // 4. Gap detected (or not enough messages): fetch from server.
+    try {
+      const serverMsgs = await this.fetchMessages(channelId, {
+        before_seq: pivotSeq,
+        limit: pageSize,
+      });
+
+      // fetchMessages returns newest-first; reverse to ascending order.
+      return [...serverMsgs].reverse();
+    } catch (err) {
+      console.warn('[MessageService] hole fill fetch failed', err);
+      // Return whatever we have locally as a best-effort fallback.
+      return localPage;
+    }
+  }
+
+  /**
+   * Returns true if there is a gap in `ascSeqs` (ascending) before `pivotSeq`.
+   * A gap exists when consecutive seqs are not adjacent (seq[i+1] !== seq[i] + 1)
+   * OR when the highest local seq does not connect directly to pivotSeq.
+   */
+  private hasSequenceGap(ascSeqs: number[], pivotSeq: number): boolean {
+    if (ascSeqs.length === 0) return true;
+
+    // Check continuity between consecutive elements.
+    for (let i = 1; i < ascSeqs.length; i++) {
+      if (ascSeqs[i] !== ascSeqs[i - 1] + 1) {
+        return true; // non-contiguous seq detected
+      }
+    }
+
+    // Check that the last local seq connects to pivotSeq without a gap.
+    const highestLocal = ascSeqs[ascSeqs.length - 1];
+    if (pivotSeq - highestLocal > 1) {
+      return true; // gap between local data and pivot
+    }
+
+    return false;
+  }
+
   // ---- WebSocket push handlers ----
 
   /**
