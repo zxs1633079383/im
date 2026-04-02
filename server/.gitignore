@@ -1,5 +1,5 @@
 bin/
-gateway
-message
-sync
+/gateway
+/message
+/sync
 *.test
