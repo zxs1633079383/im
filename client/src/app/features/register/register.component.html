@@ -1,0 +1,78 @@
+<div class="auth-container">
+  <div class="auth-card">
+    <h1 class="auth-title">Create your account</h1>
+
+    <form (ngSubmit)="onSubmit()" #regForm="ngForm" novalidate>
+      <div class="form-group">
+        <label for="username">Username</label>
+        <input
+          id="username"
+          type="text"
+          [(ngModel)]="username"
+          name="username"
+          autocomplete="username"
+          placeholder="3-32 characters, letters/digits/underscore"
+          required
+          minlength="3"
+          maxlength="32"
+        />
+      </div>
+
+      <div class="form-group">
+        <label for="email">Email</label>
+        <input
+          id="email"
+          type="email"
+          [(ngModel)]="email"
+          name="email"
+          autocomplete="email"
+          placeholder="you@example.com"
+          required
+        />
+      </div>
+
+      <div class="form-group">
+        <label for="displayName">Display Name <span class="optional">(optional)</span></label>
+        <input
+          id="displayName"
+          type="text"
+          [(ngModel)]="displayName"
+          name="displayName"
+          autocomplete="name"
+          placeholder="How should we call you?"
+          maxlength="64"
+        />
+      </div>
+
+      <div class="form-group">
+        <label for="password">Password</label>
+        <input
+          id="password"
+          type="password"
+          [(ngModel)]="password"
+          name="password"
+          autocomplete="new-password"
+          placeholder="At least 8 characters"
+          required
+          minlength="8"
+        />
+      </div>
+
+      @if (errorMsg()) {
+        <p class="error-message" role="alert">{{ errorMsg() }}</p>
+      }
+
+      <button type="submit" class="btn-primary" [disabled]="loading()">
+        @if (loading()) {
+          Creating account...
+        } @else {
+          Create Account
+        }
+      </button>
+    </form>
+
+    <p class="auth-footer">
+      Already have an account? <a routerLink="/login">Sign in</a>
+    </p>
+  </div>
+</div>

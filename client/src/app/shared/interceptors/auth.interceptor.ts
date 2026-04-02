@@ -2,13 +2,17 @@ import { HttpInterceptorFn } from '@angular/common/http';
 import { inject } from '@angular/core';
 import { AuthService } from '../../core/auth/auth.service';
 
+/**
+ * Attaches the JWT Bearer token to every outgoing HTTP request
+ * when the user is authenticated.
+ */
 export const authInterceptor: HttpInterceptorFn = (req, next) => {
-  const authService = inject(AuthService);
-  const token = authService.token();
+  const auth = inject(AuthService);
+  const token = auth.token();
 
   if (token) {
     const authReq = req.clone({
-      setHeaders: { Authorization: `Bearer ${token}` },
+      headers: req.headers.set('Authorization', `Bearer ${token}`),
     });
     return next(authReq);
   }
