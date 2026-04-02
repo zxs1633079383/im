@@ -11,8 +11,10 @@ import (
 	"time"
 
 	"im-server/internal/config"
+	"im-server/internal/gateway"
 	"im-server/internal/handler"
 	"im-server/internal/middleware"
+	imPulsar "im-server/internal/pulsar"
 	"im-server/internal/store"
 )
 
@@ -40,6 +42,10 @@ func run() int {
 		return 1
 	}
 
+	// Resolve gateway ID (from config, HOSTNAME env, or random UUID).
+	gatewayID := config.ResolveGatewayID(cfg)
+	log.Info("gateway id resolved", "gateway_id", gatewayID)
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -63,7 +69,37 @@ func run() int {
 	messageStore := store.NewMessageStore(pool)
 	messageHandler := handler.NewMessageHandler(messageStore, channelStore, log)
 
+	// Redis connection for routing.
+	redisCtx, redisCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	rdb, err := store.NewRedisClient(redisCtx, cfg.Redis.Addr, cfg.Redis.Password, cfg.Redis.DB)
+	redisCancel()
+	if err != nil {
+		log.Error("connect to redis", "error", err)
+		return 1
+	}
+
+	// Hub and routing.
+	hub := gateway.NewHub()
+	routing := gateway.NewRouting(rdb, gatewayID)
+
+	// Pulsar client.
+	pulsarClient, err := imPulsar.New(cfg.Pulsar.URL, log)
+	if err != nil {
+		log.Error("connect to pulsar", "error", err)
+		return 1
+	}
+	defer pulsarClient.Close()
+
+	// Push consumer subscribes to msg.push.{gatewayID}.
+	pushConsumer := gateway.NewPushConsumer(hub, gatewayID, log)
+
+	// WsHandler wires hub, routing, channelStore, and JWT secret together.
+	wsHandler := gateway.NewWsHandler(hub, routing, cfg.Gateway.JWTSecret, gatewayID, channelStore, log)
+
 	mux := http.NewServeMux()
+
+	// WebSocket route.
+	mux.Handle("GET /ws", wsHandler)
 
 	// Public auth routes
 	mux.HandleFunc("POST /api/auth/register", authHandler.Register)
@@ -114,6 +150,16 @@ func run() int {
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 
+	runCtx, runCancel := context.WithCancel(context.Background())
+	defer runCancel()
+
+	// Start Pulsar push consumer in a goroutine.
+	if err := pushConsumer.Start(runCtx, pulsarClient); err != nil {
+		log.Error("start push consumer", "error", err)
+		return 1
+	}
+	log.Info("push consumer started", "topic", pushConsumer.Topic())
+
 	go func() {
 		log.Info("HTTP server listening", "addr", cfg.Gateway.HTTPAddr)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -124,6 +170,7 @@ func run() int {
 
 	<-quit
 	log.Info("shutting down...")
+	runCancel()
 
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer shutdownCancel()
