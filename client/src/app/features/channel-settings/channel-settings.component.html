@@ -1,0 +1,81 @@
+<div class="settings-page">
+  <div class="page-header">
+    <a routerLink="/" class="back-link">← Back</a>
+    <h2>Channel Settings</h2>
+  </div>
+
+  @if (loading()) {
+    <p class="loading">Loading…</p>
+  } @else if (channel(); as ch) {
+    @if (success()) {
+      <p class="msg-success">{{ success() }}</p>
+    }
+    @if (error()) {
+      <p class="msg-error">{{ error() }}</p>
+    }
+
+    <!-- Channel name section -->
+    <section class="section">
+      <h3>Channel Name</h3>
+      @if (isAdminOrOwner) {
+        <div class="row">
+          <input
+            class="input"
+            type="text"
+            [ngModel]="editName()"
+            (ngModelChange)="editName.set($event)"
+          />
+          <button class="btn-primary" (click)="saveName()" [disabled]="savingName()">
+            {{ savingName() ? 'Saving…' : 'Save' }}
+          </button>
+        </div>
+      } @else {
+        <p>{{ ch.name || '(unnamed)' }}</p>
+      }
+      <p class="meta">Type: {{ ch.type === 1 ? 'Direct Message' : 'Group' }}</p>
+    </section>
+
+    <!-- Members section -->
+    <section class="section">
+      <h3>Members ({{ members().length }})</h3>
+      <ul class="member-list">
+        @for (m of members(); track m.user_id) {
+          <li class="member-row">
+            <div class="member-avatar">{{ m.user_id }}</div>
+            <div class="member-info">
+              <span class="member-id">User #{{ m.user_id }}</span>
+              <span class="member-role">{{ roleName(m.role) }}</span>
+            </div>
+            @if (isAdminOrOwner && m.role !== 3 && m.user_id !== auth.currentUser()?.id) {
+              <button class="btn-remove" (click)="removeMember(m.user_id)">Remove</button>
+            }
+          </li>
+        }
+      </ul>
+
+      @if (isAdminOrOwner) {
+        <div class="add-member">
+          <input
+            class="input"
+            type="number"
+            placeholder="User ID to add"
+            [ngModel]="newMemberIdStr()"
+            (ngModelChange)="newMemberIdStr.set($event)"
+          />
+          <button class="btn-primary" (click)="addMember()" [disabled]="addingMember()">
+            {{ addingMember() ? 'Adding…' : 'Add Member' }}
+          </button>
+        </div>
+      }
+    </section>
+
+    <!-- Leave channel -->
+    @if (!isOwner) {
+      <section class="section danger-zone">
+        <h3>Leave Channel</h3>
+        <p>You will be removed from this channel.</p>
+        <button class="btn-danger" (click)="leave()">Leave Channel</button>
+      </section>
+    }
+  }
+</div>
