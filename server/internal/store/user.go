@@ -64,3 +64,32 @@ func (s *UserStore) GetByEmail(ctx context.Context, email string) (*model.User, 
 	}
 	return u, nil
 }
+
+// Search returns up to 20 users whose username or display_name match the query
+// (case-insensitive prefix/substring). The calling user (callerID) is excluded.
+func (s *UserStore) Search(ctx context.Context, q string, callerID int64) ([]model.User, error) {
+	pattern := "%" + q + "%"
+	rows, err := s.pool.Query(ctx,
+		`SELECT id, username, email, display_name, avatar_url, status, created_at, updated_at
+		 FROM users
+		 WHERE id != $1
+		   AND (username ILIKE $2 OR display_name ILIKE $2)
+		 ORDER BY username
+		 LIMIT 20`,
+		callerID, pattern,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("search users: %w", err)
+	}
+	defer rows.Close()
+
+	var users []model.User
+	for rows.Next() {
+		var u model.User
+		if err := rows.Scan(&u.ID, &u.Username, &u.Email, &u.DisplayName, &u.AvatarURL, &u.Status, &u.CreatedAt, &u.UpdatedAt); err != nil {
+			return nil, fmt.Errorf("scan user: %w", err)
+		}
+		users = append(users, u)
+	}
+	return users, rows.Err()
+}

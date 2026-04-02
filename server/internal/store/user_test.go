@@ -81,3 +81,58 @@ func TestUserStore_DuplicateUsername(t *testing.T) {
 		t.Fatal("expected error for duplicate username, got nil")
 	}
 }
+
+func TestUserStore_Search(t *testing.T) {
+	pool := testutil.PGPool(t)
+	us := store.NewUserStore(pool)
+	ctx := context.Background()
+
+	users := []model.User{
+		{Username: "alpha", Email: "alpha@x.com", PasswordHash: "h", DisplayName: "Alpha User"},
+		{Username: "beta", Email: "beta@x.com", PasswordHash: "h", DisplayName: "Beta Tester"},
+		{Username: "gamma", Email: "gamma@x.com", PasswordHash: "h", DisplayName: "Gamma"},
+	}
+	for i := range users {
+		if err := us.Create(ctx, &users[i]); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// search by username prefix
+	got, err := us.Search(ctx, "alp", 0)
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if len(got) != 1 || got[0].Username != "alpha" {
+		t.Errorf("expected [alpha], got %v", got)
+	}
+
+	// search by display_name substring
+	got, err = us.Search(ctx, "Tester", 0)
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if len(got) != 1 || got[0].Username != "beta" {
+		t.Errorf("expected [beta], got %v", got)
+	}
+
+	// caller excluded from results
+	got, err = us.Search(ctx, "alpha", users[0].ID)
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	for _, u := range got {
+		if u.ID == users[0].ID {
+			t.Error("caller should be excluded from search results")
+		}
+	}
+
+	// empty query returns up to 20 others (not the caller)
+	got, err = us.Search(ctx, "", users[0].ID)
+	if err != nil {
+		t.Fatalf("Search empty: %v", err)
+	}
+	if len(got) != 2 { // beta and gamma
+		t.Errorf("expected 2, got %d", len(got))
+	}
+}
