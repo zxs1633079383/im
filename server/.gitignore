@@ -1,0 +1,5 @@
+bin/
+gateway
+message
+sync
+*.test
