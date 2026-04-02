@@ -1,0 +1,156 @@
+.contacts-page {
+  padding: 1.5rem;
+  max-width: 600px;
+
+  h2 {
+    margin-bottom: 1rem;
+  }
+}
+
+.tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  border-bottom: 1px solid #ddd;
+  padding-bottom: 0.5rem;
+
+  button {
+    background: none;
+    border: none;
+    padding: 0.4rem 1rem;
+    cursor: pointer;
+    border-radius: 4px;
+    font-size: 0.9rem;
+    color: #555;
+
+    &.active {
+      background: #3b82f6;
+      color: #fff;
+    }
+
+    &:hover:not(.active) {
+      background: #f0f0f0;
+    }
+  }
+}
+
+.msg-success {
+  color: #16a34a;
+  margin-bottom: 0.75rem;
+}
+
+.msg-error {
+  color: #dc2626;
+  margin-bottom: 0.75rem;
+}
+
+.user-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.user-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 0;
+  border-bottom: 1px solid #f0f0f0;
+
+  &:last-child {
+    border-bottom: none;
+  }
+}
+
+.avatar {
+  width: 36px;
+  height: 36px;
+  background: #3b82f6;
+  color: #fff;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  flex-shrink: 0;
+}
+
+.info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+
+  .display-name {
+    font-weight: 600;
+    font-size: 0.95rem;
+  }
+
+  .username {
+    font-size: 0.8rem;
+    color: #888;
+  }
+}
+
+.actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+button {
+  cursor: pointer;
+  border-radius: 4px;
+  padding: 0.3rem 0.75rem;
+  font-size: 0.85rem;
+  border: none;
+
+  &[disabled] {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+}
+
+.btn-accept {
+  background: #16a34a;
+  color: #fff;
+}
+
+.btn-reject {
+  background: #dc2626;
+  color: #fff;
+}
+
+.btn-add {
+  background: #3b82f6;
+  color: #fff;
+}
+
+.search-bar {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+
+  input {
+    flex: 1;
+    padding: 0.4rem 0.75rem;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 0.9rem;
+    outline: none;
+
+    &:focus {
+      border-color: #3b82f6;
+    }
+  }
+
+  button {
+    background: #3b82f6;
+    color: #fff;
+    padding: 0.4rem 1rem;
+  }
+}
+
+.empty {
+  color: #aaa;
+  font-size: 0.9rem;
+  padding: 0.5rem 0;
+}

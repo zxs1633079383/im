@@ -1,0 +1,99 @@
+<div class="contacts-page">
+  <h2>Contacts</h2>
+
+  <!-- Tab bar -->
+  <div class="tabs">
+    <button [class.active]="activeTab() === 'friends'" (click)="setTab('friends')">
+      Friends ({{ friendService.friends().length }})
+    </button>
+    <button [class.active]="activeTab() === 'pending'" (click)="setTab('pending')">
+      Requests ({{ friendService.pendingRequests().length }})
+    </button>
+    <button [class.active]="activeTab() === 'search'" (click)="setTab('search')">
+      Add Friend
+    </button>
+  </div>
+
+  <!-- Status messages -->
+  @if (actionSuccess()) {
+    <p class="msg-success">{{ actionSuccess() }}</p>
+  }
+  @if (actionError()) {
+    <p class="msg-error">{{ actionError() }}</p>
+  }
+
+  <!-- Friends tab -->
+  @if (activeTab() === 'friends') {
+    <ul class="user-list">
+      @for (friend of friendService.friends(); track friend.id) {
+        <li class="user-row">
+          <div class="avatar">{{ friend.display_name[0] | uppercase }}</div>
+          <div class="info">
+            <span class="display-name">{{ friend.display_name }}</span>
+            <span class="username">&#64;{{ friend.username }}</span>
+          </div>
+        </li>
+      } @empty {
+        <li class="empty">No friends yet. Use "Add Friend" to get started.</li>
+      }
+    </ul>
+  }
+
+  <!-- Pending requests tab -->
+  @if (activeTab() === 'pending') {
+    <ul class="user-list">
+      @for (req of friendService.pendingRequests(); track req.id) {
+        <li class="user-row">
+          <div class="avatar">{{ req.requester.display_name[0] | uppercase }}</div>
+          <div class="info">
+            <span class="display-name">{{ req.requester.display_name }}</span>
+            <span class="username">&#64;{{ req.requester.username }}</span>
+          </div>
+          <div class="actions">
+            <button class="btn-accept" (click)="accept(req.id)">Accept</button>
+            <button class="btn-reject" (click)="reject(req.id)">Reject</button>
+          </div>
+        </li>
+      } @empty {
+        <li class="empty">No pending requests.</li>
+      }
+    </ul>
+  }
+
+  <!-- Search tab -->
+  @if (activeTab() === 'search') {
+    <div class="search-bar">
+      <input
+        type="text"
+        placeholder="Search by username or display name..."
+        [ngModel]="searchQuery()"
+        (ngModelChange)="searchQuery.set($event)"
+        (keyup.enter)="onSearch()"
+      />
+      <button (click)="onSearch()" [disabled]="searching()">
+        {{ searching() ? 'Searching...' : 'Search' }}
+      </button>
+    </div>
+    @if (searchError()) {
+      <p class="msg-error">{{ searchError() }}</p>
+    }
+    <ul class="user-list">
+      @for (user of searchResults(); track user.id) {
+        <li class="user-row">
+          <div class="avatar">{{ user.display_name[0] | uppercase }}</div>
+          <div class="info">
+            <span class="display-name">{{ user.display_name }}</span>
+            <span class="username">&#64;{{ user.username }}</span>
+          </div>
+          <div class="actions">
+            <button class="btn-add" (click)="addFriend(user.id)">Add</button>
+          </div>
+        </li>
+      } @empty {
+        @if (!searching() && searchResults().length === 0) {
+          <li class="empty">Enter a name and press Search.</li>
+        }
+      }
+    </ul>
+  }
+</div>

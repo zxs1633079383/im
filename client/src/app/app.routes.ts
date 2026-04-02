@@ -19,6 +19,12 @@ export const routes: Routes = [
       import('./features/home/home.component').then((m) => m.HomeComponent),
   },
   {
+    path: 'contacts',
+    canActivate: [authGuard],
+    loadComponent: () =>
+      import('./features/contacts/contacts.component').then((m) => m.ContactsComponent),
+  },
+  {
     path: '**',
     redirectTo: '',
   },

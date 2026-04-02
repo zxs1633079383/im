@@ -1,14 +1,17 @@
 import { Component, inject } from '@angular/core';
-import { Router } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { AuthService } from '../../core/auth/auth.service';
 
 @Component({
   selector: 'app-home',
   standalone: true,
+  imports: [RouterLink],
   template: `
     <div style="padding:2rem">
       <h1>Welcome, {{ auth.currentUser()?.display_name }}!</h1>
-      <p>Home page — more features coming in Plan 3+.</p>
+      <nav style="margin:1rem 0; display:flex; gap:1rem;">
+        <a routerLink="/contacts">Contacts</a>
+      </nav>
       <button (click)="logout()">Sign out</button>
     </div>
   `,
