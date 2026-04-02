@@ -57,6 +57,9 @@ func run() int {
 	friendStore := store.NewFriendshipStore(pool)
 	friendHandler := handler.NewFriendHandler(friendStore, userStore, log)
 
+	channelStore := store.NewChannelStore(pool)
+	channelHandler := handler.NewChannelHandler(channelStore, userStore, log)
+
 	mux := http.NewServeMux()
 
 	// Public auth routes
@@ -76,6 +79,17 @@ func run() int {
 
 	// User search route (JWT protected)
 	mux.Handle("GET /api/users/search", jwtMiddleware(http.HandlerFunc(friendHandler.SearchUsers)))
+
+	// Channel routes (JWT protected)
+	mux.Handle("POST /api/channels", jwtMiddleware(http.HandlerFunc(channelHandler.CreateGroup)))
+	mux.Handle("POST /api/channels/dm", jwtMiddleware(http.HandlerFunc(channelHandler.CreateOrGetDM)))
+	mux.Handle("GET /api/channels", jwtMiddleware(http.HandlerFunc(channelHandler.ListChannels)))
+	mux.Handle("GET /api/channels/{id}", jwtMiddleware(http.HandlerFunc(channelHandler.GetChannel)))
+	mux.Handle("PUT /api/channels/{id}", jwtMiddleware(http.HandlerFunc(channelHandler.UpdateChannel)))
+	mux.Handle("POST /api/channels/{id}/members", jwtMiddleware(http.HandlerFunc(channelHandler.AddMember)))
+	mux.Handle("DELETE /api/channels/{id}/members/{user_id}", jwtMiddleware(http.HandlerFunc(channelHandler.RemoveMember)))
+	mux.Handle("GET /api/channels/{id}/members", jwtMiddleware(http.HandlerFunc(channelHandler.ListMembers)))
+	mux.Handle("POST /api/channels/{id}/leave", jwtMiddleware(http.HandlerFunc(channelHandler.LeaveChannel)))
 
 	// CORS middleware for development
 	corsHandler := corsMiddleware(mux)
