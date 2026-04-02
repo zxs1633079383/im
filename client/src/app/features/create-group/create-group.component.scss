@@ -1,0 +1,124 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.dialog {
+  background: #1e1e2e;
+  border: 1px solid #313244;
+  border-radius: 8px;
+  padding: 1.5rem;
+  width: 380px;
+  max-width: 90vw;
+  color: #cdd6f4;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+h3 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.error {
+  color: #f38ba8;
+  font-size: 0.85rem;
+  margin: 0;
+}
+
+.field-label {
+  font-size: 0.8rem;
+  color: #a6adc8;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.input {
+  background: #313244;
+  border: 1px solid #45475a;
+  border-radius: 4px;
+  color: #cdd6f4;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.95rem;
+  width: 100%;
+  box-sizing: border-box;
+
+  &:focus { outline: none; border-color: #89b4fa; }
+}
+
+.friend-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 200px;
+  overflow-y: auto;
+  border: 1px solid #313244;
+  border-radius: 4px;
+}
+
+.friend-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+
+  &:hover { background: #313244; }
+
+  input[type="checkbox"] { accent-color: #89b4fa; cursor: pointer; }
+}
+
+.avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #45475a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.empty {
+  padding: 0.75rem;
+  color: #6c7086;
+  font-size: 0.85rem;
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.btn-cancel {
+  background: none;
+  border: 1px solid #45475a;
+  color: #a6adc8;
+  border-radius: 4px;
+  padding: 0.4rem 1rem;
+  cursor: pointer;
+
+  &:hover { background: #313244; }
+}
+
+.btn-create {
+  background: #89b4fa;
+  border: none;
+  color: #1e1e2e;
+  border-radius: 4px;
+  padding: 0.4rem 1.2rem;
+  font-weight: 600;
+  cursor: pointer;
+
+  &:disabled { opacity: 0.5; cursor: not-allowed; }
+  &:not(:disabled):hover { background: #b4d0ff; }
+}

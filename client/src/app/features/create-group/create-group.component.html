@@ -1,0 +1,38 @@
+<div class="overlay" (click)="onCancel()">
+  <div class="dialog" (click)="$event.stopPropagation()">
+    <h3>Create Group</h3>
+
+    @if (error()) {
+      <p class="error">{{ error() }}</p>
+    }
+
+    <label class="field-label">Group name</label>
+    <input
+      class="input"
+      type="text"
+      placeholder="e.g. Team Alpha"
+      [ngModel]="groupName()"
+      (ngModelChange)="groupName.set($event)"
+    />
+
+    <label class="field-label">Add friends</label>
+    <ul class="friend-list">
+      @for (friend of friendService.friends(); track friend.id) {
+        <li class="friend-row" (click)="toggleMember(friend.id)">
+          <input type="checkbox" [checked]="isSelected(friend.id)" (click)="$event.stopPropagation()" />
+          <div class="avatar">{{ friend.display_name[0] | uppercase }}</div>
+          <span>{{ friend.display_name }}</span>
+        </li>
+      } @empty {
+        <li class="empty">No friends to add. Add friends in Contacts first.</li>
+      }
+    </ul>
+
+    <div class="actions">
+      <button class="btn-cancel" (click)="onCancel()">Cancel</button>
+      <button class="btn-create" (click)="onCreate()" [disabled]="creating()">
+        {{ creating() ? 'Creating…' : 'Create' }}
+      </button>
+    </div>
+  </div>
+</div>
