@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 
+	"github.com/google/uuid"
 	"gopkg.in/yaml.v3"
 )
 
@@ -31,6 +32,7 @@ type PulsarConfig struct {
 type GatewayConfig struct {
 	HTTPAddr  string `yaml:"http_addr"`
 	JWTSecret string `yaml:"jwt_secret"`
+	ID        string `yaml:"id"` // resolved at runtime from HOSTNAME or UUID if blank
 }
 
 func Load(path string) (*Config, error) {
@@ -67,4 +69,16 @@ func applyEnvOverrides(cfg *Config) {
 	if v := os.Getenv("IM_GATEWAY_HTTP_ADDR"); v != "" {
 		cfg.Gateway.HTTPAddr = v
 	}
+	if v := os.Getenv("HOSTNAME"); v != "" && cfg.Gateway.ID == "" {
+		cfg.Gateway.ID = v
+	}
+}
+
+// ResolveGatewayID returns cfg.Gateway.ID if set, else generates a random UUID.
+// Call once at startup and store the result.
+func ResolveGatewayID(cfg *Config) string {
+	if cfg.Gateway.ID != "" {
+		return cfg.Gateway.ID
+	}
+	return uuid.New().String()
 }
