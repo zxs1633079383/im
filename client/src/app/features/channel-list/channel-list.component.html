@@ -1,0 +1,44 @@
+<div class="channel-list">
+  <div class="sidebar-header">
+    <span class="app-title">IM</span>
+    <button class="btn-icon" title="New Group" (click)="openCreateGroup()">＋</button>
+  </div>
+
+  <nav class="nav-links">
+    <a routerLink="/contacts" class="nav-link">Contacts</a>
+  </nav>
+
+  <div class="section-label">Chats</div>
+
+  <ul class="channels">
+    @for (ch of channelService.channels(); track ch.id) {
+      <li class="channel-row" (click)="openChannel(ch)">
+        <div class="channel-avatar">
+          {{ channelLabel(ch)[0] | uppercase }}
+        </div>
+        <div class="channel-info">
+          <div class="channel-name-row">
+            <span class="channel-name">{{ channelLabel(ch) }}</span>
+            @if (ch.unread_count > 0) {
+              <span class="badge">{{ ch.unread_count }}</span>
+            }
+          </div>
+          <span class="preview">{{ previewText(ch) }}</span>
+        </div>
+      </li>
+    } @empty {
+      <li class="empty">No channels yet. Create a group or start a DM.</li>
+    }
+  </ul>
+
+  <div class="sidebar-footer">
+    <button class="btn-logout" (click)="logout()">Sign out</button>
+  </div>
+
+  @if (showCreateGroup()) {
+    <app-create-group
+      (created)="onGroupCreated()"
+      (cancelled)="onGroupCancelled()"
+    />
+  }
+</div>

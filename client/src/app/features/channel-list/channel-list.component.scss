@@ -1,0 +1,150 @@
+.channel-list {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  color: #cdd6f4;
+}
+
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem;
+  font-weight: 700;
+  font-size: 1.1rem;
+  border-bottom: 1px solid #313244;
+}
+
+.btn-icon {
+  background: none;
+  border: none;
+  color: #89b4fa;
+  font-size: 1.4rem;
+  cursor: pointer;
+  padding: 0 0.25rem;
+  line-height: 1;
+
+  &:hover { color: #cdd6f4; }
+}
+
+.nav-links {
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid #313244;
+}
+
+.nav-link {
+  display: block;
+  padding: 0.4rem 0.5rem;
+  color: #a6adc8;
+  text-decoration: none;
+  border-radius: 4px;
+  font-size: 0.9rem;
+
+  &:hover { background: #313244; color: #cdd6f4; }
+}
+
+.section-label {
+  padding: 0.6rem 1rem 0.2rem;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #6c7086;
+}
+
+.channels {
+  flex: 1;
+  overflow-y: auto;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.channel-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 1rem;
+  cursor: pointer;
+  border-radius: 6px;
+  margin: 0 0.25rem;
+
+  &:hover { background: #313244; }
+}
+
+.channel-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #45475a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.9rem;
+  flex-shrink: 0;
+}
+
+.channel-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.channel-name-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.25rem;
+}
+
+.channel-name {
+  font-size: 0.9rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.badge {
+  background: #89b4fa;
+  color: #1e1e2e;
+  border-radius: 10px;
+  padding: 0 6px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  min-width: 18px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.preview {
+  font-size: 0.78rem;
+  color: #6c7086;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
+}
+
+.empty {
+  padding: 1rem;
+  color: #6c7086;
+  font-size: 0.85rem;
+  text-align: center;
+  list-style: none;
+}
+
+.sidebar-footer {
+  padding: 0.75rem 1rem;
+  border-top: 1px solid #313244;
+}
+
+.btn-logout {
+  background: none;
+  border: none;
+  color: #f38ba8;
+  cursor: pointer;
+  font-size: 0.85rem;
+  padding: 0;
+
+  &:hover { text-decoration: underline; }
+}
