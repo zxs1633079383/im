@@ -1,0 +1,59 @@
+export type WSMessageType =
+  | 'ping' | 'pong'
+  | 'push_msg' | 'push_ack'
+  | 'send' | 'send_ack'
+  | 'sync' | 'sync_resp';
+
+export interface WSFrame<T = unknown> {
+  type: WSMessageType;
+  payload: T;
+}
+
+export interface PingPayload {
+  channel_seqs: Record<string, number>; // channel_id (string) → local max seq
+}
+
+export interface PongPayload {
+  server_time: number;
+  channel_seqs: Record<string, number>; // only channels with diff
+}
+
+export interface PushMsgPayload {
+  push_id: string;
+  channel_id: number;
+  seq: number;
+  server_msg_id: number;
+  sender_id: number;
+  content: string;
+  msg_type: number; // 1=normal, 2=phantom
+  visible_to?: number[];
+  created_at: string;
+}
+
+export interface PushACKPayload {
+  push_id: string;
+}
+
+export interface SendPayload {
+  client_msg_id: string;
+  channel_id: number;
+  content: string;
+  msg_type?: number;
+  visible_to?: number[];
+}
+
+export interface SendACKPayload {
+  client_msg_id: string;
+  server_msg_id: number;
+  seq: number;
+  channel_id: number;
+}
+
+export interface SyncChannelState {
+  id: number;
+  seq: number;
+}
+
+export interface SyncPayload {
+  channels: SyncChannelState[];
+}
