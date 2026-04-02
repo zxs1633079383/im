@@ -34,9 +34,7 @@ export class ChannelListComponent {
   }
 
   openChannel(ch: ChannelWithPreview): void {
-    // Placeholder: in Plan 5 this will open the message view
-    // For now navigate to settings as a stub
-    this.router.navigate(['channels', ch.id, 'settings']);
+    this.router.navigate(['channels', ch.id]);
   }
 
   openCreateGroup(): void {

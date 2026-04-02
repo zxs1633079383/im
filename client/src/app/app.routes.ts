@@ -33,6 +33,11 @@ export const routes: Routes = [
           ),
       },
       {
+        path: 'channels/:id',
+        loadComponent: () =>
+          import('./features/chat/chat.component').then((m) => m.ChatComponent),
+      },
+      {
         path: 'channels/:id/settings',
         loadComponent: () =>
           import('./features/channel-settings/channel-settings.component').then(

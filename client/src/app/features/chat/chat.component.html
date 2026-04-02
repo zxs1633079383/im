@@ -1,0 +1,39 @@
+<div class="chat-window">
+  <div class="message-list" #messageList>
+    @if (visibleMessages().length === 0) {
+      <div class="empty-state">No messages yet. Say hello!</div>
+    }
+
+    @for (msg of visibleMessages(); track msg.client_msg_id ?? msg.id) {
+      <div class="message-row" [class.mine]="isMine(msg)" [class.optimistic]="isOptimistic(msg)">
+        <div class="bubble">
+          <span class="content">{{ msg.content }}</span>
+          <span class="timestamp">{{ formatTime(msg.created_at) }}</span>
+        </div>
+      </div>
+    }
+  </div>
+
+  @if (error()) {
+    <div class="error-bar">{{ error() }}</div>
+  }
+
+  <div class="send-box">
+    <textarea
+      class="message-input"
+      rows="1"
+      placeholder="Type a message…"
+      [value]="messageText()"
+      (input)="onInput($event)"
+      (keydown)="onKeyDown($event)"
+      [disabled]="sending()"
+    ></textarea>
+    <button
+      class="send-btn"
+      (click)="send()"
+      [disabled]="sending() || !messageText().trim()"
+    >
+      Send
+    </button>
+  </div>
+</div>

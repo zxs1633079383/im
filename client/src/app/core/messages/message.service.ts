@@ -100,6 +100,11 @@ export class MessageService {
     );
   }
 
+  /** Remove an optimistic message (e.g. on send failure) by client_msg_id. */
+  removeOptimistic(clientMsgId: string): void {
+    this.messages.update(msgs => msgs.filter(m => m.client_msg_id !== clientMsgId));
+  }
+
   /** Clear messages when navigating away from a channel. */
   clear(): void {
     this.messages.set([]);
