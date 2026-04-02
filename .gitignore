@@ -1,0 +1,12 @@
+# Node
+client/node_modules/
+
+# Angular build output
+client/dist/
+client/.angular/cache/
+
+# Tauri build artifacts
+client/src-tauri/target/
+
+# macOS
+.DS_Store
