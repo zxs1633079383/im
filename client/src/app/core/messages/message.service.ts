@@ -1,8 +1,10 @@
 import { Injectable, signal, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
+import { filter, debounceTime } from 'rxjs/operators';
 import { WebSocketService } from '../ws/websocket.service';
 import { PushMsgPayload, PongPayload } from '../ws/websocket.models';
+import { ChannelService } from '../channels/channel.service';
 
 // ---------- types ----------
 
@@ -50,6 +52,7 @@ export class MessageService {
   readonly activeChannelId = signal<number | null>(null);
 
   private ws = inject(WebSocketService);
+  private channelService = inject(ChannelService);
 
   constructor(private http: HttpClient) {
     // Append pushed messages from the WebSocket to the active channel view.
@@ -58,6 +61,13 @@ export class MessageService {
     // When the server reports channels with a higher seq via pong,
     // pull any missed messages for those channels.
     this.ws.pong$.subscribe(pong => this.handlePong(pong));
+
+    // On WebSocket connect (or reconnect), sync all known channels to catch
+    // any messages missed while the connection was down.
+    this.ws.connected$.pipe(
+      filter(connected => connected),
+      debounceTime(200),
+    ).subscribe(() => this.syncAllChannels());
   }
 
   // ---------- API calls ----------
@@ -169,6 +179,25 @@ export class MessageService {
       const localSeq = this.ws.channelSeqs[chIdStr] ?? 0;
       if (serverSeq > localSeq) {
         this.fetchAndAppendMissed(chId, localSeq);
+      }
+    }
+  }
+
+  /**
+   * On reconnect: for every channel the client knows about, compare the
+   * local max seq (tracked in WebSocketService.channelSeqs) with the
+   * server seq reported in the channel list. Pull any messages we missed.
+   *
+   * Channels that have never been opened will have no entry in channelSeqs;
+   * for those we skip pulling (no local baseline to pull from).
+   */
+  private async syncAllChannels(): Promise<void> {
+    const channels = this.channelService.channels();
+    for (const ch of channels) {
+      const localSeq = this.ws.channelSeqs[String(ch.id)] ?? -1;
+      // ch.seq is the server's latest seq for this channel.
+      if (localSeq >= 0 && ch.seq > localSeq) {
+        await this.fetchAndAppendMissed(ch.id, localSeq);
       }
     }
   }
