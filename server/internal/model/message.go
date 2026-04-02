@@ -68,3 +68,9 @@ type MessageFavorite struct {
 	MessageID int64     `json:"message_id"`
 	CreatedAt time.Time `json:"created_at"`
 }
+
+// MessageSearchResult extends Message with the channel name for display.
+type MessageSearchResult struct {
+	Message
+	ChannelName string `json:"channel_name"`
+}

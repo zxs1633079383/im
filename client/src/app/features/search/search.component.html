@@ -1,0 +1,107 @@
+<div class="search-page">
+  <div class="search-header">
+    <input
+      class="search-input"
+      type="text"
+      placeholder="Search messages, people, channels..."
+      [value]="query()"
+      (input)="onQueryChange($any($event.target).value)"
+      autofocus
+    />
+  </div>
+
+  @if (loading()) {
+    <div class="search-loading">Searching...</div>
+  }
+
+  @if (error()) {
+    <div class="search-error">{{ error() }}</div>
+  }
+
+  @if (!loading() && query().trim()) {
+    <div class="search-tabs">
+      <button
+        class="tab-btn"
+        [class.active]="activeTab() === 'messages'"
+        (click)="setTab('messages')"
+      >
+        Messages ({{ tabCount('messages') }})
+      </button>
+      <button
+        class="tab-btn"
+        [class.active]="activeTab() === 'users'"
+        (click)="setTab('users')"
+      >
+        People ({{ tabCount('users') }})
+      </button>
+      <button
+        class="tab-btn"
+        [class.active]="activeTab() === 'channels'"
+        (click)="setTab('channels')"
+      >
+        Channels ({{ tabCount('channels') }})
+      </button>
+    </div>
+
+    <div class="search-results">
+      <!-- Messages tab -->
+      @if (activeTab() === 'messages') {
+        @if (messageResults().length === 0) {
+          <div class="empty-state">No messages found</div>
+        }
+        @for (msg of messageResults(); track msg.id) {
+          <div class="result-item message-result" (click)="goToMessage(msg)">
+            <div class="result-meta">
+              <span class="channel-name"># {{ msg.channel_name || 'DM' }}</span>
+              <span class="result-time">{{ msg.created_at | date:'short' }}</span>
+            </div>
+            <div class="result-content">{{ msg.content }}</div>
+          </div>
+        }
+      }
+
+      <!-- Users tab -->
+      @if (activeTab() === 'users') {
+        @if (userResults().length === 0) {
+          <div class="empty-state">No people found</div>
+        }
+        @for (user of userResults(); track user.id) {
+          <div class="result-item user-result" (click)="openDM(user)">
+            <div class="user-avatar">
+              @if (user.avatar_url) {
+                <img [src]="user.avatar_url" [alt]="user.display_name" />
+              } @else {
+                <div class="avatar-placeholder">{{ user.display_name[0] }}</div>
+              }
+            </div>
+            <div class="user-info">
+              <div class="user-name">{{ user.display_name }}</div>
+              <div class="user-username">@{{ user.username }}</div>
+            </div>
+          </div>
+        }
+      }
+
+      <!-- Channels tab -->
+      @if (activeTab() === 'channels') {
+        @if (channelResults().length === 0) {
+          <div class="empty-state">No channels found</div>
+        }
+        @for (ch of channelResults(); track ch.id) {
+          <div class="result-item channel-result" (click)="goToChannel(ch)">
+            <div class="channel-icon">#</div>
+            <div class="channel-info">
+              <div class="channel-name">{{ ch.name }}</div>
+            </div>
+          </div>
+        }
+      }
+    </div>
+  }
+
+  @if (!query().trim()) {
+    <div class="search-empty-prompt">
+      Type to search across messages, people, and channels.
+    </div>
+  }
+</div>

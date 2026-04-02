@@ -17,18 +17,12 @@ func NewSearchStore(pool *pgxpool.Pool) *SearchStore {
 	return &SearchStore{pool: pool}
 }
 
-// MessageSearchResult extends model.Message with the channel name for display.
-type MessageSearchResult struct {
-	model.Message
-	ChannelName string `json:"channel_name"`
-}
-
 // SearchMessages uses the GIN index on to_tsvector('simple', content) and
 // falls back to ILIKE for short queries.  Only messages in channels where
 // userID is a member are returned.
 //
 // If channelID > 0, results are restricted to that channel.
-func (s *SearchStore) SearchMessages(ctx context.Context, q string, userID int64, channelID int64, limit int) ([]MessageSearchResult, error) {
+func (s *SearchStore) SearchMessages(ctx context.Context, q string, userID int64, channelID int64, limit int) ([]model.MessageSearchResult, error) {
 	if limit <= 0 || limit > 50 {
 		limit = 20
 	}
@@ -76,9 +70,9 @@ func (s *SearchStore) SearchMessages(ctx context.Context, q string, userID int64
 	}
 	defer pgRows.Close()
 
-	var results []MessageSearchResult
+	var results []model.MessageSearchResult
 	for pgRows.Next() {
-		var r MessageSearchResult
+		var r model.MessageSearchResult
 		var clientMsgID *string
 		if err := pgRows.Scan(
 			&r.ID, &r.ChannelID, &r.Seq, &clientMsgID, &r.SenderID, &r.MsgType,

@@ -1,5 +1,6 @@
 import { Component, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { ChannelService, ChannelWithPreview } from '../../core/channels/channel.service';
 import { AuthService } from '../../core/auth/auth.service';
@@ -8,7 +9,7 @@ import { CreateGroupComponent } from '../create-group/create-group.component';
 @Component({
   selector: 'app-channel-list',
   standalone: true,
-  imports: [CommonModule, RouterLink, CreateGroupComponent],
+  imports: [CommonModule, RouterLink, CreateGroupComponent, FormsModule],
   templateUrl: './channel-list.component.html',
   styleUrl: './channel-list.component.scss',
 })
@@ -20,17 +21,23 @@ export class ChannelListComponent {
   showCreateGroup = signal(false);
 
   channelLabel(ch: ChannelWithPreview): string {
-    if (ch.type === 2) {
-      return ch.name || 'Group';
-    }
-    // DM: show "DM" until Plan 5 resolves peer name
-    return 'DM';
+    return this.channelService.channelLabel(ch);
   }
 
   previewText(ch: ChannelWithPreview): string {
     const msg = ch.last_msg_content;
     if (!msg) return 'No messages yet';
     return msg.length > 40 ? msg.slice(0, 40) + '…' : msg;
+  }
+
+  lastMsgTime(ch: ChannelWithPreview): string {
+    if (!ch.last_msg_at) return '';
+    const d = new Date(ch.last_msg_at);
+    const now = new Date();
+    if (d.toDateString() === now.toDateString()) {
+      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+    return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
   }
 
   openChannel(ch: ChannelWithPreview): void {

@@ -1,10 +1,12 @@
 import { Injectable, signal, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { firstValueFrom } from 'rxjs';
+import { firstValueFrom, Subject } from 'rxjs';
 import { filter, debounceTime } from 'rxjs/operators';
 import { WebSocketService } from '../ws/websocket.service';
 import { PushMsgPayload, PongPayload, SyncChannelState, SyncResponse } from '../ws/websocket.models';
 import { ChannelService } from '../channels/channel.service';
+import { FriendService } from '../friends/friend.service';
+import { AuthService } from '../auth/auth.service';
 
 // ---------- types ----------
 
@@ -51,8 +53,21 @@ export class MessageService {
   /** The channel ID whose messages are currently loaded. */
   readonly activeChannelId = signal<number | null>(null);
 
+  /** Emits when a new message arrives in the active channel (for scroll logic). */
+  readonly _newMessageArrived = new Subject<void>();
+
   private ws = inject(WebSocketService);
   private channelService = inject(ChannelService);
+  private friendService = inject(FriendService);
+  private authService = inject(AuthService);
+
+  /** Get display name for a sender_id. Returns 'You' for self, looks up friends list. */
+  getSenderName(senderId: number): string {
+    const me = this.authService.currentUser();
+    if (me && senderId === me.id) return 'You';
+    const friend = this.friendService.friends().find(f => f.id === senderId);
+    return friend?.display_name ?? `User ${senderId}`;
+  }
 
   constructor(private http: HttpClient) {
     // Append pushed messages from the WebSocket to the active channel view.
@@ -101,12 +116,18 @@ export class MessageService {
 
   // ---------- state management ----------
 
-  /** Load the latest 50 messages for a channel and update the messages signal. */
+  /** Load the latest 50 messages for a channel and mark it as read. */
   async loadMessages(channelId: number): Promise<void> {
     const msgs = await this.fetchMessages(channelId, { limit: 50 });
     // FetchBefore (default) returns newest-first; reverse for display order.
     this.messages.set([...msgs].reverse());
     this.activeChannelId.set(channelId);
+    // Mark read optimistically — don't await to avoid delaying UI
+    this.markRead(channelId).catch(err =>
+      console.warn('[MessageService] markRead failed', err)
+    );
+    // Clear local unread badge immediately
+    this.channelService.updateUnread(channelId, 0);
   }
 
   /** Append a locally-sent message optimistically (before ACK). */
@@ -212,8 +233,18 @@ export class MessageService {
     // Update the WS channel seq tracker.
     this.ws.updateChannelSeq(pushed.channel_id, pushed.seq);
 
-    // Only append to the visible list if this channel is currently open.
-    if (this.activeChannelId() !== pushed.channel_id) return;
+    // Always update the channel preview (last message) in the sidebar.
+    this.channelService.updateLastMessage(pushed.channel_id, pushed.content, pushed.created_at);
+
+    if (this.activeChannelId() !== pushed.channel_id) {
+      // Not viewing this channel — increment the unread badge.
+      this.channelService.incrementUnread(pushed.channel_id);
+      return;
+    }
+
+    // Channel is active — mark read immediately.
+    this.markRead(pushed.channel_id).catch(() => {});
+    this.channelService.updateUnread(pushed.channel_id, 0);
 
     // Phantom messages (msg_type === 2) visible only to specific recipients —
     // skip them in the generic list; callers can subscribe to pushMsg$ directly.
@@ -234,6 +265,8 @@ export class MessageService {
       created_at: pushed.created_at,
     };
     this.messages.update(msgs => [...msgs, msg]);
+    // Signal that a new message arrived (for auto-scroll logic).
+    this._newMessageArrived.next();
   }
 
   /**

@@ -44,6 +44,13 @@ export const routes: Routes = [
             (m) => m.ChannelSettingsComponent
           ),
       },
+      {
+        path: 'search',
+        loadComponent: () =>
+          import('./features/search/search.component').then(
+            (m) => m.SearchComponent
+          ),
+      },
     ],
   },
   {

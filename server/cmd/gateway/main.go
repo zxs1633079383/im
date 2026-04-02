@@ -141,6 +141,11 @@ func run() int {
 	// Sync route (JWT protected)
 	mux.Handle("POST /api/sync", jwtMiddleware(http.HandlerFunc(syncHandler.Sync)))
 
+	// Search route (JWT protected)
+	searchStore := store.NewSearchStore(pool)
+	searchHandler := handler.NewSearchHandler(searchStore, searchStore, searchStore, log)
+	mux.Handle("GET /api/search", jwtMiddleware(http.HandlerFunc(searchHandler.Search)))
+
 	// CORS middleware for development
 	corsHandler := corsMiddleware(mux)
 

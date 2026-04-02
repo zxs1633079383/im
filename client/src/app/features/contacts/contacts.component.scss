@@ -124,6 +124,19 @@ button {
   color: #fff;
 }
 
+.btn-message {
+  padding: 0.3rem 0.75rem;
+  background: #007aff;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.82rem;
+  cursor: pointer;
+
+  &:hover:not(:disabled) { background: #0062cc; }
+  &:disabled { opacity: 0.5; cursor: not-allowed; }
+}
+
 .search-bar {
   display: flex;
   gap: 0.5rem;

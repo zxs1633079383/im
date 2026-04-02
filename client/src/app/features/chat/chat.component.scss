@@ -5,6 +5,52 @@
   background: #fff;
 }
 
+/* ---- chat header ---- */
+
+.chat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.6rem 1rem;
+  border-bottom: 1px solid #e5e7eb;
+  background: #fff;
+  min-height: 52px;
+  flex-shrink: 0;
+}
+
+.chat-header-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.chat-header-name {
+  font-weight: 600;
+  font-size: 1rem;
+  color: #111;
+}
+
+.chat-header-meta {
+  font-size: 0.75rem;
+  color: #6b7280;
+}
+
+.chat-header-settings {
+  background: none;
+  border: none;
+  font-size: 1.2rem;
+  cursor: pointer;
+  color: #9ca3af;
+  padding: 0.25rem;
+  border-radius: 4px;
+  line-height: 1;
+
+  &:hover {
+    color: #374151;
+    background: #f3f4f6;
+  }
+}
+
 /* ---- message list ---- */
 
 .message-list {
@@ -23,19 +69,83 @@
   font-size: 0.9rem;
 }
 
-/* ---- individual message rows ---- */
+/* ---- date separator ---- */
 
-.message-row {
+.date-separator {
   display: flex;
-  justify-content: flex-start;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.75rem 0;
+  color: #9ca3af;
+  font-size: 0.75rem;
+
+  &::before,
+  &::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: #e5e7eb;
+  }
+}
+
+/* ---- system message ---- */
+
+.system-message {
+  text-align: center;
+  color: #9ca3af;
+  font-size: 0.8rem;
+  font-style: italic;
+  margin: 0.25rem 0;
+}
+
+/* ---- message groups ---- */
+
+.message-group {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.5rem;
 
   &.mine {
-    justify-content: flex-end;
+    flex-direction: row-reverse;
+  }
+}
+
+.group-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #e5e7eb;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #374151;
+  flex-shrink: 0;
+  align-self: flex-end;
+}
+
+.group-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  max-width: 60%;
+}
+
+.group-sender {
+  font-size: 0.75rem;
+  color: #6b7280;
+  margin-bottom: 0.1rem;
+  padding-left: 0.25rem;
+}
+
+.bubble-wrapper {
+  &.optimistic .bubble {
+    opacity: 0.65;
   }
 }
 
 .bubble {
-  max-width: 60%;
   padding: 0.5rem 0.75rem;
   border-radius: 1rem;
   background: #f0f0f0;
@@ -43,11 +153,11 @@
   display: flex;
   flex-direction: column;
   gap: 0.2rem;
+}
 
-  .mine & {
-    background: #007aff;
-    color: #fff;
-  }
+.message-group.mine .bubble {
+  background: #007aff;
+  color: #fff;
 }
 
 .content {
@@ -61,8 +171,25 @@
   align-self: flex-end;
 }
 
-.optimistic .bubble {
-  opacity: 0.7;
+/* ---- reply preview in bubble ---- */
+
+.reply-preview {
+  font-size: 0.72rem;
+  color: #6b7280;
+  background: #f3f4f6;
+  border-left: 3px solid #9ca3af;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  margin-bottom: 0.15rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.message-group.mine .reply-preview {
+  background: rgba(255, 255, 255, 0.15);
+  border-left-color: rgba(255, 255, 255, 0.5);
+  color: rgba(255, 255, 255, 0.8);
 }
 
 /* ---- error bar ---- */
@@ -73,6 +200,37 @@
   padding: 0.5rem 1rem;
   font-size: 0.85rem;
   text-align: center;
+}
+
+/* ---- reply banner ---- */
+
+.reply-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.4rem 1rem;
+  background: #eff6ff;
+  border-top: 1px solid #bfdbfe;
+  font-size: 0.82rem;
+  color: #1d4ed8;
+}
+
+.reply-banner-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reply-cancel {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #6b7280;
+  font-size: 0.9rem;
+  padding: 0 0.25rem;
+  flex-shrink: 0;
+
+  &:hover { color: #111; }
 }
 
 /* ---- send box ---- */
@@ -125,5 +283,38 @@
   &:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+  }
+}
+
+/* ---- context menu ---- */
+
+.context-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+}
+
+.context-menu {
+  position: fixed;
+  z-index: 101;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  overflow: hidden;
+  min-width: 130px;
+
+  button {
+    display: block;
+    width: 100%;
+    padding: 0.5rem 1rem;
+    text-align: left;
+    background: none;
+    border: none;
+    font-size: 0.88rem;
+    cursor: pointer;
+    color: #111827;
+
+    &:hover { background: #f3f4f6; }
   }
 }

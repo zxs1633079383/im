@@ -1,8 +1,9 @@
-import { Injectable, inject, signal } from '@angular/core';
+import { Injectable, inject, signal, computed } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 import { WebSocketService } from '../ws/websocket.service';
 import { ReadSyncPayload } from '../ws/websocket.models';
+import { FriendService } from '../friends/friend.service';
 
 // ---------- types ----------
 
@@ -40,7 +41,26 @@ export class ChannelService {
   /** Reactive signal: channel list with preview info */
   readonly channels = signal<ChannelWithPreview[]>([]);
 
+  /** Cached member counts keyed by channel id — loaded on demand by ChatComponent */
+  readonly memberCounts = signal<Record<number, number>>({});
+
+  /** The channel search query — set by ChannelListComponent */
+  readonly searchQuery = signal('');
+
+  /** Channels sorted by last_msg_at desc, filtered by searchQuery. */
+  readonly sortedFilteredChannels = computed(() => {
+    const q = this.searchQuery().trim().toLowerCase();
+    const list = [...this.channels()].sort((a, b) => {
+      const ta = a.last_msg_at ? new Date(a.last_msg_at).getTime() : 0;
+      const tb = b.last_msg_at ? new Date(b.last_msg_at).getTime() : 0;
+      return tb - ta;
+    });
+    if (!q) return list;
+    return list.filter(ch => this.channelLabel(ch).toLowerCase().includes(q));
+  });
+
   private ws = inject(WebSocketService);
+  private friendService = inject(FriendService);
 
   constructor(private http: HttpClient) {
     // When another device marks a channel as read, update our local unread count.
@@ -98,6 +118,44 @@ export class ChannelService {
     await this.loadChannels();
   }
 
+  /**
+   * Returns a human-readable label for any channel.
+   * - GROUP (type 2): uses channel.name
+   * - DM (type 1): channel.name is set to peer display_name by the create-DM flow (Task 4).
+   *   If blank (legacy channels), falls back to "DM".
+   */
+  channelLabel(ch: ChannelWithPreview): string {
+    if (ch.type === 2) return ch.name || 'Group';
+    return ch.name || 'DM';
+  }
+
+  /**
+   * After creating/opening a DM, store the peer's display_name as the channel
+   * label so the chat header and sidebar can show it without a separate API call.
+   * Called immediately after createOrGetDM resolves (and again after loadChannels).
+   */
+  setDMPeerName(channelId: number, peerName: string): void {
+    this.channels.update(channels => {
+      const exists = channels.some(ch => ch.id === channelId);
+      if (exists) {
+        return channels.map(ch =>
+          ch.id === channelId ? { ...ch, name: peerName } : ch
+        );
+      }
+      // Channel not yet in list (loadChannels will add it) — nothing to do yet.
+      return channels;
+    });
+  }
+
+  async loadMemberCount(channelId: number): Promise<void> {
+    try {
+      const members = await this.listMembers(channelId);
+      this.memberCounts.update(counts => ({ ...counts, [channelId]: members.length }));
+    } catch {
+      // non-fatal: header shows nothing if count fails
+    }
+  }
+
   // ---------- data loading ----------
 
   async loadChannels(): Promise<void> {
@@ -107,11 +165,33 @@ export class ChannelService {
     this.channels.set(data ?? []);
   }
 
-  /** Update the unread count for a single channel (called after batch sync). */
+  /** Update the unread count for a single channel (called after batch sync or mark-read). */
   updateUnread(channelId: number, unread: number): void {
     this.channels.update(channels =>
       channels.map(ch =>
         ch.id === channelId ? { ...ch, unread_count: unread } : ch
+      )
+    );
+  }
+
+  /** Increment unread count for a channel by 1 (called when push_msg arrives for inactive channel). */
+  incrementUnread(channelId: number): void {
+    this.channels.update(channels =>
+      channels.map(ch =>
+        ch.id === channelId
+          ? { ...ch, unread_count: (ch.unread_count ?? 0) + 1 }
+          : ch
+      )
+    );
+  }
+
+  /** Update the last-message preview shown in the sidebar. */
+  updateLastMessage(channelId: number, content: string, at: string): void {
+    this.channels.update(channels =>
+      channels.map(ch =>
+        ch.id === channelId
+          ? { ...ch, last_msg_content: content, last_msg_at: at }
+          : ch
       )
     );
   }

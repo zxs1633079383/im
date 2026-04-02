@@ -1,21 +1,72 @@
 <div class="chat-window">
+  <!-- Chat header -->
+  <div class="chat-header">
+    <div class="chat-header-info">
+      <span class="chat-header-name">{{ channelName() }}</span>
+      @if (memberCount() !== null && activeChannel()?.type === 2) {
+        <span class="chat-header-meta">{{ memberCount() }} members</span>
+      }
+    </div>
+    <button class="chat-header-settings" title="Settings" (click)="openSettings()">⚙</button>
+  </div>
+
   <div class="message-list" #messageList (scroll)="onScroll($event)">
     @if (visibleMessages().length === 0) {
       <div class="empty-state">No messages yet. Say hello!</div>
     }
 
-    @for (msg of visibleMessages(); track msg.client_msg_id ?? msg.id) {
-      <div class="message-row" [class.mine]="isMine(msg)" [class.optimistic]="isOptimistic(msg)">
-        <div class="bubble">
-          <span class="content">{{ msg.content }}</span>
-          <span class="timestamp">{{ formatTime(msg.created_at) }}</span>
+    @for (group of groupedMessages(); track group.messages[0].id) {
+      <!-- Date separator -->
+      @if (group.dateSeparator) {
+        <div class="date-separator">
+          <span>{{ group.dateSeparator }}</span>
         </div>
-      </div>
+      }
+
+      <!-- System message -->
+      @if (group.isSystem) {
+        <div class="system-message">{{ group.messages[0].content }}</div>
+      } @else {
+        <!-- Normal message group -->
+        <div class="message-group" [class.mine]="group.isMine">
+          @if (!group.isMine) {
+            <div class="group-avatar">{{ group.senderName[0] | uppercase }}</div>
+          }
+          <div class="group-body">
+            @if (!group.isMine) {
+              <div class="group-sender">{{ group.senderName }}</div>
+            }
+            @for (msg of group.messages; track msg.client_msg_id ?? msg.id) {
+              <div class="bubble-wrapper" [class.optimistic]="isOptimistic(msg)">
+                @if (msg.reply_to) {
+                  <div class="reply-preview">
+                    {{ getReplyTargetPreview(msg.reply_to) }}
+                  </div>
+                }
+                <div class="bubble" (contextmenu)="onContextMenu($event, msg)">
+                  <span class="content">{{ msg.content }}</span>
+                  <span class="timestamp">{{ formatTime(msg.created_at) }}</span>
+                </div>
+              </div>
+            }
+          </div>
+        </div>
+      }
     }
   </div>
 
   @if (error()) {
     <div class="error-bar">{{ error() }}</div>
+  }
+
+  <!-- Reply banner -->
+  @if (replyTarget()) {
+    <div class="reply-banner">
+      <span class="reply-banner-text">
+        &#x21A9; Replying to: {{ replyTarget()!.content | slice:0:60 }}
+      </span>
+      <button class="reply-cancel" (click)="cancelReply()">&#x2715;</button>
+    </div>
   }
 
   <div class="send-box">
@@ -37,3 +88,16 @@
     </button>
   </div>
 </div>
+
+<!-- Context menu overlay + menu (rendered at root to avoid stacking context issues) -->
+@if (contextMenuPos()) {
+  <div class="context-overlay" (click)="closeContextMenu()"></div>
+  <div
+    class="context-menu"
+    [style.left.px]="contextMenuPos()!.x"
+    [style.top.px]="contextMenuPos()!.y"
+  >
+    <button (click)="replyToMessage(contextMenuMsg()!)">&#x21A9; Reply</button>
+    <button (click)="copyMessageText(contextMenuMsg()!)">&#x2398; Copy</button>
+  </div>
+}

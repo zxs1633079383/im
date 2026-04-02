@@ -6,28 +6,52 @@
 
   <nav class="nav-links">
     <a routerLink="/contacts" class="nav-link">Contacts</a>
+    <a routerLink="/search" class="nav-link">Search</a>
   </nav>
 
   <div class="section-label">Chats</div>
 
+  <!-- Search / filter -->
+  <div class="search-bar">
+    <input
+      type="text"
+      class="search-input"
+      placeholder="Search chats…"
+      [ngModel]="channelService.searchQuery()"
+      (ngModelChange)="channelService.searchQuery.set($event)"
+    />
+  </div>
+
   <ul class="channels">
-    @for (ch of channelService.channels(); track ch.id) {
+    @for (ch of channelService.sortedFilteredChannels(); track ch.id) {
       <li class="channel-row" (click)="openChannel(ch)">
         <div class="channel-avatar">
           {{ channelLabel(ch)[0] | uppercase }}
+          @if (ch.type === 1) {
+            <span class="online-dot"></span>
+          }
         </div>
         <div class="channel-info">
           <div class="channel-name-row">
             <span class="channel-name">{{ channelLabel(ch) }}</span>
+            <span class="channel-time">{{ lastMsgTime(ch) }}</span>
+          </div>
+          <div class="channel-preview-row">
+            <span class="preview">{{ previewText(ch) }}</span>
             @if (ch.unread_count > 0) {
               <span class="badge">{{ ch.unread_count }}</span>
             }
           </div>
-          <span class="preview">{{ previewText(ch) }}</span>
         </div>
       </li>
     } @empty {
-      <li class="empty">No channels yet. Create a group or start a DM.</li>
+      <li class="empty">
+        @if (channelService.searchQuery()) {
+          No chats match "{{ channelService.searchQuery() }}".
+        } @else {
+          No channels yet. Create a group or start a DM.
+        }
+      </li>
     }
   </ul>
 

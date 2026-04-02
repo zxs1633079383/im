@@ -89,6 +89,27 @@
   min-width: 0;
 }
 
+/* ---- search bar ---- */
+
+.search-bar {
+  padding: 0.5rem 0.75rem;
+}
+
+.search-input {
+  width: 100%;
+  box-sizing: border-box;
+  background: #313244;
+  border: 1px solid #45475a;
+  border-radius: 6px;
+  color: #cdd6f4;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.85rem;
+  outline: none;
+
+  &::placeholder { color: #6c7086; }
+  &:focus { border-color: #89b4fa; }
+}
+
 .channel-name-row {
   display: flex;
   align-items: center;
@@ -123,6 +144,38 @@
   overflow: hidden;
   text-overflow: ellipsis;
   display: block;
+}
+
+/* ---- channel row: preview row with badge ---- */
+
+.channel-preview-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.25rem;
+}
+
+.channel-time {
+  font-size: 0.7rem;
+  color: #6c7086;
+  flex-shrink: 0;
+}
+
+/* ---- online dot ---- */
+
+.channel-avatar {
+  position: relative;
+}
+
+.online-dot {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #6c7086;   /* gray = offline/unknown; will turn green when presence exists */
+  border: 2px solid #1e1e2e;
 }
 
 .empty {
