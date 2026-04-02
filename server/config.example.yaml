@@ -1,0 +1,11 @@
+pg:
+  dsn: "postgres://im:im@localhost:5432/im?sslmode=disable"
+  max_conns: 20
+
+redis:
+  addr: "localhost:6379"
+  password: ""
+  db: 0
+
+pulsar:
+  url: "pulsar://localhost:6650"
