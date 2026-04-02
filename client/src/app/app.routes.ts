@@ -16,13 +16,30 @@ export const routes: Routes = [
     path: '',
     canActivate: [authGuard],
     loadComponent: () =>
-      import('./features/home/home.component').then((m) => m.HomeComponent),
-  },
-  {
-    path: 'contacts',
-    canActivate: [authGuard],
-    loadComponent: () =>
-      import('./features/contacts/contacts.component').then((m) => m.ContactsComponent),
+      import('./features/main-layout/main-layout.component').then(
+        (m) => m.MainLayoutComponent
+      ),
+    children: [
+      {
+        path: '',
+        loadComponent: () =>
+          import('./features/home/home.component').then((m) => m.HomeComponent),
+      },
+      {
+        path: 'contacts',
+        loadComponent: () =>
+          import('./features/contacts/contacts.component').then(
+            (m) => m.ContactsComponent
+          ),
+      },
+      {
+        path: 'channels/:id/settings',
+        loadComponent: () =>
+          import('./features/channel-settings/channel-settings.component').then(
+            (m) => m.ChannelSettingsComponent
+          ),
+      },
+    ],
   },
   {
     path: '**',
