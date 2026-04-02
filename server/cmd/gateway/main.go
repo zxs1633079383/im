@@ -82,6 +82,7 @@ func run() int {
 
 	// Hub and routing.
 	hub := gateway.NewHub()
+	messageHandler.WithReadSyncer(&hubReadSyncer{hub: hub})
 	routing := gateway.NewRouting(rdb, gatewayID)
 
 	// Pulsar client.
@@ -185,6 +186,18 @@ func run() int {
 	}
 
 	return 0
+}
+
+// hubReadSyncer adapts *gateway.Hub to handler.ReadSyncPusher.
+type hubReadSyncer struct {
+	hub *gateway.Hub
+}
+
+func (s *hubReadSyncer) PushReadSync(userID, channelID, readSeq int64) {
+	s.hub.PushToUser(userID, gateway.TypeReadSync, gateway.ReadSyncPayload{
+		ChannelID: channelID,
+		ReadSeq:   readSeq,
+	})
 }
 
 // corsMiddleware adds permissive CORS headers for local Tauri development.

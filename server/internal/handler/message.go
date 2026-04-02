@@ -27,17 +27,30 @@ type MsgChannelStore interface {
 	GetByID(ctx context.Context, id int64) (*model.Channel, error)
 }
 
+// ReadSyncPusher pushes read_sync events to other devices of the same user.
+// Implemented by *gateway.Hub (via an adapter in main.go).
+type ReadSyncPusher interface {
+	PushReadSync(userID int64, channelID int64, readSeq int64)
+}
+
 // ---------- handler ----------
 
 // MessageHandler serves message send/fetch/read endpoints.
 type MessageHandler struct {
-	messages MsgStore
-	channels MsgChannelStore
-	log      *slog.Logger
+	messages   MsgStore
+	channels   MsgChannelStore
+	readSyncer ReadSyncPusher // nil = no cross-device read sync (e.g. in tests)
+	log        *slog.Logger
 }
 
 func NewMessageHandler(messages MsgStore, channels MsgChannelStore, log *slog.Logger) *MessageHandler {
 	return &MessageHandler{messages: messages, channels: channels, log: log}
+}
+
+// WithReadSyncer sets the cross-device read sync pusher. Call after construction.
+func (h *MessageHandler) WithReadSyncer(rs ReadSyncPusher) *MessageHandler {
+	h.readSyncer = rs
+	return h
 }
 
 // ---------- request/response types ----------
@@ -209,6 +222,10 @@ func (h *MessageHandler) MarkRead(w http.ResponseWriter, r *http.Request) {
 		h.log.Error("mark read", "error", err)
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
+	}
+
+	if h.readSyncer != nil {
+		h.readSyncer.PushReadSync(claims.UserID, channelID, ch.Seq)
 	}
 
 	writeJSON(w, http.StatusOK, map[string]int64{"seq": ch.Seq})

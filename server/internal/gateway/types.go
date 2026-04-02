@@ -32,6 +32,8 @@ const (
 	TypePushMsg  WSMessageType = "push_msg"  // server pushes a chat message
 	TypeSendACK  WSMessageType = "send_ack"  // server ACKs client's send
 	TypeSyncResp WSMessageType = "sync_resp" // server responds to sync
+	// TypeReadSync is pushed server→client when the same user marks read on another device.
+	TypeReadSync WSMessageType = "read_sync"
 )
 
 // WSFrame is the top-level envelope for every WebSocket message.
@@ -99,6 +101,12 @@ type SyncChannelState struct {
 // SyncPayload is sent on reconnect.
 type SyncPayload struct {
 	Channels []SyncChannelState `json:"channels"`
+}
+
+// ReadSyncPayload is pushed to the user's other devices when they mark a channel read.
+type ReadSyncPayload struct {
+	ChannelID int64 `json:"channel_id"`
+	ReadSeq   int64 `json:"read_seq"` // the seq that was just marked as read
 }
 
 // PulsarPushEvent is the message published by MessageService to msg.push.{gateway_id}.
