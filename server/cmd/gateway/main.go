@@ -54,6 +54,9 @@ func run() int {
 	authHandler := handler.NewAuthHandler(userStore, cfg.Gateway.JWTSecret, log)
 	jwtMiddleware := middleware.JWTAuth(cfg.Gateway.JWTSecret)
 
+	friendStore := store.NewFriendshipStore(pool)
+	friendHandler := handler.NewFriendHandler(friendStore, userStore, log)
+
 	mux := http.NewServeMux()
 
 	// Public auth routes
@@ -62,6 +65,17 @@ func run() int {
 
 	// Protected routes
 	mux.Handle("GET /api/auth/me", jwtMiddleware(http.HandlerFunc(authHandler.Me)))
+
+	// Friend routes (JWT protected)
+	mux.Handle("POST /api/friends/request", jwtMiddleware(http.HandlerFunc(friendHandler.SendRequest)))
+	mux.Handle("POST /api/friends/accept", jwtMiddleware(http.HandlerFunc(friendHandler.AcceptRequest)))
+	mux.Handle("POST /api/friends/reject", jwtMiddleware(http.HandlerFunc(friendHandler.RejectRequest)))
+	mux.Handle("GET /api/friends", jwtMiddleware(http.HandlerFunc(friendHandler.ListFriends)))
+	mux.Handle("GET /api/friends/pending", jwtMiddleware(http.HandlerFunc(friendHandler.ListPending)))
+	mux.Handle("POST /api/friends/block", jwtMiddleware(http.HandlerFunc(friendHandler.Block)))
+
+	// User search route (JWT protected)
+	mux.Handle("GET /api/users/search", jwtMiddleware(http.HandlerFunc(friendHandler.SearchUsers)))
 
 	// CORS middleware for development
 	corsHandler := corsMiddleware(mux)
