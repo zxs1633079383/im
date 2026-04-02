@@ -1,0 +1,49 @@
+<div class="auth-container">
+  <div class="auth-card">
+    <h1 class="auth-title">Sign in to IM</h1>
+
+    <form (ngSubmit)="onSubmit()" #loginForm="ngForm" novalidate>
+      <div class="form-group">
+        <label for="login">Username or Email</label>
+        <input
+          id="login"
+          type="text"
+          [(ngModel)]="login"
+          name="login"
+          autocomplete="username"
+          placeholder="Enter username or email"
+          required
+        />
+      </div>
+
+      <div class="form-group">
+        <label for="password">Password</label>
+        <input
+          id="password"
+          type="password"
+          [(ngModel)]="password"
+          name="password"
+          autocomplete="current-password"
+          placeholder="Enter password"
+          required
+        />
+      </div>
+
+      @if (errorMsg()) {
+        <p class="error-message" role="alert">{{ errorMsg() }}</p>
+      }
+
+      <button type="submit" class="btn-primary" [disabled]="loading()">
+        @if (loading()) {
+          Signing in...
+        } @else {
+          Sign In
+        }
+      </button>
+    </form>
+
+    <p class="auth-footer">
+      Don't have an account? <a routerLink="/register">Register</a>
+    </p>
+  </div>
+</div>
