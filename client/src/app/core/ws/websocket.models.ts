@@ -63,3 +63,28 @@ export interface ReadSyncPayload {
   channel_id: number;
   read_seq: number;
 }
+
+// Mirror of message.service.ts Message — kept here to avoid circular deps.
+export interface SyncMessage {
+  id: number;
+  channel_id: number;
+  seq: number;
+  client_msg_id?: string;
+  sender_id: number;
+  msg_type: number;
+  content: string;
+  visible_to?: number[];
+  created_at: string;
+}
+
+export interface SyncChannelResult {
+  id: number;
+  server_seq: number;
+  unread: number;
+  messages?: SyncMessage[];
+  has_more: boolean;
+}
+
+export interface SyncResponse {
+  channels: SyncChannelResult[];
+}

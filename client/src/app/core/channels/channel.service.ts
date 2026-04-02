@@ -107,6 +107,15 @@ export class ChannelService {
     this.channels.set(data ?? []);
   }
 
+  /** Update the unread count for a single channel (called after batch sync). */
+  updateUnread(channelId: number, unread: number): void {
+    this.channels.update(channels =>
+      channels.map(ch =>
+        ch.id === channelId ? { ...ch, unread_count: unread } : ch
+      )
+    );
+  }
+
   private handleReadSync(event: ReadSyncPayload): void {
     // Update the channel's unread count to 0 (the other device read everything
     // up to event.read_seq). Any messages arriving after read_seq will increment

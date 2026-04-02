@@ -3,7 +3,7 @@ import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 import { filter, debounceTime } from 'rxjs/operators';
 import { WebSocketService } from '../ws/websocket.service';
-import { PushMsgPayload, PongPayload } from '../ws/websocket.models';
+import { PushMsgPayload, PongPayload, SyncChannelState, SyncResponse } from '../ws/websocket.models';
 import { ChannelService } from '../channels/channel.service';
 
 // ---------- types ----------
@@ -67,7 +67,7 @@ export class MessageService {
     this.ws.connected$.pipe(
       filter(connected => connected),
       debounceTime(200),
-    ).subscribe(() => this.syncAllChannels());
+    ).subscribe(() => this.batchSync());
   }
 
   // ---------- API calls ----------
@@ -252,14 +252,54 @@ export class MessageService {
   }
 
   /**
-   * On reconnect: for every channel the client knows about, compare the
-   * local max seq (tracked in WebSocketService.channelSeqs) with the
-   * server seq reported in the channel list. Pull any messages we missed.
+   * On reconnect: POST /api/sync with all known channel states.
+   * Server returns incremental messages for channels with small gaps,
+   * has_more flag for large gaps, and any new channels joined while offline.
    *
-   * Channels that have never been opened will have no entry in channelSeqs;
-   * for those we skip pulling (no local baseline to pull from).
+   * This replaces the old per-channel fetchAndAppendMissed loop.
    */
-  private async syncAllChannels(): Promise<void> {
+  private async batchSync(): Promise<void> {
+    // Build the channel state list from our WS seq tracker.
+    const channels: SyncChannelState[] = Object.entries(this.ws.channelSeqs).map(
+      ([idStr, seq]) => ({ id: Number(idStr), seq })
+    );
+
+    try {
+      const resp = await firstValueFrom(
+        this.http.post<SyncResponse>(`${API_BASE}/sync`, { channels })
+      );
+
+      for (const result of resp.channels ?? []) {
+        // Update the WS seq tracker so heartbeat pong diffs stay accurate.
+        this.ws.updateChannelSeq(result.id, result.server_seq);
+
+        // If this is the active channel and we got messages, merge them in.
+        if (result.messages && result.messages.length > 0) {
+          if (this.activeChannelId() === result.id) {
+            const existingSeqs = new Set(this.messages().map(m => m.seq));
+            const newMsgs = result.messages
+              .filter(m => !existingSeqs.has(m.seq))
+              .map(m => m as unknown as Message);
+            if (newMsgs.length > 0) {
+              this.messages.update(existing =>
+                [...existing, ...newMsgs].sort((a, b) => a.seq - b.seq)
+              );
+            }
+          }
+        }
+
+        // Update channel unread counts via ChannelService.
+        this.channelService.updateUnread(result.id, result.unread);
+      }
+    } catch (err) {
+      console.warn('[MessageService] batchSync failed, falling back to individual pulls', err);
+      // Fallback: old behavior for resilience.
+      await this.syncAllChannelsFallback();
+    }
+  }
+
+  /** Legacy per-channel sync; used as fallback when POST /api/sync fails. */
+  private async syncAllChannelsFallback(): Promise<void> {
     const channels = this.channelService.channels();
     for (const ch of channels) {
       const localSeq = this.ws.channelSeqs[String(ch.id)] ?? -1;
