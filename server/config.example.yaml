@@ -9,3 +9,7 @@ redis:
 
 pulsar:
   url: "pulsar://localhost:6650"
+
+gateway:
+  http_addr: ":8080"
+  jwt_secret: "change-me-in-production-use-32-bytes-min"

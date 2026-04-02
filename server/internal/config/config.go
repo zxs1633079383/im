@@ -7,9 +7,10 @@ import (
 )
 
 type Config struct {
-	PG     PGConfig     `yaml:"pg"`
-	Redis  RedisConfig  `yaml:"redis"`
-	Pulsar PulsarConfig `yaml:"pulsar"`
+	PG      PGConfig      `yaml:"pg"`
+	Redis   RedisConfig   `yaml:"redis"`
+	Pulsar  PulsarConfig  `yaml:"pulsar"`
+	Gateway GatewayConfig `yaml:"gateway"`
 }
 
 type PGConfig struct {
@@ -27,6 +28,11 @@ type PulsarConfig struct {
 	URL string `yaml:"url"`
 }
 
+type GatewayConfig struct {
+	HTTPAddr  string `yaml:"http_addr"`
+	JWTSecret string `yaml:"jwt_secret"`
+}
+
 func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -34,7 +40,8 @@ func Load(path string) (*Config, error) {
 	}
 
 	cfg := &Config{
-		PG: PGConfig{MaxConns: 20},
+		PG:      PGConfig{MaxConns: 20},
+		Gateway: GatewayConfig{HTTPAddr: ":8080"},
 	}
 	if err := yaml.Unmarshal(data, cfg); err != nil {
 		return nil, err
@@ -53,5 +60,11 @@ func applyEnvOverrides(cfg *Config) {
 	}
 	if v := os.Getenv("IM_PULSAR_URL"); v != "" {
 		cfg.Pulsar.URL = v
+	}
+	if v := os.Getenv("IM_JWT_SECRET"); v != "" {
+		cfg.Gateway.JWTSecret = v
+	}
+	if v := os.Getenv("IM_GATEWAY_HTTP_ADDR"); v != "" {
+		cfg.Gateway.HTTPAddr = v
 	}
 }
