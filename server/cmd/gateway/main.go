@@ -86,6 +86,7 @@ func run() int {
 	// Hub and routing.
 	hub := gateway.NewHub()
 	messageHandler.WithReadSyncer(&hubReadSyncer{hub: hub})
+	messageHandler.WithAttachments(fileStore)
 	routing := gateway.NewRouting(rdb, gatewayID)
 
 	// Pulsar client.

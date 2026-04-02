@@ -33,14 +33,20 @@ type ReadSyncPusher interface {
 	PushReadSync(userID int64, channelID int64, readSeq int64)
 }
 
+// MsgAttachStore links files to messages.
+type MsgAttachStore interface {
+	AttachToMessage(ctx context.Context, messageID, fileID int64) error
+}
+
 // ---------- handler ----------
 
 // MessageHandler serves message send/fetch/read endpoints.
 type MessageHandler struct {
-	messages   MsgStore
-	channels   MsgChannelStore
-	readSyncer ReadSyncPusher // nil = no cross-device read sync (e.g. in tests)
-	log        *slog.Logger
+	messages    MsgStore
+	channels    MsgChannelStore
+	readSyncer  ReadSyncPusher // nil = no cross-device read sync (e.g. in tests)
+	attachments MsgAttachStore // nil = no attachment support
+	log         *slog.Logger
 }
 
 func NewMessageHandler(messages MsgStore, channels MsgChannelStore, log *slog.Logger) *MessageHandler {
@@ -53,6 +59,12 @@ func (h *MessageHandler) WithReadSyncer(rs ReadSyncPusher) *MessageHandler {
 	return h
 }
 
+// WithAttachments sets the attachment store. Call after construction.
+func (h *MessageHandler) WithAttachments(a MsgAttachStore) *MessageHandler {
+	h.attachments = a
+	return h
+}
+
 // ---------- request/response types ----------
 
 type sendMessageBody struct {
@@ -61,6 +73,7 @@ type sendMessageBody struct {
 	MsgType     int16   `json:"msg_type"`
 	VisibleTo   []int64 `json:"visible_to"`
 	ReplyTo     *int64  `json:"reply_to"`
+	FileIDs     []int64 `json:"file_ids"` // optional: pre-uploaded file IDs to attach
 }
 
 type fetchMessagesResponse struct {
@@ -120,6 +133,16 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 		h.log.Error("send message", "error", err)
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
+	}
+
+	// Link file attachments if provided
+	if h.attachments != nil && len(body.FileIDs) > 0 {
+		for _, fid := range body.FileIDs {
+			if err := h.attachments.AttachToMessage(r.Context(), msg.ID, fid); err != nil {
+				h.log.Error("attach file to message", "file_id", fid, "error", err)
+				// Non-fatal: message already sent, log and continue
+			}
+		}
 	}
 
 	writeJSON(w, http.StatusCreated, msg)
