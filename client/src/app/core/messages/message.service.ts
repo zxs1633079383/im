@@ -30,6 +30,7 @@ export interface SendMessagePayload {
   msg_type?: number;
   visible_to?: number[];
   reply_to?: number;
+  file_ids?: number[];
 }
 
 export interface FetchOptions {

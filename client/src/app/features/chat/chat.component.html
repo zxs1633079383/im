@@ -45,6 +45,32 @@
                 }
                 <div class="bubble" (contextmenu)="onContextMenu($event, msg)">
                   <span class="content">{{ msg.content }}</span>
+                  @if (msg.msg_type === 3 && triggerLoadAttachments(msg.id)) {
+                    <div class="message-attachments">
+                      @for (f of (loadedAttachments()[msg.id] ?? []); track f.id) {
+                        @if (fileService.isImage(f.mime_type)) {
+                          <a [href]="fileService.downloadUrl(f.id)" target="_blank">
+                            <img
+                              [src]="fileService.downloadUrl(f.id)"
+                              class="attachment-image"
+                              [alt]="f.file_name"
+                              loading="lazy"
+                            />
+                          </a>
+                        } @else {
+                          <a
+                            [href]="fileService.downloadUrl(f.id)"
+                            class="attachment-file"
+                            download
+                          >
+                            <span class="file-icon">📄</span>
+                            <span class="file-name">{{ f.file_name }}</span>
+                            <span class="file-size">{{ fileService.formatSize(f.file_size) }}</span>
+                          </a>
+                        }
+                      }
+                    </div>
+                  }
                   <span class="timestamp">{{ formatTime(msg.created_at) }}</span>
                 </div>
               </div>
@@ -69,7 +95,34 @@
     </div>
   }
 
+  @if (pendingFiles().length > 0) {
+    <div class="pending-files">
+      @for (f of pendingFiles(); track f.id) {
+        <div class="pending-file">
+          @if (fileService.isImage(f.mime_type)) {
+            <img [src]="fileService.downloadUrl(f.id)" class="pending-thumb" [alt]="f.file_name" />
+          } @else {
+            <span class="file-icon">📄</span>
+            <span class="file-name">{{ f.file_name }}</span>
+          }
+          <button class="remove-file" (click)="removePendingFile(f.id)">×</button>
+        </div>
+      }
+    </div>
+  }
+
   <div class="send-box">
+    <!-- File attachment button -->
+    <label class="attach-btn" [class.disabled]="uploading()">
+      <input
+        type="file"
+        multiple
+        accept="image/*,application/pdf,.doc,.docx,.zip,.txt"
+        (change)="onFileSelected($event)"
+        style="display:none"
+      />
+      <span class="attach-icon">📎</span>
+    </label>
     <textarea
       class="message-input"
       rows="1"
@@ -82,7 +135,7 @@
     <button
       class="send-btn"
       (click)="send()"
-      [disabled]="sending() || !messageText().trim()"
+      [disabled]="sending() || (!messageText().trim() && pendingFiles().length === 0)"
     >
       Send
     </button>

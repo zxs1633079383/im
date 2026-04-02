@@ -14,9 +14,10 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { MessageService, Message } from '../../core/messages/message.service';
+import { MessageService, Message, SendMessagePayload } from '../../core/messages/message.service';
 import { AuthService } from '../../core/auth/auth.service';
 import { ChannelService, ChannelWithPreview } from '../../core/channels/channel.service';
+import { FileService, FileRecord } from '../../core/files/file.service';
 
 export interface MessageGroup {
   senderId: number;
@@ -42,12 +43,22 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
   private channelService = inject(ChannelService);
   private router = inject(Router);
   private destroyRef = inject(DestroyRef);
+  fileService = inject(FileService);
 
   @ViewChild('messageList') private messageListRef!: ElementRef<HTMLElement>;
 
   messageText = signal('');
   sending = signal(false);
   error = signal<string | null>(null);
+
+  /** Files staged for the next send (not yet attached to a message). */
+  pendingFiles = signal<FileRecord[]>([]);
+
+  /** True when a file upload is in progress. */
+  uploading = signal(false);
+
+  /** Map of message_id to FileRecord[] for already-loaded attachments. */
+  loadedAttachments = signal<Partial<Record<number, FileRecord[]>>>({});
 
   /** The message the user is currently replying to. Cleared after send. */
   readonly replyTarget = signal<Message | null>(null);
@@ -198,13 +209,15 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
 
   async send(): Promise<void> {
     const content = this.messageText().trim();
-    if (!content || this.sending() || !this.channelId) {
+    const fileIds = this.pendingFiles().map(f => f.id);
+    if ((!content && fileIds.length === 0) || this.sending() || !this.channelId) {
       return;
     }
 
     const clientMsgId = crypto.randomUUID();
     const currentUser = this.auth.currentUser();
     const replyTo = this.replyTarget()?.seq ?? undefined;
+    const msgType = fileIds.length > 0 ? 3 : 1;
 
     // Optimistic message
     const optimistic: Message = {
@@ -213,27 +226,41 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
       seq: -1,
       client_msg_id: clientMsgId,
       sender_id: currentUser?.id ?? 0,
-      msg_type: 1,
-      content,
+      msg_type: msgType,
+      content: content || ' ',
       reply_to: replyTo,
       created_at: new Date().toISOString(),
     };
 
     this.messageService.appendOptimistic(optimistic);
     this.messageText.set('');
+    this.pendingFiles.set([]);
     this.replyTarget.set(null);   // clear reply after send
     this.shouldScrollToBottom = true;
     this.sending.set(true);
     this.error.set(null);
 
     try {
-      const confirmed = await this.messageService.sendMessage(this.channelId, {
-        content,
+      const payload: SendMessagePayload = {
+        content: content || ' ',
         client_msg_id: clientMsgId,
-        msg_type: 1,
+        msg_type: msgType,
         reply_to: replyTo,
-      });
+      };
+      if (fileIds.length > 0) {
+        payload.file_ids = fileIds;
+      }
+      const confirmed = await this.messageService.sendMessage(this.channelId, payload);
       this.messageService.confirmSent(clientMsgId, confirmed);
+      // Eagerly populate loadedAttachments for file messages
+      if (confirmed.msg_type === 3 && fileIds.length > 0) {
+        const records = this.pendingFiles();
+        if (records.length === 0) {
+          // pendingFiles was cleared; re-populate from the pre-captured fileIds
+          // (files were already uploaded, so we can fetch)
+          void this.loadAttachments(confirmed.id);
+        }
+      }
       this.shouldScrollToBottom = true;
     } catch (err) {
       this.error.set('Failed to send message.');
@@ -243,6 +270,48 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
     } finally {
       this.sending.set(false);
     }
+  }
+
+  async onFileSelected(event: Event): Promise<void> {
+    const input = event.target as HTMLInputElement;
+    if (!input.files?.length) return;
+    this.uploading.set(true);
+    try {
+      const uploads = await Promise.all(
+        Array.from(input.files).map(f => this.fileService.upload(f)),
+      );
+      this.pendingFiles.update(prev => [...prev, ...uploads]);
+    } catch {
+      this.error.set('File upload failed.');
+    } finally {
+      this.uploading.set(false);
+      input.value = '';
+    }
+  }
+
+  removePendingFile(id: number): void {
+    this.pendingFiles.update(files => files.filter(f => f.id !== id));
+  }
+
+  async loadAttachments(messageId: number): Promise<void> {
+    if (this.loadedAttachments()[messageId]) return; // already cached
+    try {
+      const files = await this.fileService.listAttachments(messageId);
+      this.loadedAttachments.update(m => ({ ...m, [messageId]: files }));
+    } catch {
+      // non-fatal
+    }
+  }
+
+  /**
+   * Triggers lazy-loading of attachments for a file message.
+   * Called from the template — always returns true so the @if block renders.
+   */
+  triggerLoadAttachments(messageId: number): boolean {
+    if (!this.loadedAttachments()[messageId]) {
+      void this.loadAttachments(messageId);
+    }
+    return true;
   }
 
   /** The seq of the oldest message currently displayed (skipping optimistic ones). */
