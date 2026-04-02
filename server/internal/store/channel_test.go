@@ -103,3 +103,104 @@ func TestChannelStore_IncrementSeq(t *testing.T) {
 		t.Errorf("second seq = %d, want 2", seq)
 	}
 }
+
+func TestChannelStore_FindDM_Found(t *testing.T) {
+	pool := testutil.PGPool(t)
+	cs := store.NewChannelStore(pool)
+	us := store.NewUserStore(pool)
+	ctx := context.Background()
+
+	alice := &model.User{Username: "dm_alice", Email: "dma@test.com", PasswordHash: "h", DisplayName: "A"}
+	bob := &model.User{Username: "dm_bob", Email: "dmb@test.com", PasswordHash: "h", DisplayName: "B"}
+	us.Create(ctx, alice)
+	us.Create(ctx, bob)
+
+	ch := &model.Channel{Type: model.ChannelTypeDM}
+	if err := cs.Create(ctx, ch); err != nil {
+		t.Fatal(err)
+	}
+	cs.AddMember(ctx, ch.ID, alice.ID, model.MemberRoleMember)
+	cs.AddMember(ctx, ch.ID, bob.ID, model.MemberRoleMember)
+
+	found, err := cs.FindDM(ctx, alice.ID, bob.ID)
+	if err != nil {
+		t.Fatalf("FindDM: %v", err)
+	}
+	if found.ID != ch.ID {
+		t.Errorf("found.ID = %d, want %d", found.ID, ch.ID)
+	}
+}
+
+func TestChannelStore_FindDM_NotFound(t *testing.T) {
+	pool := testutil.PGPool(t)
+	cs := store.NewChannelStore(pool)
+	us := store.NewUserStore(pool)
+	ctx := context.Background()
+
+	alice := &model.User{Username: "nd_alice", Email: "nda@test.com", PasswordHash: "h", DisplayName: "A"}
+	bob := &model.User{Username: "nd_bob", Email: "ndb@test.com", PasswordHash: "h", DisplayName: "B"}
+	us.Create(ctx, alice)
+	us.Create(ctx, bob)
+
+	_, err := cs.FindDM(ctx, alice.ID, bob.ID)
+	if err != store.ErrNotFound {
+		t.Fatalf("expected ErrNotFound, got %v", err)
+	}
+}
+
+func TestChannelStore_ListByUserWithPreview(t *testing.T) {
+	pool := testutil.PGPool(t)
+	cs := store.NewChannelStore(pool)
+	us := store.NewUserStore(pool)
+	ctx := context.Background()
+
+	alice := &model.User{Username: "prev_alice", Email: "pa@test.com", PasswordHash: "h", DisplayName: "A"}
+	us.Create(ctx, alice)
+
+	ch := &model.Channel{Type: model.ChannelTypeGroup, Name: "preview-group", CreatorID: &alice.ID}
+	if err := cs.Create(ctx, ch); err != nil {
+		t.Fatal(err)
+	}
+	cs.AddMember(ctx, ch.ID, alice.ID, model.MemberRoleOwner)
+
+	previews, err := cs.ListByUserWithPreview(ctx, alice.ID)
+	if err != nil {
+		t.Fatalf("ListByUserWithPreview: %v", err)
+	}
+	if len(previews) == 0 {
+		t.Fatal("expected at least 1 channel preview")
+	}
+	if previews[0].ID != ch.ID {
+		t.Errorf("preview channel ID = %d, want %d", previews[0].ID, ch.ID)
+	}
+	if previews[0].UnreadCount < 0 {
+		t.Errorf("unread count < 0: %d", previews[0].UnreadCount)
+	}
+}
+
+func TestChannelStore_Update(t *testing.T) {
+	pool := testutil.PGPool(t)
+	cs := store.NewChannelStore(pool)
+	us := store.NewUserStore(pool)
+	ctx := context.Background()
+
+	alice := &model.User{Username: "upd_alice", Email: "ua@test.com", PasswordHash: "h", DisplayName: "A"}
+	us.Create(ctx, alice)
+
+	ch := &model.Channel{Type: model.ChannelTypeGroup, Name: "old-name", CreatorID: &alice.ID}
+	if err := cs.Create(ctx, ch); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := cs.Update(ctx, ch.ID, "new-name", ""); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+
+	updated, err := cs.GetByID(ctx, ch.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.Name != "new-name" {
+		t.Errorf("Name = %q, want %q", updated.Name, "new-name")
+	}
+}

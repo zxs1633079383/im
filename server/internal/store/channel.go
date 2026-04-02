@@ -2,7 +2,9 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -149,4 +151,96 @@ func (s *ChannelStore) IncrementPhantomCount(ctx context.Context, tx pgx.Tx, cha
 		_, err = s.pool.Exec(ctx, q, channelID, excludeUserIDs)
 	}
 	return err
+}
+
+// ChannelWithPreview is a Channel enriched with last-message info and unread count.
+type ChannelWithPreview struct {
+	model.Channel
+	LastMsgContent string    `json:"last_msg_content"`
+	LastMsgAt      time.Time `json:"last_msg_at"`
+	UnreadCount    int64     `json:"unread_count"`
+}
+
+// FindDM returns the DM channel that exists between userA and userB.
+// Returns ErrNotFound if no such channel exists.
+func (s *ChannelStore) FindDM(ctx context.Context, userA, userB int64) (*model.Channel, error) {
+	ch := &model.Channel{}
+	err := s.pool.QueryRow(ctx,
+		`SELECT c.id, c.type, c.name, c.avatar_url, c.seq, c.creator_id, c.created_at, c.updated_at
+		 FROM channels c
+		 JOIN channel_members ma ON ma.channel_id = c.id AND ma.user_id = $1
+		 JOIN channel_members mb ON mb.channel_id = c.id AND mb.user_id = $2
+		 WHERE c.type = $3
+		 LIMIT 1`,
+		userA, userB, model.ChannelTypeDM,
+	).Scan(&ch.ID, &ch.Type, &ch.Name, &ch.AvatarURL, &ch.Seq, &ch.CreatorID, &ch.CreatedAt, &ch.UpdatedAt)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("find dm: %w", err)
+	}
+	return ch, nil
+}
+
+// ListByUserWithPreview returns channels for userID enriched with the last
+// message preview and the caller's unread count.
+// Channels are ordered by last activity (last message time, or channel created_at).
+func (s *ChannelStore) ListByUserWithPreview(ctx context.Context, userID int64) ([]ChannelWithPreview, error) {
+	rows, err := s.pool.Query(ctx,
+		`SELECT
+		    c.id, c.type, c.name, c.avatar_url, c.seq, c.creator_id, c.created_at, c.updated_at,
+		    COALESCE(m.content, '')                         AS last_msg_content,
+		    COALESCE(m.created_at, c.created_at)            AS last_msg_at,
+		    GREATEST(
+		        (c.seq - cm.last_read_seq) - (cm.phantom_count - cm.phantom_at_read),
+		        0
+		    )                                               AS unread_count
+		 FROM channels c
+		 JOIN channel_members cm ON cm.channel_id = c.id AND cm.user_id = $1
+		 LEFT JOIN LATERAL (
+		     SELECT content, created_at
+		     FROM messages
+		     WHERE channel_id = c.id
+		     ORDER BY seq DESC
+		     LIMIT 1
+		 ) m ON true
+		 ORDER BY COALESCE(m.created_at, c.created_at) DESC`,
+		userID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list by user with preview: %w", err)
+	}
+	defer rows.Close()
+
+	var result []ChannelWithPreview
+	for rows.Next() {
+		var cp ChannelWithPreview
+		if err := rows.Scan(
+			&cp.ID, &cp.Type, &cp.Name, &cp.AvatarURL, &cp.Seq, &cp.CreatorID,
+			&cp.CreatedAt, &cp.UpdatedAt,
+			&cp.LastMsgContent, &cp.LastMsgAt, &cp.UnreadCount,
+		); err != nil {
+			return nil, fmt.Errorf("scan channel preview: %w", err)
+		}
+		result = append(result, cp)
+	}
+	return result, rows.Err()
+}
+
+// Update sets the name and/or avatar_url of a channel.
+// Pass empty string to leave a field unchanged.
+func (s *ChannelStore) Update(ctx context.Context, channelID int64, name, avatarURL string) error {
+	_, err := s.pool.Exec(ctx,
+		`UPDATE channels
+		 SET name       = CASE WHEN $2 <> '' THEN $2 ELSE name END,
+		     avatar_url = CASE WHEN $3 <> '' THEN $3 ELSE avatar_url END,
+		     updated_at = now()
+		 WHERE id = $1`,
+		channelID, name, avatarURL,
+	)
+	if err != nil {
+		return fmt.Errorf("update channel: %w", err)
+	}
+	return nil
 }
