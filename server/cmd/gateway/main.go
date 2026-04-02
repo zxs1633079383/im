@@ -69,6 +69,9 @@ func run() int {
 	messageStore := store.NewMessageStore(pool)
 	messageHandler := handler.NewMessageHandler(messageStore, channelStore, log)
 
+	fileStore := store.NewFileStore(pool)
+	fileHandler := handler.NewFileHandler(fileStore, cfg.Gateway.UploadDir, log)
+
 	syncHandler := handler.NewSyncHandler(channelStore, messageStore, log)
 
 	// Redis connection for routing.
@@ -137,6 +140,11 @@ func run() int {
 	mux.Handle("POST /api/channels/{id}/messages", jwtMiddleware(http.HandlerFunc(messageHandler.SendMessage)))
 	mux.Handle("GET /api/channels/{id}/messages", jwtMiddleware(http.HandlerFunc(messageHandler.FetchMessages)))
 	mux.Handle("POST /api/channels/{id}/read", jwtMiddleware(http.HandlerFunc(messageHandler.MarkRead)))
+
+	// File routes (JWT protected)
+	mux.Handle("POST /api/files", jwtMiddleware(http.HandlerFunc(fileHandler.Upload)))
+	mux.Handle("GET /api/files/{id}", jwtMiddleware(http.HandlerFunc(fileHandler.Download)))
+	mux.Handle("GET /api/messages/{id}/attachments", jwtMiddleware(http.HandlerFunc(fileHandler.ListAttachments)))
 
 	// Sync route (JWT protected)
 	mux.Handle("POST /api/sync", jwtMiddleware(http.HandlerFunc(syncHandler.Sync)))

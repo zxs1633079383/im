@@ -32,7 +32,8 @@ type PulsarConfig struct {
 type GatewayConfig struct {
 	HTTPAddr  string `yaml:"http_addr"`
 	JWTSecret string `yaml:"jwt_secret"`
-	ID        string `yaml:"id"` // resolved at runtime from HOSTNAME or UUID if blank
+	ID        string `yaml:"id"`        // resolved at runtime from HOSTNAME or UUID if blank
+	UploadDir string `yaml:"upload_dir"` // default: /data/uploads
 }
 
 func Load(path string) (*Config, error) {
@@ -50,6 +51,11 @@ func Load(path string) (*Config, error) {
 	}
 
 	applyEnvOverrides(cfg)
+
+	if cfg.Gateway.UploadDir == "" {
+		cfg.Gateway.UploadDir = "/data/uploads"
+	}
+
 	return cfg, nil
 }
 
