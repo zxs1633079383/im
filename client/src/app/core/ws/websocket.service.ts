@@ -6,6 +6,7 @@ import {
   PingPayload, PongPayload,
   PushMsgPayload, PushACKPayload,
   SendACKPayload,
+  ReadSyncPayload,
 } from './websocket.models';
 
 const WS_URL = 'ws://localhost:8080/ws';
@@ -29,6 +30,9 @@ export class WebSocketService implements OnDestroy {
 
   /** Emits every inbound pong frame payload. */
   readonly pong$ = new Subject<PongPayload>();
+
+  /** Emits when another device of the same user marks a channel as read. */
+  readonly readSync$ = new Subject<ReadSyncPayload>();
 
   /** Local max seq per channel (channel_id as string → seq). Used in ping payload. */
   readonly channelSeqs: Record<string, number> = {};
@@ -142,6 +146,11 @@ export class WebSocketService implements OnDestroy {
 
       case 'send_ack': {
         this.sendAck$.next(frame.payload as SendACKPayload);
+        break;
+      }
+
+      case 'read_sync': {
+        this.readSync$.next(frame.payload as ReadSyncPayload);
         break;
       }
 

@@ -1,6 +1,8 @@
-import { Injectable, signal } from '@angular/core';
+import { Injectable, inject, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
+import { WebSocketService } from '../ws/websocket.service';
+import { ReadSyncPayload } from '../ws/websocket.models';
 
 // ---------- types ----------
 
@@ -38,7 +40,12 @@ export class ChannelService {
   /** Reactive signal: channel list with preview info */
   readonly channels = signal<ChannelWithPreview[]>([]);
 
-  constructor(private http: HttpClient) {}
+  private ws = inject(WebSocketService);
+
+  constructor(private http: HttpClient) {
+    // When another device marks a channel as read, update our local unread count.
+    this.ws.readSync$.subscribe(event => this.handleReadSync(event));
+  }
 
   // ---------- channel operations ----------
 
@@ -98,5 +105,18 @@ export class ChannelService {
       this.http.get<ChannelWithPreview[]>(`${API_BASE}/channels`)
     );
     this.channels.set(data ?? []);
+  }
+
+  private handleReadSync(event: ReadSyncPayload): void {
+    // Update the channel's unread count to 0 (the other device read everything
+    // up to event.read_seq). Any messages arriving after read_seq will increment
+    // the count again via push_msg.
+    this.channels.update(channels =>
+      channels.map(ch =>
+        ch.id === event.channel_id
+          ? { ...ch, unread_count: 0 }
+          : ch
+      )
+    );
   }
 }

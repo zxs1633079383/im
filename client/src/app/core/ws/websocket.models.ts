@@ -2,7 +2,8 @@ export type WSMessageType =
   | 'ping' | 'pong'
   | 'push_msg' | 'push_ack'
   | 'send' | 'send_ack'
-  | 'sync' | 'sync_resp';
+  | 'sync' | 'sync_resp'
+  | 'read_sync';
 
 export interface WSFrame<T = unknown> {
   type: WSMessageType;
@@ -56,4 +57,9 @@ export interface SyncChannelState {
 
 export interface SyncPayload {
   channels: SyncChannelState[];
+}
+
+export interface ReadSyncPayload {
+  channel_id: number;
+  read_seq: number;
 }
