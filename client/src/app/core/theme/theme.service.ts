@@ -6,7 +6,7 @@ const STORAGE_KEY = 'app_theme';
 
 @Injectable({ providedIn: 'root' })
 export class ThemeService {
-  theme = signal<Theme>((localStorage.getItem(STORAGE_KEY) as Theme) || 'dark');
+  theme = signal<Theme>((localStorage.getItem(STORAGE_KEY) as Theme) || 'system');
 
   private mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
   private mediaListener: ((e: MediaQueryListEvent) => void) | null = null;

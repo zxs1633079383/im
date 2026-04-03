@@ -6,6 +6,6 @@
  *
  * Change this before building the Tauri app for distribution.
  */
-export const API_HOST = 'http://localhost:8080';
+export const API_HOST = 'http://196.168.1.99:8080';
 export const API_BASE = `${API_HOST}/api`;
 export const WS_BASE = API_HOST.replace(/^http/, 'ws') + '/ws';

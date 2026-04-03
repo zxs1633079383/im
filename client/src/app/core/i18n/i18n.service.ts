@@ -117,7 +117,7 @@ const translations: Record<string, Record<string, string>> = {
 
 @Injectable({ providedIn: 'root' })
 export class I18nService {
-  locale = signal<Locale>((localStorage.getItem(STORAGE_KEY) as Locale) || 'en');
+  locale = signal<Locale>((localStorage.getItem(STORAGE_KEY) as Locale) || 'zh');
 
   t(key: string): string {
     const lang = this.locale();

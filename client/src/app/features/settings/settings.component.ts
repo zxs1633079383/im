@@ -56,6 +56,9 @@ export class SettingsComponent implements OnInit {
         this.http.get<UserSettings>(`${API_BASE}/settings`),
       );
       this.settings.set(s);
+      // Sync loaded settings to theme/i18n services so UI matches
+      this.themeService.applyTheme(s.theme as any);
+      this.i18n.setLocale(s.language);
     } catch {
       this.error.set('Failed to load settings.');
     } finally {
