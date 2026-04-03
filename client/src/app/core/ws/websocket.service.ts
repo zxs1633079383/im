@@ -1,12 +1,14 @@
 import { Injectable, OnDestroy, inject } from '@angular/core';
 import { Subject, BehaviorSubject } from 'rxjs';
 import { AuthService } from '../auth/auth.service';
+import { DatabaseService } from '../db/database.service';
 import {
   WSFrame, WSMessageType,
   PingPayload, PongPayload,
   PushMsgPayload, PushACKPayload,
-  SendACKPayload,
+  SendACKPayload, SendPayload,
   ReadSyncPayload,
+  FriendEventPayload,
 } from './websocket.models';
 
 const WS_URL = 'ws://localhost:8080/ws';
@@ -18,6 +20,7 @@ const DEVICE_ID_KEY = 'im_device_id';
 @Injectable({ providedIn: 'root' })
 export class WebSocketService implements OnDestroy {
   private auth = inject(AuthService);
+  private db = inject(DatabaseService);
 
   /** Emits true when connected, false when disconnected. */
   readonly connected$ = new BehaviorSubject<boolean>(false);
@@ -33,6 +36,9 @@ export class WebSocketService implements OnDestroy {
 
   /** Emits when another device of the same user marks a channel as read. */
   readonly readSync$ = new Subject<ReadSyncPayload>();
+
+  /** Emits when a friend event (request, accept, reject) arrives. */
+  readonly friendEvent$ = new Subject<FriendEventPayload>();
 
   /** Local max seq per channel (channel_id as string → seq). Used in ping payload. */
   readonly channelSeqs: Record<string, number> = {};
@@ -53,6 +59,9 @@ export class WebSocketService implements OnDestroy {
     if (!token) return;
 
     this.destroyed = false;
+
+    // Load persisted channel seqs before connecting (best-effort, non-blocking)
+    this.loadChannelSeqsFromDb().catch(() => {});
 
     const deviceID = this.getOrCreateDeviceID();
     const url = `${WS_URL}?token=${encodeURIComponent(token)}&device=${encodeURIComponent(deviceID)}`;
@@ -100,13 +109,65 @@ export class WebSocketService implements OnDestroy {
     const key = String(channelId);
     if ((this.channelSeqs[key] ?? -1) < seq) {
       this.channelSeqs[key] = seq;
+      // Persist to SQLite (best-effort, fire-and-forget)
+      this.persistChannelSeq(channelId, seq);
     }
+  }
+
+  /**
+   * Load channel seqs from SQLite into the in-memory map.
+   * Should be called before connecting on app start or reconnect.
+   */
+  async loadChannelSeqsFromDb(): Promise<void> {
+    if (!this.db.available) return;
+    try {
+      interface Row { id: string; server_seq: number }
+      const rows = await this.db.query<Row>(
+        `SELECT id, server_seq FROM local_channels WHERE server_seq > 0`
+      );
+      for (const row of rows) {
+        const key = row.id;
+        const current = this.channelSeqs[key] ?? -1;
+        if (row.server_seq > current) {
+          this.channelSeqs[key] = row.server_seq;
+        }
+      }
+    } catch (err) {
+      console.warn('[WebSocketService] loadChannelSeqsFromDb failed', err);
+    }
+  }
+
+  /** Persist a channel seq to local_channels. */
+  private persistChannelSeq(channelId: number, seq: number): void {
+    if (!this.db.available) return;
+    this.db.execute(
+      `INSERT INTO local_channels (id, type, name, server_seq)
+       VALUES ($1, 0, '', $2)
+       ON CONFLICT(id) DO UPDATE SET server_seq = MAX(local_channels.server_seq, $2)`,
+      [String(channelId), seq]
+    ).catch(err => console.warn('[WebSocketService] persistChannelSeq failed', err));
   }
 
   /** Send a typed frame over the WebSocket. Silently drops if not connected. */
   send<T>(type: WSMessageType, payload: T): void {
     if (this.ws?.readyState !== WebSocket.OPEN) return;
     this.ws.send(JSON.stringify({ type, payload }));
+  }
+
+  /**
+   * Send a chat message via WebSocket (faster than HTTP).
+   * Returns true if the frame was sent; false if WS is not open.
+   */
+  sendViaWs(channelId: number, content: string, clientMsgId: string, msgType = 1): boolean {
+    if (this.ws?.readyState !== WebSocket.OPEN) return false;
+    const payload: SendPayload = {
+      client_msg_id: clientMsgId,
+      channel_id: channelId,
+      content,
+      msg_type: msgType,
+    };
+    this.send('send', payload);
+    return true;
   }
 
   // ---- Lifecycle ----
@@ -151,6 +212,11 @@ export class WebSocketService implements OnDestroy {
 
       case 'read_sync': {
         this.readSync$.next(frame.payload as ReadSyncPayload);
+        break;
+      }
+
+      case 'friend_event': {
+        this.friendEvent$.next(frame.payload as FriendEventPayload);
         break;
       }
 
