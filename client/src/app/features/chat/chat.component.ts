@@ -48,6 +48,7 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
   readonly favoriteService = inject(FavoriteService);
 
   @ViewChild('messageList') private messageListRef!: ElementRef<HTMLElement>;
+  @ViewChild('messageInput') private messageInputRef!: ElementRef<HTMLTextAreaElement>;
 
   messageText = signal('');
   sending = signal(false);
@@ -271,6 +272,8 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
       this.messageService.removeOptimistic(clientMsgId);
     } finally {
       this.sending.set(false);
+      // Re-focus the input so the user can keep typing
+      setTimeout(() => this.messageInputRef?.nativeElement?.focus(), 0);
     }
   }
 
