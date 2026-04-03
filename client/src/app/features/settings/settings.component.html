@@ -43,11 +43,10 @@
           </div>
           <select
             class="setting-select"
-            [value]="currentTheme()"
             (change)="updateTheme($any($event.target).value)"
           >
             @for (t of themes; track t.value) {
-              <option [value]="t.value">{{ t.label }}</option>
+              <option [value]="t.value" [selected]="t.value === currentTheme()">{{ t.label }}</option>
             }
           </select>
         </div>
@@ -63,11 +62,10 @@
           </div>
           <select
             class="setting-select"
-            [value]="currentLanguage()"
             (change)="updateLanguage($any($event.target).value)"
           >
             @for (l of languages; track l.value) {
-              <option [value]="l.value">{{ l.label }}</option>
+              <option [value]="l.value" [selected]="l.value === currentLanguage()">{{ l.label }}</option>
             }
           </select>
         </div>
