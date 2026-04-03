@@ -10,7 +10,7 @@
   h2 {
     font-size: 22px;
     font-weight: 700;
-    color: var(--text-primary, #111);
+    color: #cdd6f4;
     margin: 0;
   }
 }
@@ -18,12 +18,12 @@
 .loading, .error, .empty-state {
   text-align: center;
   padding: 48px 24px;
-  color: var(--text-secondary, #888);
+  color: #6c7086;
   font-size: 14px;
   line-height: 1.6;
 }
 
-.error { color: var(--danger, #e74c3c); }
+.error { color: #f38ba8; }
 
 .favorites-list {
   display: flex;
@@ -36,14 +36,12 @@
   align-items: flex-start;
   gap: 12px;
   padding: 14px 16px;
-  border: 1px solid var(--border-color, #e0e0e0);
+  border: 1px solid #313244;
   border-radius: 10px;
-  background: var(--card-bg, #fff);
-  transition: box-shadow 0.15s;
+  background: #1e1e2e;
+  transition: background 0.15s;
 
-  &:hover {
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-  }
+  &:hover { background: #313244; }
 
   .fav-content {
     flex: 1;
@@ -55,17 +53,17 @@
       gap: 12px;
       margin-bottom: 6px;
       font-size: 12px;
-      color: var(--text-secondary, #888);
+      color: #6c7086;
 
       .fav-channel {
-        color: var(--accent, #5865f2);
+        color: #89b4fa;
         font-weight: 600;
       }
     }
 
     .fav-text {
       font-size: 14px;
-      color: var(--text-primary, #111);
+      color: #cdd6f4;
       white-space: pre-wrap;
       word-break: break-word;
     }
@@ -76,13 +74,13 @@
     background: none;
     border: none;
     font-size: 18px;
-    color: var(--accent, #5865f2);
+    color: #89b4fa;
     cursor: pointer;
     padding: 4px;
     transition: transform 0.15s, color 0.15s;
 
     &:hover {
-      color: var(--danger, #e74c3c);
+      color: #f38ba8;
       transform: scale(1.2);
     }
   }
