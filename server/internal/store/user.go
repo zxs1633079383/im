@@ -93,6 +93,7 @@ func (s *UserStore) GetSettings(ctx context.Context, userID int64) (*model.UserS
 		NotificationEnabled: true,
 		Theme:               "system",
 		Language:            "en",
+		SettingsJSON:        []byte("{}"),
 	}
 	err := s.pool.QueryRow(ctx,
 		`SELECT user_id, notification_enabled, theme, language, settings_json
