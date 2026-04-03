@@ -1,9 +1,10 @@
-import { Component, inject, signal, OnInit } from '@angular/core';
+import { Component, inject, signal, computed, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { ChannelService, Channel, ChannelMember } from '../../core/channels/channel.service';
 import { AuthService } from '../../core/auth/auth.service';
+import { FriendService } from '../../core/friends/friend.service';
 
 @Component({
   selector: 'app-channel-settings',
@@ -17,6 +18,7 @@ export class ChannelSettingsComponent implements OnInit {
   private router = inject(Router);
   private channelService = inject(ChannelService);
   auth = inject(AuthService);
+  friendService = inject(FriendService);
 
   channel = signal<Channel | null>(null);
   members = signal<ChannelMember[]>([]);
@@ -29,15 +31,24 @@ export class ChannelSettingsComponent implements OnInit {
   savingName = signal(false);
 
   // Add member state
-  newMemberIdStr = signal('');
   addingMember = signal(false);
+  showAddPicker = signal(false);
+
+  /** Friends who are NOT already members of this channel */
+  availableFriends = computed(() => {
+    const memberIds = new Set(this.members().map(m => m.user_id));
+    return this.friendService.friends().filter(f => !memberIds.has(f.id));
+  });
 
   private channelId = 0;
 
   async ngOnInit(): Promise<void> {
     const id = Number(this.route.snapshot.paramMap.get('id'));
     this.channelId = id;
-    await this.reload();
+    await Promise.all([
+      this.reload(),
+      this.friendService.loadFriends(),
+    ]);
   }
 
   private async reload(): Promise<void> {
@@ -91,18 +102,15 @@ export class ChannelSettingsComponent implements OnInit {
     }
   }
 
-  async addMember(): Promise<void> {
-    const id = Number(this.newMemberIdStr().trim());
-    if (!id) { this.error.set('Enter a valid user ID.'); return; }
+  async addMember(userId: number, displayName: string): Promise<void> {
     this.addingMember.set(true);
     this.error.set('');
     try {
-      await this.channelService.addMember(this.channelId, id);
-      this.newMemberIdStr.set('');
-      this.success.set('Member added.');
+      await this.channelService.addMember(this.channelId, userId);
+      this.success.set(`已添加 ${displayName}`);
       await this.reload();
     } catch (err: any) {
-      this.error.set(err?.error?.error ?? 'Failed to add member.');
+      this.error.set(err?.error?.error ?? '添加失败');
     } finally {
       this.addingMember.set(false);
     }

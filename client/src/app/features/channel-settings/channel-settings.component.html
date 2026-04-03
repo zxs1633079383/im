@@ -54,17 +54,32 @@
       </ul>
 
       @if (isAdminOrOwner) {
-        <div class="add-member">
-          <input
-            class="input"
-            type="number"
-            placeholder="User ID to add"
-            [ngModel]="newMemberIdStr()"
-            (ngModelChange)="newMemberIdStr.set($event)"
-          />
-          <button class="btn-primary" (click)="addMember()" [disabled]="addingMember()">
-            {{ addingMember() ? 'Adding…' : 'Add Member' }}
+        <div class="add-member-section">
+          <button class="btn-add-toggle" (click)="showAddPicker.set(!showAddPicker())">
+            {{ showAddPicker() ? '收起' : '+ 添加成员' }}
           </button>
+
+          @if (showAddPicker()) {
+            <div class="friend-picker">
+              @for (f of availableFriends(); track f.id) {
+                <div class="friend-pick-row">
+                  <div class="friend-pick-avatar">{{ (f.display_name || f.username || '?').charAt(0).toUpperCase() }}</div>
+                  <div class="friend-pick-info">
+                    <span class="friend-pick-name">{{ f.display_name || f.username }}</span>
+                    <span class="friend-pick-username">@{{ f.username }}</span>
+                  </div>
+                  <button
+                    class="btn-add-member"
+                    (click)="addMember(f.id, f.display_name || f.username)"
+                    [disabled]="addingMember()"
+                  >添加</button>
+                </div>
+              }
+              @empty {
+                <div class="friend-pick-empty">没有可添加的联系人</div>
+              }
+            </div>
+          }
         </div>
       }
     </section>
