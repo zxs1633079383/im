@@ -1,0 +1,32 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: im-postgres
+    environment:
+      POSTGRES_USER: im
+      POSTGRES_PASSWORD: im
+      POSTGRES_DB: im
+    ports:
+      - "15432:5432"
+    volumes:
+      - im-pgdata:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    container_name: im-redis
+    ports:
+      - "6379:6379"
+
+  pulsar:
+    image: apachepulsar/pulsar:3.3.0
+    container_name: im-pulsar
+    command: bin/pulsar standalone
+    ports:
+      - "6650:6650"
+      - "8088:8080"
+    volumes:
+      - im-pulsardata:/pulsar/data
+
+volumes:
+  im-pgdata:
+  im-pulsardata:

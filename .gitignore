@@ -8,5 +8,8 @@ client/.angular/cache/
 # Tauri build artifacts
 client/src-tauri/target/
 
+# Server config (contains secrets)
+server/config.yaml
+
 # macOS
 .DS_Store
