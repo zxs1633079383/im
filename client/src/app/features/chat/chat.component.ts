@@ -66,6 +66,14 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
   /** The message the user is currently replying to. Cleared after send. */
   readonly replyTarget = signal<Message | null>(null);
 
+  /** Directed message (visible_to) state */
+  readonly showVisibleToPicker = signal(false);
+  readonly selectedVisibleTo = signal<number[]>([]);
+  readonly channelMembers = signal<{ user_id: number; display_name: string; username: string }[]>([]);
+
+  /** Is this a group channel? Only groups support directed messages. */
+  readonly isGroup = computed(() => this.activeChannel()?.type === 2);
+
   /** Context menu state */
   readonly contextMenuMsg = signal<Message | null>(null);
   readonly contextMenuPos = signal<{ x: number; y: number } | null>(null);
@@ -210,6 +218,54 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
     }
   }
 
+  toggleVisibleToPicker(): void {
+    const show = !this.showVisibleToPicker();
+    this.showVisibleToPicker.set(show);
+    if (show && this.channelMembers().length === 0) {
+      this.loadChannelMembers();
+    }
+  }
+
+  private async loadChannelMembers(): Promise<void> {
+    try {
+      const members = await this.channelService.listMembers(this.channelId);
+      const me = this.auth.currentUser()?.id;
+      this.channelMembers.set(
+        members
+          .filter((m: any) => m.user_id !== me)
+          .map((m: any) => ({ user_id: m.user_id, display_name: m.display_name || m.username || `User #${m.user_id}`, username: m.username || '' }))
+      );
+    } catch { /* ignore */ }
+  }
+
+  toggleVisibleToMember(userId: number): void {
+    const current = this.selectedVisibleTo();
+    if (current.includes(userId)) {
+      this.selectedVisibleTo.set(current.filter(id => id !== userId));
+    } else {
+      this.selectedVisibleTo.set([...current, userId]);
+    }
+  }
+
+  isVisibleToSelected(userId: number): boolean {
+    return this.selectedVisibleTo().includes(userId);
+  }
+
+  cancelVisibleTo(): void {
+    this.selectedVisibleTo.set([]);
+    this.showVisibleToPicker.set(false);
+  }
+
+  get visibleToLabel(): string {
+    const count = this.selectedVisibleTo().length;
+    if (count === 0) return '';
+    const names = this.selectedVisibleTo().map(id => {
+      const m = this.channelMembers().find(m => m.user_id === id);
+      return m?.display_name || `#${id}`;
+    });
+    return names.join(', ');
+  }
+
   async send(): Promise<void> {
     const content = this.messageText().trim();
     const fileIds = this.pendingFiles().map(f => f.id);
@@ -235,10 +291,19 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
       created_at: new Date().toISOString(),
     };
 
+    // Add visible_to (directed message) - include self so sender can see it
+    const visibleTo = this.selectedVisibleTo();
+    if (visibleTo.length > 0) {
+      const me = currentUser?.id ?? 0;
+      optimistic.visible_to = [...visibleTo, me];
+    }
+
     this.messageService.appendOptimistic(optimistic);
     this.messageText.set('');
     this.pendingFiles.set([]);
-    this.replyTarget.set(null);   // clear reply after send
+    this.replyTarget.set(null);
+    this.selectedVisibleTo.set([]);
+    this.showVisibleToPicker.set(false);
     this.shouldScrollToBottom = true;
     this.sending.set(true);
     this.error.set(null);
@@ -252,6 +317,10 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
       };
       if (fileIds.length > 0) {
         payload.file_ids = fileIds;
+      }
+      if (visibleTo.length > 0) {
+        const me = currentUser?.id ?? 0;
+        payload.visible_to = [...visibleTo, me];
       }
       const confirmed = await this.messageService.sendMessage(this.channelId, payload);
       this.messageService.confirmSent(clientMsgId, confirmed);

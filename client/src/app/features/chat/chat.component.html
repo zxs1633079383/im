@@ -44,6 +44,9 @@
                   </div>
                 }
                 <div class="bubble" (contextmenu)="onContextMenu($event, msg)">
+                  @if (msg.visible_to && msg.visible_to.length > 0) {
+                    <span class="directed-tag">🔒 定向消息</span>
+                  }
                   <span class="content">{{ msg.content }}</span>
                   @if (msg.msg_type === 3 && triggerLoadAttachments(msg.id)) {
                     <div class="message-attachments">
@@ -111,7 +114,45 @@
     </div>
   }
 
+  <!-- Directed message (visible_to) banner -->
+  @if (selectedVisibleTo().length > 0) {
+    <div class="visible-to-banner">
+      <span class="visible-to-text">🔒 仅 {{ visibleToLabel }} 可见</span>
+      <button class="visible-to-cancel" (click)="cancelVisibleTo()">✕</button>
+    </div>
+  }
+
+  <!-- Visible-to member picker (group only) -->
+  @if (showVisibleToPicker()) {
+    <div class="visible-to-picker">
+      <div class="picker-header">
+        <span>选择可见成员</span>
+        <button class="picker-close" (click)="showVisibleToPicker.set(false)">✕</button>
+      </div>
+      <div class="picker-list">
+        @for (m of channelMembers(); track m.user_id) {
+          <label class="picker-item" (click)="toggleVisibleToMember(m.user_id)">
+            <input type="checkbox" [checked]="isVisibleToSelected(m.user_id)" />
+            <span>{{ m.display_name }}</span>
+          </label>
+        }
+        @empty {
+          <div class="picker-empty">加载中...</div>
+        }
+      </div>
+    </div>
+  }
+
   <div class="send-box">
+    <!-- Directed message button (group only) -->
+    @if (isGroup()) {
+      <button
+        class="directed-btn"
+        [class.active]="selectedVisibleTo().length > 0"
+        (click)="toggleVisibleToPicker()"
+        title="定向消息 — 仅选中的人可见"
+      >🔒</button>
+    }
     <!-- File attachment button -->
     <label class="attach-btn" [class.disabled]="uploading()">
       <input
