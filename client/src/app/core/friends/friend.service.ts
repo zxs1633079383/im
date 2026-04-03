@@ -1,6 +1,7 @@
-import { Injectable, signal } from '@angular/core';
+import { Injectable, signal, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
+import { WebSocketService } from '../ws/websocket.service';
 
 // ---------- types ----------
 
@@ -40,7 +41,24 @@ export class FriendService {
   /** Reactive signal: incoming pending requests */
   readonly pendingRequests = signal<PendingRequest[]>([]);
 
-  constructor(private http: HttpClient) {}
+  /** Reactive signal: pending request count for visual indicator. */
+  readonly pendingCount = signal(0);
+
+  private ws = inject(WebSocketService);
+
+  constructor(private http: HttpClient) {
+    // Subscribe to real-time friend events from WebSocket.
+    this.ws.friendEvent$.subscribe(event => {
+      if (event.event_type === 'request') {
+        // New incoming friend request — reload pending list
+        this.loadPendingRequests().catch(() => {});
+      } else if (event.event_type === 'accepted') {
+        // Friend accepted — reload both lists
+        this.loadFriends().catch(() => {});
+        this.loadPendingRequests().catch(() => {});
+      }
+    });
+  }
 
   // ---------- friend operations ----------
 
@@ -86,6 +104,7 @@ export class FriendService {
       this.http.get<PendingRequest[]>(`${API_BASE}/friends/pending`)
     );
     this.pendingRequests.set(data);
+    this.pendingCount.set(data?.length ?? 0);
   }
 
   async searchUsers(q: string): Promise<UserSearchResult[]> {
