@@ -1,6 +1,9 @@
 package model
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 type UserStatus int16
 
@@ -26,5 +29,5 @@ type UserSettings struct {
 	NotificationEnabled bool   `json:"notification_enabled"`
 	Theme               string `json:"theme"`
 	Language            string `json:"language"`
-	SettingsJSON        []byte `json:"settings_json"`
+	SettingsJSON        json.RawMessage `json:"settings_json"`
 }
