@@ -41,9 +41,9 @@
       <ul class="member-list">
         @for (m of members(); track m.user_id) {
           <li class="member-row">
-            <div class="member-avatar">{{ m.user_id }}</div>
+            <div class="member-avatar">{{ (m.display_name || m.username || '?').charAt(0).toUpperCase() }}</div>
             <div class="member-info">
-              <span class="member-id">User #{{ m.user_id }}</span>
+              <span class="member-name">{{ m.display_name || m.username || 'User #' + m.user_id }}</span>
               <span class="member-role">{{ roleName(m.role) }}</span>
             </div>
             @if (isAdminOrOwner && m.role !== 3 && m.user_id !== auth.currentUser()?.id) {
