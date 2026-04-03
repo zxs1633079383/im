@@ -7,6 +7,7 @@ import { PushMsgPayload, PongPayload, SyncChannelState, SyncResponse } from '../
 import { ChannelService } from '../channels/channel.service';
 import { FriendService } from '../friends/friend.service';
 import { AuthService } from '../auth/auth.service';
+import { DatabaseService } from '../db/database.service';
 
 // ---------- types ----------
 
@@ -61,6 +62,7 @@ export class MessageService {
   private channelService = inject(ChannelService);
   private friendService = inject(FriendService);
   private authService = inject(AuthService);
+  private db = inject(DatabaseService);
 
   /** Get display name for a sender_id. Returns 'You' for self, looks up friends list. */
   getSenderName(senderId: number): string {
@@ -88,10 +90,84 @@ export class MessageService {
 
   // ---------- API calls ----------
 
+  /**
+   * Send a message. Prefers WebSocket when connected for lower latency;
+   * falls back to HTTP POST if WS is not available.
+   */
   async sendMessage(channelId: number, payload: SendMessagePayload): Promise<Message> {
+    // Try WS send for simple text messages when connected.
+    if (
+      this.ws.connected$.value &&
+      payload.client_msg_id &&
+      !payload.file_ids?.length
+    ) {
+      const sent = this.ws.sendViaWs(
+        channelId,
+        payload.content,
+        payload.client_msg_id,
+        payload.msg_type ?? 1,
+      );
+      if (sent) {
+        // Wait for send_ack from server.
+        return this.waitForSendAck(payload.client_msg_id, channelId, payload);
+      }
+    }
+    // Fallback to HTTP.
+    return this.sendMessageHttp(channelId, payload);
+  }
+
+  /** HTTP send (fallback). */
+  private async sendMessageHttp(channelId: number, payload: SendMessagePayload): Promise<Message> {
     return firstValueFrom(
       this.http.post<Message>(`${API_BASE}/channels/${channelId}/messages`, payload)
     );
+  }
+
+  /**
+   * Wait for a send_ack matching the clientMsgId, with a timeout.
+   * Falls back to HTTP if ACK is not received within 5 seconds.
+   */
+  private waitForSendAck(
+    clientMsgId: string,
+    channelId: number,
+    payload: SendMessagePayload,
+  ): Promise<Message> {
+    return new Promise<Message>((resolve) => {
+      const timeout = setTimeout(() => {
+        sub.unsubscribe();
+        // Fallback to HTTP if ACK times out.
+        this.sendMessageHttp(channelId, payload).then(resolve).catch(() => {
+          // Return a stub message on total failure — the caller handles errors.
+          resolve({
+            id: -1,
+            channel_id: channelId,
+            seq: -1,
+            client_msg_id: clientMsgId,
+            sender_id: this.authService.currentUser()?.id ?? 0,
+            msg_type: payload.msg_type ?? 1,
+            content: payload.content,
+            created_at: new Date().toISOString(),
+          });
+        });
+      }, 5000);
+
+      const sub = this.ws.sendAck$.subscribe(ack => {
+        if (ack.client_msg_id === clientMsgId) {
+          clearTimeout(timeout);
+          sub.unsubscribe();
+          resolve({
+            id: ack.server_msg_id,
+            channel_id: ack.channel_id,
+            seq: ack.seq,
+            client_msg_id: clientMsgId,
+            sender_id: this.authService.currentUser()?.id ?? 0,
+            msg_type: payload.msg_type ?? 1,
+            content: payload.content,
+            created_at: new Date().toISOString(),
+          });
+        }
+      });
+    });
   }
 
   async fetchMessages(channelId: number, opts: FetchOptions = {}): Promise<Message[]> {
@@ -119,10 +195,23 @@ export class MessageService {
 
   /** Load the latest 50 messages for a channel and mark it as read. */
   async loadMessages(channelId: number): Promise<void> {
+    // 1. Try loading from local SQLite first for instant display.
+    const localMsgs = await this.loadMessagesFromDb(channelId, 50);
+    if (localMsgs.length > 0) {
+      this.messages.set(localMsgs);
+      this.activeChannelId.set(channelId);
+    }
+
+    // 2. Fetch from server for the latest data.
     const msgs = await this.fetchMessages(channelId, { limit: 50 });
     // FetchBefore (default) returns newest-first; reverse for display order.
-    this.messages.set([...msgs].reverse());
+    const sorted = [...msgs].reverse();
+    this.messages.set(sorted);
     this.activeChannelId.set(channelId);
+
+    // 3. Persist fetched messages to SQLite.
+    this.persistMessages(sorted);
+
     // Mark read optimistically — don't await to avoid delaying UI
     this.markRead(channelId).catch(err =>
       console.warn('[MessageService] markRead failed', err)
@@ -247,10 +336,6 @@ export class MessageService {
     this.markRead(pushed.channel_id).catch(() => {});
     this.channelService.updateUnread(pushed.channel_id, 0);
 
-    // Phantom messages (msg_type === 2) visible only to specific recipients —
-    // skip them in the generic list; callers can subscribe to pushMsg$ directly.
-    if (pushed.msg_type === 2) return;
-
     // Deduplicate: don't show if we already have this seq.
     const alreadyPresent = this.messages().some(m => m.seq === pushed.seq);
     if (alreadyPresent) return;
@@ -265,9 +350,18 @@ export class MessageService {
       visible_to: pushed.visible_to,
       created_at: pushed.created_at,
     };
+
+    // Store all messages including phantoms (msg_type=99) for seq continuity.
+    // The chat component's visibleMessages computed filters out msg_type=99.
     this.messages.update(msgs => [...msgs, msg]);
-    // Signal that a new message arrived (for auto-scroll logic).
-    this._newMessageArrived.next();
+
+    // Persist to SQLite
+    this.persistOneMessage(msg);
+
+    // Signal that a new message arrived (for auto-scroll logic) — but not for phantoms.
+    if (pushed.msg_type !== 99) {
+      this._newMessageArrived.next();
+    }
   }
 
   /**
@@ -306,6 +400,11 @@ export class MessageService {
       for (const result of resp.channels ?? []) {
         // Update the WS seq tracker so heartbeat pong diffs stay accurate.
         this.ws.updateChannelSeq(result.id, result.server_seq);
+
+        // Persist sync'd messages to SQLite.
+        if (result.messages && result.messages.length > 0) {
+          this.persistMessages(result.messages as unknown as Message[]);
+        }
 
         // If this is the active channel and we got messages, merge them in.
         if (result.messages && result.messages.length > 0) {
@@ -354,6 +453,8 @@ export class MessageService {
       for (const msg of msgs) {
         this.ws.updateChannelSeq(channelId, msg.seq);
       }
+      // Persist to SQLite
+      this.persistMessages(msgs);
       // If this is the active channel, merge into the visible list.
       if (this.activeChannelId() === channelId && msgs.length > 0) {
         const existingSeqs = new Set(this.messages().map(m => m.seq));
@@ -364,6 +465,70 @@ export class MessageService {
       }
     } catch (err) {
       console.warn('[MessageService] fetchAndAppendMissed failed', channelId, err);
+    }
+  }
+
+  // ---- SQLite persistence helpers ----
+
+  /** Persist an array of messages to local SQLite (best-effort). */
+  private persistMessages(msgs: Message[]): void {
+    if (!this.db.available || msgs.length === 0) return;
+    for (const m of msgs) {
+      this.persistOneMessage(m);
+    }
+  }
+
+  /** Persist a single message to local_messages. */
+  private persistOneMessage(m: Message): void {
+    if (!this.db.available) return;
+    const visible = m.msg_type === 99 ? 0 : 1;
+    const createdAtMs = m.created_at ? new Date(m.created_at).getTime() : 0;
+    this.db.execute(
+      `INSERT OR REPLACE INTO local_messages
+       (channel_id, seq, server_id, client_id, sender_id, msg_type, content, visible, reply_to, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+      [
+        String(m.channel_id), m.seq, String(m.id), m.client_msg_id ?? '',
+        String(m.sender_id), m.msg_type, m.content, visible,
+        m.reply_to != null ? String(m.reply_to) : null, createdAtMs,
+      ]
+    ).catch(err => console.warn('[MessageService] persistOneMessage failed', err));
+  }
+
+  /** Load messages for a channel from local SQLite. */
+  private async loadMessagesFromDb(channelId: number, limit: number): Promise<Message[]> {
+    if (!this.db.available) return [];
+    try {
+      interface DbRow {
+        channel_id: string;
+        seq: number;
+        server_id: string;
+        client_id: string;
+        sender_id: string;
+        msg_type: number;
+        content: string;
+        reply_to: string | null;
+        created_at: number;
+      }
+      const rows = await this.db.query<DbRow>(
+        `SELECT * FROM local_messages WHERE channel_id = $1
+         ORDER BY seq DESC LIMIT $2`,
+        [String(channelId), limit]
+      );
+      return rows.reverse().map(r => ({
+        id: Number(r.server_id),
+        channel_id: Number(r.channel_id),
+        seq: r.seq,
+        client_msg_id: r.client_id || undefined,
+        sender_id: Number(r.sender_id),
+        msg_type: r.msg_type,
+        content: r.content,
+        reply_to: r.reply_to != null ? Number(r.reply_to) : undefined,
+        created_at: r.created_at ? new Date(r.created_at).toISOString() : '',
+      }));
+    } catch (err) {
+      console.warn('[MessageService] loadMessagesFromDb failed', err);
+      return [];
     }
   }
 }

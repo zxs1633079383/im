@@ -4,6 +4,7 @@ import { firstValueFrom } from 'rxjs';
 import { WebSocketService } from '../ws/websocket.service';
 import { ReadSyncPayload } from '../ws/websocket.models';
 import { FriendService } from '../friends/friend.service';
+import { DatabaseService } from '../db/database.service';
 
 // ---------- types ----------
 
@@ -61,6 +62,7 @@ export class ChannelService {
 
   private ws = inject(WebSocketService);
   private friendService = inject(FriendService);
+  private db = inject(DatabaseService);
 
   constructor(private http: HttpClient) {
     // When another device marks a channel as read, update our local unread count.
@@ -163,6 +165,26 @@ export class ChannelService {
       this.http.get<ChannelWithPreview[]>(`${API_BASE}/channels`)
     );
     this.channels.set(data ?? []);
+    // Persist channel state to SQLite (best-effort)
+    this.persistChannels(data ?? []);
+  }
+
+  /** Persist channel list to local_channels table (best-effort). */
+  private persistChannels(channels: ChannelWithPreview[]): void {
+    if (!this.db.available) return;
+    for (const ch of channels) {
+      const lastMsgMs = ch.last_msg_at ? new Date(ch.last_msg_at).getTime() : 0;
+      const updatedMs = ch.updated_at ? new Date(ch.updated_at).getTime() : 0;
+      this.db.execute(
+        `INSERT OR REPLACE INTO local_channels
+         (id, type, name, avatar_url, server_seq, unread_count, last_msg_preview, last_msg_time, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        [
+          String(ch.id), ch.type, ch.name, ch.avatar_url, ch.seq,
+          ch.unread_count ?? 0, ch.last_msg_content ?? '', lastMsgMs, updatedMs,
+        ]
+      ).catch(err => console.warn('[ChannelService] persistChannel failed', err));
+    }
   }
 
   /** Update the unread count for a single channel (called after batch sync or mark-read). */
