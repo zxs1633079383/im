@@ -3,8 +3,7 @@ import { HttpClient, HttpParams } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 import { Message } from '../messages/message.service';
 import { Channel } from '../channels/channel.service';
-
-const API_BASE = 'http://localhost:8080/api';
+import { API_BASE } from '../config/api.config';
 
 export interface UserResult {
   id: number;

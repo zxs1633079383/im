@@ -5,6 +5,7 @@ import { WebSocketService } from '../ws/websocket.service';
 import { ReadSyncPayload, ChannelEventPayload } from '../ws/websocket.models';
 import { FriendService } from '../friends/friend.service';
 import { DatabaseService } from '../db/database.service';
+import { API_BASE } from '../config/api.config';
 
 // ---------- types ----------
 
@@ -37,8 +38,6 @@ export interface ChannelMember {
   display_name: string;
   avatar_url: string;
 }
-
-const API_BASE = 'http://localhost:8080/api';
 
 @Injectable({ providedIn: 'root' })
 export class ChannelService {

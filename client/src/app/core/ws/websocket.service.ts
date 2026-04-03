@@ -11,8 +11,9 @@ import {
   FriendEventPayload,
   ChannelEventPayload,
 } from './websocket.models';
+import { WS_BASE } from '../config/api.config';
 
-const WS_URL = 'ws://localhost:8080/ws';
+const WS_URL = WS_BASE;
 const PING_INTERVAL_MS = 15_000;
 const RECONNECT_BASE_DELAY_MS = 3_000;
 const MAX_RECONNECT_ATTEMPTS = 10;

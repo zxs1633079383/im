@@ -30,9 +30,10 @@ export interface LoginPayload {
   password: string;
 }
 
+import { API_BASE } from '../config/api.config';
+
 const TOKEN_KEY = 'im_auth_token';
 const USER_KEY  = 'im_auth_user';
-const API_BASE  = 'http://localhost:8080/api';
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {

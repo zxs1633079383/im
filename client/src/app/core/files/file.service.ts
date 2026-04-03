@@ -1,8 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
-
-const API_BASE = 'http://localhost:8080/api';
+import { API_BASE } from '../config/api.config';
 
 export interface FileRecord {
   id: number;

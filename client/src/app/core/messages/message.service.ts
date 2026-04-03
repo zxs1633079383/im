@@ -8,6 +8,7 @@ import { ChannelService } from '../channels/channel.service';
 import { FriendService } from '../friends/friend.service';
 import { AuthService } from '../auth/auth.service';
 import { DatabaseService } from '../db/database.service';
+import { API_BASE } from '../config/api.config';
 
 // ---------- types ----------
 
@@ -44,8 +45,6 @@ export interface FetchOptions {
 export interface FetchMessagesResponse {
   messages: Message[];
 }
-
-const API_BASE = 'http://localhost:8080/api';
 
 @Injectable({ providedIn: 'root' })
 export class MessageService {

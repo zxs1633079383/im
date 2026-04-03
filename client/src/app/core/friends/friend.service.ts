@@ -2,6 +2,7 @@ import { Injectable, signal, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 import { WebSocketService } from '../ws/websocket.service';
+import { API_BASE } from '../config/api.config';
 
 // ---------- types ----------
 
@@ -30,8 +31,6 @@ export interface UserSearchResult {
   avatar_url: string;
   status: number;
 }
-
-const API_BASE = 'http://localhost:8080/api';
 
 @Injectable({ providedIn: 'root' })
 export class FriendService {

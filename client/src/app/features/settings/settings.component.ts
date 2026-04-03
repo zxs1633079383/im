@@ -5,8 +5,7 @@ import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 import { ThemeService, Theme } from '../../core/theme/theme.service';
 import { I18nService } from '../../core/i18n/i18n.service';
-
-const API_BASE = 'http://localhost:8080/api';
+import { API_BASE } from '../../core/config/api.config';
 
 export interface UserSettings {
   user_id: number;
