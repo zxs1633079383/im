@@ -3,16 +3,17 @@
   align-items: center;
   justify-content: center;
   min-height: 100vh;
-  background: #f5f5f5;
+  background: #11111b;
 }
 
 .auth-card {
-  background: #fff;
-  border-radius: 8px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+  background: #1e1e2e;
+  border: 1px solid #313244;
+  border-radius: 12px;
   padding: 2.5rem 2rem;
   width: 100%;
   max-width: 400px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
 }
 
 .auth-title {
@@ -20,7 +21,7 @@
   font-weight: 600;
   margin: 0 0 1.5rem;
   text-align: center;
-  color: #1a1a1a;
+  color: #cdd6f4;
 }
 
 .form-group {
@@ -31,67 +32,62 @@
     font-size: 0.875rem;
     font-weight: 500;
     margin-bottom: 0.375rem;
-    color: #333;
+    color: #a6adc8;
   }
 
   input {
     width: 100%;
     padding: 0.625rem 0.75rem;
-    border: 1px solid #d1d5db;
-    border-radius: 6px;
+    border: 1px solid #45475a;
+    border-radius: 8px;
     font-size: 0.9375rem;
     box-sizing: border-box;
+    background: #313244;
+    color: #cdd6f4;
     transition: border-color 0.15s;
+
+    &::placeholder { color: #6c7086; }
 
     &:focus {
       outline: none;
-      border-color: #2563eb;
-      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+      border-color: #89b4fa;
+      box-shadow: 0 0 0 3px rgba(137, 180, 250, 0.15);
     }
   }
 }
 
 .error-message {
-  color: #dc2626;
+  color: #f38ba8;
   font-size: 0.875rem;
   margin: 0.5rem 0 1rem;
 }
 
 .btn-primary {
   width: 100%;
-  padding: 0.625rem;
-  background: #2563eb;
-  color: #fff;
+  padding: 0.7rem;
+  background: #89b4fa;
+  color: #1e1e2e;
   border: none;
-  border-radius: 6px;
+  border-radius: 8px;
   font-size: 0.9375rem;
-  font-weight: 500;
+  font-weight: 600;
   cursor: pointer;
   transition: background 0.15s;
   margin-top: 0.5rem;
 
-  &:hover:not(:disabled) {
-    background: #1d4ed8;
-  }
-
-  &:disabled {
-    background: #93c5fd;
-    cursor: not-allowed;
-  }
+  &:hover:not(:disabled) { background: #74c7ec; }
+  &:disabled { opacity: 0.5; cursor: not-allowed; }
 }
 
 .auth-footer {
   text-align: center;
   margin-top: 1.25rem;
   font-size: 0.875rem;
-  color: #6b7280;
+  color: #6c7086;
 
   a {
-    color: #2563eb;
+    color: #89b4fa;
     text-decoration: none;
-
-    &:hover {
-      text-decoration: underline;
-    }
+    &:hover { text-decoration: underline; }
   }
 }
