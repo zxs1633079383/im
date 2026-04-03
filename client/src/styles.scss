@@ -1,3 +1,53 @@
+:root, [data-theme="dark"] {
+  --bg-base: #181825;
+  --bg-surface: #1e1e2e;
+  --bg-overlay: #313244;
+  --bg-hover: #45475a;
+  --text-primary: #cdd6f4;
+  --text-secondary: #a6adc8;
+  --text-muted: #6c7086;
+  --text-faint: #585b70;
+  --border: #313244;
+  --border-hover: #45475a;
+  --accent: #89b4fa;
+  --accent-hover: #74c7ec;
+  --accent-text: #1e1e2e;
+  --success: #a6e3a1;
+  --error: #f38ba8;
+  --bubble-mine: #89b4fa;
+  --bubble-mine-text: #1e1e2e;
+  --bubble-other: #313244;
+  --bubble-other-text: #cdd6f4;
+  --input-bg: #313244;
+  --input-border: #45475a;
+  --auth-bg: #11111b;
+}
+
+[data-theme="light"] {
+  --bg-base: #eff1f5;
+  --bg-surface: #ffffff;
+  --bg-overlay: #e6e9ef;
+  --bg-hover: #dce0e8;
+  --text-primary: #4c4f69;
+  --text-secondary: #6c6f85;
+  --text-muted: #8c8fa1;
+  --text-faint: #9ca0b0;
+  --border: #ccd0da;
+  --border-hover: #bcc0cc;
+  --accent: #1e66f5;
+  --accent-hover: #2a6ef5;
+  --accent-text: #ffffff;
+  --success: #40a02b;
+  --error: #d20f39;
+  --bubble-mine: #1e66f5;
+  --bubble-mine-text: #ffffff;
+  --bubble-other: #e6e9ef;
+  --bubble-other-text: #4c4f69;
+  --input-bg: #e6e9ef;
+  --input-border: #ccd0da;
+  --auth-bg: #dce0e8;
+}
+
 *, *::before, *::after {
   box-sizing: border-box;
   margin: 0;
@@ -9,14 +59,14 @@ html, body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   font-size: 14px;
   line-height: 1.5;
-  background: #181825;
-  color: #cdd6f4;
+  background: var(--bg-base);
+  color: var(--text-primary);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
 a {
-  color: #89b4fa;
+  color: var(--accent);
   text-decoration: none;
   &:hover { text-decoration: underline; }
 }
@@ -28,9 +78,9 @@ a {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #45475a;
+  background: var(--bg-hover);
   border-radius: 3px;
-  &:hover { background: #585b70; }
+  &:hover { background: var(--text-faint); }
 }
 
 input, textarea, select {

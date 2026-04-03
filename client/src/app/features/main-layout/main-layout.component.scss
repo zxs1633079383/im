@@ -8,8 +8,8 @@
   width: 260px;
   min-width: 200px;
   max-width: 320px;
-  background: #1e1e2e;
-  border-right: 1px solid #313244;
+  background: var(--bg-surface);
+  border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -18,5 +18,5 @@
 .content {
   flex: 1;
   overflow: auto;
-  background: #181825;
+  background: var(--bg-base);
 }

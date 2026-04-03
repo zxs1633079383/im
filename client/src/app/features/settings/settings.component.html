@@ -1,10 +1,10 @@
 <div class="settings-page">
   <div class="page-header">
-    <h2>Settings</h2>
+    <h2>{{ t('settings.title') }}</h2>
   </div>
 
   @if (loading()) {
-    <div class="loading">Loading settings...</div>
+    <div class="loading">{{ t('common.loading') }}</div>
   }
 
   @if (error() && !loading()) {
@@ -16,11 +16,11 @@
 
       <!-- Notifications section -->
       <div class="settings-section">
-        <h3 class="section-title">Notifications</h3>
+        <h3 class="section-title">{{ t('settings.notifications') }}</h3>
         <div class="setting-row">
           <div class="setting-info">
-            <div class="setting-label">Enable Notifications</div>
-            <div class="setting-desc">Receive desktop notifications for new messages.</div>
+            <div class="setting-label">{{ t('settings.enableNotif') }}</div>
+            <div class="setting-desc">{{ t('settings.notifDesc') }}</div>
           </div>
           <label class="toggle">
             <input
@@ -35,11 +35,11 @@
 
       <!-- Appearance section -->
       <div class="settings-section">
-        <h3 class="section-title">Appearance</h3>
+        <h3 class="section-title">{{ t('settings.appearance') }}</h3>
         <div class="setting-row">
           <div class="setting-info">
-            <div class="setting-label">Theme</div>
-            <div class="setting-desc">Choose your preferred color theme.</div>
+            <div class="setting-label">{{ t('settings.theme') }}</div>
+            <div class="setting-desc">{{ t('settings.themeDesc') }}</div>
           </div>
           <select
             class="setting-select"
@@ -55,11 +55,11 @@
 
       <!-- Language section -->
       <div class="settings-section">
-        <h3 class="section-title">Language</h3>
+        <h3 class="section-title">{{ t('settings.language') }}</h3>
         <div class="setting-row">
           <div class="setting-info">
-            <div class="setting-label">Display Language</div>
-            <div class="setting-desc">Set the language for the application interface.</div>
+            <div class="setting-label">{{ t('settings.langLabel') }}</div>
+            <div class="setting-desc">{{ t('settings.langDesc') }}</div>
           </div>
           <select
             class="setting-select"
@@ -76,7 +76,7 @@
     </div>
 
     @if (success()) {
-      <div class="alert alert-success">Settings saved!</div>
+      <div class="alert alert-success">{{ t('settings.saved') }}</div>
     }
 
     <div class="settings-actions">
@@ -85,7 +85,7 @@
         [disabled]="saving()"
         (click)="save()"
       >
-        {{ saving() ? 'Saving...' : 'Save Settings' }}
+        {{ saving() ? t('settings.saving') : t('settings.save') }}
       </button>
     </div>
   }

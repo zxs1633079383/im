@@ -2,7 +2,7 @@
   display: flex;
   flex-direction: column;
   height: 100%;
-  color: #cdd6f4;
+  color: var(--text-primary);
 }
 
 .sidebar-header {
@@ -12,35 +12,35 @@
   padding: 1rem;
   font-weight: 700;
   font-size: 1.1rem;
-  border-bottom: 1px solid #313244;
+  border-bottom: 1px solid var(--border);
 }
 
 .btn-icon {
   background: none;
   border: none;
-  color: #89b4fa;
+  color: var(--accent);
   font-size: 1.4rem;
   cursor: pointer;
   padding: 0 0.25rem;
   line-height: 1;
 
-  &:hover { color: #cdd6f4; }
+  &:hover { color: var(--text-primary); }
 }
 
 .nav-links {
   padding: 0.5rem 0.75rem;
-  border-bottom: 1px solid #313244;
+  border-bottom: 1px solid var(--border);
 }
 
 .nav-link {
   display: block;
   padding: 0.4rem 0.5rem;
-  color: #a6adc8;
+  color: var(--text-secondary);
   text-decoration: none;
   border-radius: 4px;
   font-size: 0.9rem;
 
-  &:hover { background: #313244; color: #cdd6f4; }
+  &:hover { background: var(--bg-overlay); color: var(--text-primary); }
 }
 
 .section-label {
@@ -48,7 +48,7 @@
   font-size: 0.72rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: #6c7086;
+  color: var(--text-muted);
 }
 
 .channels {
@@ -68,14 +68,14 @@
   border-radius: 6px;
   margin: 0 0.25rem;
 
-  &:hover { background: #313244; }
+  &:hover { background: var(--bg-overlay); }
 }
 
 .channel-avatar {
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  background: #45475a;
+  background: var(--bg-hover);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -98,16 +98,16 @@
 .search-input {
   width: 100%;
   box-sizing: border-box;
-  background: #313244;
-  border: 1px solid #45475a;
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
   border-radius: 6px;
-  color: #cdd6f4;
+  color: var(--text-primary);
   padding: 0.4rem 0.6rem;
   font-size: 0.85rem;
   outline: none;
 
-  &::placeholder { color: #6c7086; }
-  &:focus { border-color: #89b4fa; }
+  &::placeholder { color: var(--text-muted); }
+  &:focus { border-color: var(--accent); }
 }
 
 .channel-name-row {
@@ -126,8 +126,8 @@
 }
 
 .badge {
-  background: #89b4fa;
-  color: #1e1e2e;
+  background: var(--accent);
+  color: var(--accent-text);
   border-radius: 10px;
   padding: 0 6px;
   font-size: 0.7rem;
@@ -139,7 +139,7 @@
 
 .preview {
   font-size: 0.78rem;
-  color: #6c7086;
+  color: var(--text-muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -157,7 +157,7 @@
 
 .channel-time {
   font-size: 0.7rem;
-  color: #6c7086;
+  color: var(--text-muted);
   flex-shrink: 0;
 }
 
@@ -174,13 +174,13 @@
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  background: #6c7086;   /* gray = offline/unknown; will turn green when presence exists */
-  border: 2px solid #1e1e2e;
+  background: var(--text-muted);   /* gray = offline/unknown; will turn green when presence exists */
+  border: 2px solid var(--bg-surface);
 }
 
 .empty {
   padding: 1rem;
-  color: #6c7086;
+  color: var(--text-muted);
   font-size: 0.85rem;
   text-align: center;
   list-style: none;
@@ -188,13 +188,13 @@
 
 .sidebar-footer {
   padding: 0.75rem 1rem;
-  border-top: 1px solid #313244;
+  border-top: 1px solid var(--border);
 }
 
 .btn-logout {
   background: none;
   border: none;
-  color: #f38ba8;
+  color: var(--error);
   cursor: pointer;
   font-size: 0.85rem;
   padding: 0;

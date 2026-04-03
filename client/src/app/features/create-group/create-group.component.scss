@@ -9,13 +9,13 @@
 }
 
 .dialog {
-  background: #1e1e2e;
-  border: 1px solid #313244;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
   border-radius: 8px;
   padding: 1.5rem;
   width: 380px;
   max-width: 90vw;
-  color: #cdd6f4;
+  color: var(--text-primary);
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
@@ -27,29 +27,29 @@ h3 {
 }
 
 .error {
-  color: #f38ba8;
+  color: var(--error);
   font-size: 0.85rem;
   margin: 0;
 }
 
 .field-label {
   font-size: 0.8rem;
-  color: #a6adc8;
+  color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
 
 .input {
-  background: #313244;
-  border: 1px solid #45475a;
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
   border-radius: 4px;
-  color: #cdd6f4;
+  color: var(--text-primary);
   padding: 0.5rem 0.75rem;
   font-size: 0.95rem;
   width: 100%;
   box-sizing: border-box;
 
-  &:focus { outline: none; border-color: #89b4fa; }
+  &:focus { outline: none; border-color: var(--accent); }
 }
 
 .friend-list {
@@ -58,7 +58,7 @@ h3 {
   padding: 0;
   max-height: 200px;
   overflow-y: auto;
-  border: 1px solid #313244;
+  border: 1px solid var(--border);
   border-radius: 4px;
 }
 
@@ -69,16 +69,16 @@ h3 {
   padding: 0.5rem 0.75rem;
   cursor: pointer;
 
-  &:hover { background: #313244; }
+  &:hover { background: var(--bg-overlay); }
 
-  input[type="checkbox"] { accent-color: #89b4fa; cursor: pointer; }
+  input[type="checkbox"] { accent-color: var(--accent); cursor: pointer; }
 }
 
 .avatar {
   width: 28px;
   height: 28px;
   border-radius: 50%;
-  background: #45475a;
+  background: var(--bg-hover);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -88,7 +88,7 @@ h3 {
 
 .empty {
   padding: 0.75rem;
-  color: #6c7086;
+  color: var(--text-muted);
   font-size: 0.85rem;
 }
 
@@ -101,24 +101,24 @@ h3 {
 
 .btn-cancel {
   background: none;
-  border: 1px solid #45475a;
-  color: #a6adc8;
+  border: 1px solid var(--input-border);
+  color: var(--text-secondary);
   border-radius: 4px;
   padding: 0.4rem 1rem;
   cursor: pointer;
 
-  &:hover { background: #313244; }
+  &:hover { background: var(--bg-overlay); }
 }
 
 .btn-create {
-  background: #89b4fa;
+  background: var(--accent);
   border: none;
-  color: #1e1e2e;
+  color: var(--accent-text);
   border-radius: 4px;
   padding: 0.4rem 1.2rem;
   font-weight: 600;
   cursor: pointer;
 
   &:disabled { opacity: 0.5; cursor: not-allowed; }
-  &:not(:disabled):hover { background: #b4d0ff; }
+  &:not(:disabled):hover { background: var(--accent-hover); }
 }

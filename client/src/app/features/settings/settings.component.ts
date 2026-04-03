@@ -3,6 +3,8 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
+import { ThemeService, Theme } from '../../core/theme/theme.service';
+import { I18nService } from '../../core/i18n/i18n.service';
 
 const API_BASE = 'http://localhost:8080/api';
 
@@ -22,6 +24,8 @@ export interface UserSettings {
 })
 export class SettingsComponent implements OnInit {
   private http = inject(HttpClient);
+  private themeService = inject(ThemeService);
+  private i18n = inject(I18nService);
 
   settings = signal<UserSettings | null>(null);
   loading = signal(false);
@@ -41,6 +45,10 @@ export class SettingsComponent implements OnInit {
     { value: 'ja', label: '日本語' },
     { value: 'ko', label: '한국어' },
   ];
+
+  t(key: string): string {
+    return this.i18n.t(key);
+  }
 
   async ngOnInit(): Promise<void> {
     this.loading.set(true);
@@ -83,6 +91,9 @@ export class SettingsComponent implements OnInit {
         }),
       );
       this.settings.set(updated);
+      // Apply theme and locale immediately
+      this.themeService.applyTheme(updated.theme as Theme);
+      this.i18n.setLocale(updated.language);
       this.success.set(true);
     } catch {
       this.error.set('Failed to save settings.');

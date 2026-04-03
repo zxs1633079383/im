@@ -5,6 +5,7 @@ import { Router, RouterLink } from '@angular/router';
 import { ChannelService, ChannelWithPreview } from '../../core/channels/channel.service';
 import { AuthService } from '../../core/auth/auth.service';
 import { CreateGroupComponent } from '../create-group/create-group.component';
+import { I18nService } from '../../core/i18n/i18n.service';
 
 @Component({
   selector: 'app-channel-list',
@@ -17,8 +18,13 @@ export class ChannelListComponent {
   channelService = inject(ChannelService);
   private auth = inject(AuthService);
   private router = inject(Router);
+  private i18n = inject(I18nService);
 
   showCreateGroup = signal(false);
+
+  t(key: string): string {
+    return this.i18n.t(key);
+  }
 
   channelLabel(ch: ChannelWithPreview): string {
     return this.channelService.channelLabel(ch);
@@ -26,7 +32,7 @@ export class ChannelListComponent {
 
   previewText(ch: ChannelWithPreview): string {
     const msg = ch.last_msg_content;
-    if (!msg) return 'No messages yet';
+    if (!msg) return this.i18n.t('chat.noMessages');
     return msg.length > 40 ? msg.slice(0, 40) + '…' : msg;
   }
 

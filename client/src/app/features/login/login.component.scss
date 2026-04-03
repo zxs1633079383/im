@@ -3,12 +3,12 @@
   align-items: center;
   justify-content: center;
   min-height: 100vh;
-  background: #11111b;
+  background: var(--auth-bg);
 }
 
 .auth-card {
-  background: #1e1e2e;
-  border: 1px solid #313244;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
   border-radius: 12px;
   padding: 2.5rem 2rem;
   width: 100%;
@@ -21,7 +21,7 @@
   font-weight: 600;
   margin: 0 0 1.5rem;
   text-align: center;
-  color: #cdd6f4;
+  color: var(--text-primary);
 }
 
 .form-group {
@@ -32,32 +32,32 @@
     font-size: 0.875rem;
     font-weight: 500;
     margin-bottom: 0.375rem;
-    color: #a6adc8;
+    color: var(--text-secondary);
   }
 
   input {
     width: 100%;
     padding: 0.625rem 0.75rem;
-    border: 1px solid #45475a;
+    border: 1px solid var(--input-border);
     border-radius: 8px;
     font-size: 0.9375rem;
     box-sizing: border-box;
-    background: #313244;
-    color: #cdd6f4;
+    background: var(--input-bg);
+    color: var(--text-primary);
     transition: border-color 0.15s;
 
-    &::placeholder { color: #6c7086; }
+    &::placeholder { color: var(--text-muted); }
 
     &:focus {
       outline: none;
-      border-color: #89b4fa;
+      border-color: var(--accent);
       box-shadow: 0 0 0 3px rgba(137, 180, 250, 0.15);
     }
   }
 }
 
 .error-message {
-  color: #f38ba8;
+  color: var(--error);
   font-size: 0.875rem;
   margin: 0.5rem 0 1rem;
 }
@@ -65,8 +65,8 @@
 .btn-primary {
   width: 100%;
   padding: 0.7rem;
-  background: #89b4fa;
-  color: #1e1e2e;
+  background: var(--accent);
+  color: var(--accent-text);
   border: none;
   border-radius: 8px;
   font-size: 0.9375rem;
@@ -75,7 +75,7 @@
   transition: background 0.15s;
   margin-top: 0.5rem;
 
-  &:hover:not(:disabled) { background: #74c7ec; }
+  &:hover:not(:disabled) { background: var(--accent-hover); }
   &:disabled { opacity: 0.5; cursor: not-allowed; }
 }
 
@@ -83,10 +83,10 @@
   text-align: center;
   margin-top: 1.25rem;
   font-size: 0.875rem;
-  color: #6c7086;
+  color: var(--text-muted);
 
   a {
-    color: #89b4fa;
+    color: var(--accent);
     text-decoration: none;
     &:hover { text-decoration: underline; }
   }

@@ -1,17 +1,17 @@
 <div class="channel-list">
   <div class="sidebar-header">
     <span class="app-title">IM</span>
-    <button class="btn-icon" title="New Group" (click)="openCreateGroup()">＋</button>
+    <button class="btn-icon" [title]="t('nav.newGroup')" (click)="openCreateGroup()">＋</button>
   </div>
 
   <nav class="nav-links">
-    <a routerLink="/contacts" class="nav-link">Contacts</a>
-    <a routerLink="/search" class="nav-link">Search</a>
-    <a routerLink="/profile" class="nav-link">Profile</a>
-    <a routerLink="/settings" class="nav-link">Settings</a>
+    <a routerLink="/contacts" class="nav-link">{{ t('nav.contacts') }}</a>
+    <a routerLink="/search" class="nav-link">{{ t('nav.search') }}</a>
+    <a routerLink="/profile" class="nav-link">{{ t('nav.profile') }}</a>
+    <a routerLink="/settings" class="nav-link">{{ t('nav.settings') }}</a>
   </nav>
 
-  <div class="section-label">Chats</div>
+  <div class="section-label">{{ t('nav.chats') }}</div>
 
   <!-- Search / filter -->
   <div class="search-bar">
@@ -58,7 +58,7 @@
   </ul>
 
   <div class="sidebar-footer">
-    <button class="btn-logout" (click)="logout()">Sign out</button>
+    <button class="btn-logout" (click)="logout()">{{ t('nav.signout') }}</button>
   </div>
 
   @if (showCreateGroup()) {

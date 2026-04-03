@@ -10,7 +10,7 @@
   h2 {
     font-size: 22px;
     font-weight: 700;
-    color: #cdd6f4;
+    color: var(--text-primary);
     margin: 0;
   }
 }
@@ -18,12 +18,12 @@
 .loading, .error, .empty-state {
   text-align: center;
   padding: 48px 24px;
-  color: #6c7086;
+  color: var(--text-muted);
   font-size: 14px;
   line-height: 1.6;
 }
 
-.error { color: #f38ba8; }
+.error { color: var(--error); }
 
 .favorites-list {
   display: flex;
@@ -36,12 +36,12 @@
   align-items: flex-start;
   gap: 12px;
   padding: 14px 16px;
-  border: 1px solid #313244;
+  border: 1px solid var(--border);
   border-radius: 10px;
-  background: #1e1e2e;
+  background: var(--bg-surface);
   transition: background 0.15s;
 
-  &:hover { background: #313244; }
+  &:hover { background: var(--bg-overlay); }
 
   .fav-content {
     flex: 1;
@@ -53,17 +53,17 @@
       gap: 12px;
       margin-bottom: 6px;
       font-size: 12px;
-      color: #6c7086;
+      color: var(--text-muted);
 
       .fav-channel {
-        color: #89b4fa;
+        color: var(--accent);
         font-weight: 600;
       }
     }
 
     .fav-text {
       font-size: 14px;
-      color: #cdd6f4;
+      color: var(--text-primary);
       white-space: pre-wrap;
       word-break: break-word;
     }
@@ -74,13 +74,13 @@
     background: none;
     border: none;
     font-size: 18px;
-    color: #89b4fa;
+    color: var(--accent);
     cursor: pointer;
     padding: 4px;
     transition: transform 0.15s, color 0.15s;
 
     &:hover {
-      color: #f38ba8;
+      color: var(--error);
       transform: scale(1.2);
     }
   }

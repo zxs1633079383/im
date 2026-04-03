@@ -4,12 +4,12 @@
   align-items: center;
   justify-content: center;
   height: 100%;
-  color: #585b70;
+  color: var(--text-faint);
 
   h1 {
     font-size: 1.5rem;
     font-weight: 500;
-    color: #a6adc8;
+    color: var(--text-secondary);
     margin-bottom: 0.5rem;
   }
 
