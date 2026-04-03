@@ -39,14 +39,26 @@ type MsgAttachStore interface {
 	AttachToMessage(ctx context.Context, messageID, fileID int64) error
 }
 
+// MsgMemberLister lists channel members for push fan-out.
+type MsgMemberLister interface {
+	ListMembers(ctx context.Context, channelID int64) ([]model.ChannelMember, error)
+}
+
+// MessagePusher pushes a message to an online user via WebSocket.
+type MessagePusher interface {
+	PushMessage(userID int64, msg *model.Message)
+}
+
 // ---------- handler ----------
 
 // MessageHandler serves message send/fetch/read endpoints.
 type MessageHandler struct {
 	messages    MsgStore
 	channels    MsgChannelStore
-	readSyncer  ReadSyncPusher // nil = no cross-device read sync (e.g. in tests)
-	attachments MsgAttachStore // nil = no attachment support
+	readSyncer  ReadSyncPusher  // nil = no cross-device read sync (e.g. in tests)
+	attachments MsgAttachStore  // nil = no attachment support
+	members     MsgMemberLister // nil = no push (e.g. in tests)
+	pusher      MessagePusher   // nil = no push (e.g. in tests)
 	log         *slog.Logger
 }
 
@@ -63,6 +75,13 @@ func (h *MessageHandler) WithReadSyncer(rs ReadSyncPusher) *MessageHandler {
 // WithAttachments sets the attachment store. Call after construction.
 func (h *MessageHandler) WithAttachments(a MsgAttachStore) *MessageHandler {
 	h.attachments = a
+	return h
+}
+
+// WithPusher sets the message push components for real-time delivery.
+func (h *MessageHandler) WithPusher(members MsgMemberLister, pusher MessagePusher) *MessageHandler {
+	h.members = members
+	h.pusher = pusher
 	return h
 }
 
@@ -141,12 +160,39 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 		for _, fid := range body.FileIDs {
 			if err := h.attachments.AttachToMessage(r.Context(), msg.ID, fid); err != nil {
 				h.log.Error("attach file to message", "file_id", fid, "error", err)
-				// Non-fatal: message already sent, log and continue
 			}
 		}
 	}
 
+	// Push to online channel members via WebSocket (non-blocking, best-effort)
+	if h.pusher != nil && h.members != nil {
+		go h.pushToMembers(r.Context(), msg)
+	}
+
 	writeJSON(w, http.StatusCreated, msg)
+}
+
+// pushToMembers fans out a push notification to all online channel members.
+func (h *MessageHandler) pushToMembers(ctx context.Context, msg *model.Message) {
+	members, err := h.members.ListMembers(ctx, msg.ChannelID)
+	if err != nil {
+		h.log.Error("list members for push", "channel_id", msg.ChannelID, "error", err)
+		return
+	}
+	for _, m := range members {
+		// For directed messages, non-visible users get a phantom
+		pushMsg := msg
+		if msg.VisibleTo != nil && !msg.IsVisibleTo(m.UserID) {
+			phantom := &model.Message{
+				ChannelID: msg.ChannelID,
+				Seq:       msg.Seq,
+				MsgType:   model.MsgTypePhantom,
+				CreatedAt: msg.CreatedAt,
+			}
+			pushMsg = phantom
+		}
+		h.pusher.PushMessage(m.UserID, pushMsg)
+	}
 }
 
 // ---------- GET /api/channels/{id}/messages ----------

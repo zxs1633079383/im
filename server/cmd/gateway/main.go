@@ -14,6 +14,7 @@ import (
 	"im-server/internal/gateway"
 	"im-server/internal/handler"
 	"im-server/internal/middleware"
+	"im-server/internal/model"
 	imPulsar "im-server/internal/pulsar"
 	"im-server/internal/store"
 )
@@ -92,6 +93,7 @@ func run() int {
 	hub := gateway.NewHub()
 	messageHandler.WithReadSyncer(&hubReadSyncer{hub: hub})
 	messageHandler.WithAttachments(fileStore)
+	messageHandler.WithPusher(channelStore, &hubMessagePusher{hub: hub})
 	routing := gateway.NewRouting(rdb, gatewayID)
 
 	// Pulsar client.
@@ -220,6 +222,26 @@ func run() int {
 	}
 
 	return 0
+}
+
+// hubMessagePusher adapts *gateway.Hub to handler.MessagePusher.
+type hubMessagePusher struct {
+	hub *gateway.Hub
+}
+
+func (p *hubMessagePusher) PushMessage(userID int64, msg *model.Message) { //nolint:unused
+	payload := gateway.PushMsgPayload{
+		PushID:    fmt.Sprintf("http-%d-%d", msg.ChannelID, msg.Seq),
+		ChannelID: msg.ChannelID,
+		Seq:       msg.Seq,
+		ServerID:  msg.ID,
+		SenderID:  msg.SenderID,
+		Content:   msg.Content,
+		MsgType:   int16(msg.MsgType),
+		VisibleTo: msg.VisibleTo,
+		CreatedAt: msg.CreatedAt,
+	}
+	p.hub.PushToUser(userID, gateway.TypePushMsg, payload)
 }
 
 // hubReadSyncer adapts *gateway.Hub to handler.ReadSyncPusher.
