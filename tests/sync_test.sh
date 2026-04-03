@@ -224,29 +224,16 @@ fi
 info ""
 info "=== 测试 7: WebSocket 推送 ==="
 
-if false; then  # websocat has issues with long JWT tokens in URL; WS push is tested via browser/Tauri
-  # Bob 建立 WebSocket 连接, 后台运行, 收到的消息写入临时文件
-  WS_OUT=$(mktemp)
-  websocat -t "$WS_BASE?token=$TOKEN_B&device=test-device-bob" > "$WS_OUT" 2>/dev/null &
-  WS_PID=$!
-  sleep 1
+if command -v websocat &>/dev/null; then
+  # Bob: 发一个 ping 然后保持连接, 用 websocat -n1 接收一帧验证连通性
+  WS_URL="$WS_BASE?token=$TOKEN_B&device=test-device-bob"
 
-  # Alice 发一条消息
-  curl -s -X POST $BASE/channels/$CH_ID/messages -H "$AUTH_A" -H "Content-Type: application/json" \
-    -d '{"content":"realtime test","client_msg_id":"ws-test-1"}' > /dev/null
-  sleep 2
-
-  # 检查 Bob 是否通过 WS 收到了 push_msg
-  kill $WS_PID 2>/dev/null || true
-  WS_CONTENT=$(cat "$WS_OUT")
-  rm -f "$WS_OUT"
-
-  if echo "$WS_CONTENT" | grep -q "push_msg"; then
-    pass "Bob 通过 WebSocket 实时收到 push_msg"
-  elif echo "$WS_CONTENT" | grep -q "realtime"; then
-    pass "Bob 通过 WebSocket 实时收到消息"
+  # 先验证 WS 连通: 发个 ping, 应收到 pong
+  PONG=$(echo '{"type":"ping","payload":{}}' | websocat -n1 "$WS_URL" 2>/dev/null)
+  if echo "$PONG" | grep -q "pong"; then
+    pass "Bob WebSocket 连接成功, 收到 pong"
   else
-    fail "Bob 未收到 WebSocket 推送. 收到的内容: $(echo "$WS_CONTENT" | head -5)"
+    fail "Bob WebSocket 连接失败. 收到: $PONG"
   fi
 else
   info "[SKIP] websocat 未安装, 跳过 WebSocket 推送测试 (brew install websocat)"
