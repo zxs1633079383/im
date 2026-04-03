@@ -10,6 +10,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"im-server/internal/auth"
+	"im-server/internal/model"
 )
 
 var upgrader = websocket.Upgrader{
@@ -24,13 +25,26 @@ const (
 	maxMessageBytes = 64 * 1024        // 64 KB max inbound message
 )
 
+// WsSendStore is the subset of store.MessageStore needed for WS send.
+type WsSendStore interface {
+	Send(ctx context.Context, msg *model.Message) error
+}
+
+// WsMemberLister lists channel members for push fan-out on WS send.
+type WsMemberLister interface {
+	ListMembers(ctx context.Context, channelID int64) ([]model.ChannelMember, error)
+	GetMember(ctx context.Context, channelID, userID int64) (*model.ChannelMember, error)
+}
+
 // WsHandler handles WebSocket upgrade requests.
 type WsHandler struct {
 	hub       *Hub
 	routing   *Routing
 	jwtSecret string
 	gatewayID string
-	channelSt ChannelSeqStore // to compute pong diff
+	channelSt ChannelSeqStore   // to compute pong diff
+	msgStore  WsSendStore       // for WS send path (nil = WS send disabled)
+	members   WsMemberLister    // for WS send push fan-out (nil = WS send disabled)
 	log       *slog.Logger
 }
 
@@ -45,6 +59,13 @@ func NewWsHandler(hub *Hub, routing *Routing, jwtSecret, gatewayID string,
 		channelSt: channelSt,
 		log:       log,
 	}
+}
+
+// WithSendSupport enables the WS send path. Call after construction.
+func (h *WsHandler) WithSendSupport(msgStore WsSendStore, members WsMemberLister) *WsHandler {
+	h.msgStore = msgStore
+	h.members = members
+	return h
 }
 
 // ServeHTTP handles GET /ws?token=<jwt>&device=<device_id>.
@@ -149,8 +170,95 @@ func (h *WsHandler) readPump(conn *Conn) {
 				// Notify push consumer waiting on this push_id.
 				globalACKRegistry.resolve(ack.PushID)
 			}
+		case TypeSend:
+			h.handleSend(conn, frame.Payload)
 		default:
 			h.log.Debug("unhandled ws frame type", "type", frame.Type)
 		}
 	}
+}
+
+// handleSend processes a TypeSend frame: persists the message and pushes to channel members.
+func (h *WsHandler) handleSend(conn *Conn, payload json.RawMessage) {
+	if h.msgStore == nil || h.members == nil {
+		h.log.Debug("ws send not supported (no msgStore/members configured)")
+		return
+	}
+
+	var sp SendPayload
+	if err := json.Unmarshal(payload, &sp); err != nil {
+		h.log.Debug("malformed send payload", "error", err)
+		return
+	}
+	if sp.ChannelID == 0 || sp.Content == "" {
+		h.log.Debug("send payload missing channel_id or content")
+		return
+	}
+
+	// Verify membership.
+	if _, err := h.members.GetMember(context.Background(), sp.ChannelID, conn.UserID); err != nil {
+		h.log.Debug("ws send: not a member", "channel_id", sp.ChannelID, "user_id", conn.UserID)
+		return
+	}
+
+	msgType := model.MsgType(sp.MsgType)
+	if msgType == 0 {
+		msgType = model.MsgTypeText
+	}
+
+	msg := &model.Message{
+		ChannelID:   sp.ChannelID,
+		SenderID:    conn.UserID,
+		ClientMsgID: sp.ClientMsgID,
+		MsgType:     msgType,
+		Content:     sp.Content,
+		VisibleTo:   sp.VisibleTo,
+	}
+
+	if err := h.msgStore.Send(context.Background(), msg); err != nil {
+		h.log.Error("ws send: store failed", "error", err, "user_id", conn.UserID)
+		return
+	}
+
+	// Send ACK back to the sender.
+	ack := SendACKPayload{
+		ClientMsgID: sp.ClientMsgID,
+		ServerMsgID: msg.ID,
+		Seq:         msg.Seq,
+		ChannelID:   msg.ChannelID,
+	}
+	conn.Push(TypeSendACK, ack)
+	conn.UpdateKnownSeq(msg.ChannelID, msg.Seq)
+
+	// Fan out push to all channel members.
+	go func() {
+		members, err := h.members.ListMembers(context.Background(), msg.ChannelID)
+		if err != nil {
+			h.log.Error("ws send: list members failed", "error", err)
+			return
+		}
+		for _, m := range members {
+			pushMsg := msg
+			if msg.VisibleTo != nil && !msg.IsVisibleTo(m.UserID) {
+				pushMsg = &model.Message{
+					ChannelID: msg.ChannelID,
+					Seq:       msg.Seq,
+					MsgType:   model.MsgTypePhantom,
+					CreatedAt: msg.CreatedAt,
+				}
+			}
+			pushPayload := PushMsgPayload{
+				PushID:    fmt.Sprintf("ws-%d-%d", msg.ChannelID, msg.Seq),
+				ChannelID: pushMsg.ChannelID,
+				Seq:       pushMsg.Seq,
+				ServerID:  pushMsg.ID,
+				SenderID:  pushMsg.SenderID,
+				Content:   pushMsg.Content,
+				MsgType:   int16(pushMsg.MsgType),
+				VisibleTo: pushMsg.VisibleTo,
+				CreatedAt: pushMsg.CreatedAt,
+			}
+			h.hub.PushToUser(m.UserID, TypePushMsg, pushPayload)
+		}
+	}()
 }

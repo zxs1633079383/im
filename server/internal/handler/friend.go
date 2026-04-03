@@ -29,17 +29,30 @@ type FriendUserStore interface {
 	Search(ctx context.Context, q string, callerID int64) ([]model.User, error)
 }
 
+// FriendEventPusher pushes friend events (request/accept/reject) to online users.
+// Implemented by *gateway.Hub (via an adapter in main.go).
+type FriendEventPusher interface {
+	PushFriendEvent(targetUserID int64, eventType string, fromUserID int64)
+}
+
 // ---------- handler ----------
 
 // FriendHandler serves all friend-related HTTP endpoints.
 type FriendHandler struct {
-	friends FriendStore
-	users   FriendUserStore
-	log     *slog.Logger
+	friends      FriendStore
+	users        FriendUserStore
+	eventPusher  FriendEventPusher // nil = no real-time notifications (e.g. in tests)
+	log          *slog.Logger
 }
 
 func NewFriendHandler(friends FriendStore, users FriendUserStore, log *slog.Logger) *FriendHandler {
 	return &FriendHandler{friends: friends, users: users, log: log}
+}
+
+// WithEventPusher sets the friend event pusher. Call after construction.
+func (h *FriendHandler) WithEventPusher(p FriendEventPusher) *FriendHandler {
+	h.eventPusher = p
+	return h
 }
 
 // claimsFromCtx extracts the JWT claims set by JWTAuth middleware.
@@ -92,6 +105,11 @@ func (h *FriendHandler) SendRequest(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusInternalServerError, "internal error")
 		}
 		return
+	}
+
+	// Push real-time notification to the addressee.
+	if h.eventPusher != nil {
+		h.eventPusher.PushFriendEvent(body.AddresseeID, "request", claims.UserID)
 	}
 
 	writeJSON(w, http.StatusCreated, map[string]string{"status": "pending"})

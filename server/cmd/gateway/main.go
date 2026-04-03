@@ -65,6 +65,7 @@ func run() int {
 
 	friendStore := store.NewFriendshipStore(pool)
 	friendHandler := handler.NewFriendHandler(friendStore, userStore, log)
+	// Note: eventPusher wired below after hub creation.
 
 	channelStore := store.NewChannelStore(pool)
 	channelHandler := handler.NewChannelHandler(channelStore, userStore, log)
@@ -94,6 +95,7 @@ func run() int {
 	messageHandler.WithReadSyncer(&hubReadSyncer{hub: hub})
 	messageHandler.WithAttachments(fileStore)
 	messageHandler.WithPusher(channelStore, &hubMessagePusher{hub: hub})
+	friendHandler.WithEventPusher(&hubFriendEventPusher{hub: hub})
 	routing := gateway.NewRouting(rdb, gatewayID)
 
 	// Pulsar client.
@@ -109,6 +111,7 @@ func run() int {
 
 	// WsHandler wires hub, routing, channelStore, and JWT secret together.
 	wsHandler := gateway.NewWsHandler(hub, routing, cfg.Gateway.JWTSecret, gatewayID, channelStore, log)
+	wsHandler.WithSendSupport(messageStore, channelStore)
 
 	mux := http.NewServeMux()
 
@@ -253,6 +256,18 @@ func (s *hubReadSyncer) PushReadSync(userID, channelID, readSeq int64) {
 	s.hub.PushToUser(userID, gateway.TypeReadSync, gateway.ReadSyncPayload{
 		ChannelID: channelID,
 		ReadSeq:   readSeq,
+	})
+}
+
+// hubFriendEventPusher adapts *gateway.Hub to handler.FriendEventPusher.
+type hubFriendEventPusher struct {
+	hub *gateway.Hub
+}
+
+func (p *hubFriendEventPusher) PushFriendEvent(targetUserID int64, eventType string, fromUserID int64) {
+	p.hub.PushToUser(targetUserID, gateway.TypeFriendEvent, gateway.FriendEventPayload{
+		EventType:  eventType,
+		FromUserID: fromUserID,
 	})
 }
 

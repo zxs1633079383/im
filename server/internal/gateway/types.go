@@ -34,6 +34,8 @@ const (
 	TypeSyncResp WSMessageType = "sync_resp" // server responds to sync
 	// TypeReadSync is pushed server→client when the same user marks read on another device.
 	TypeReadSync WSMessageType = "read_sync"
+	// TypeFriendEvent is pushed server→client for friend request/accept/reject events.
+	TypeFriendEvent WSMessageType = "friend_event"
 )
 
 // WSFrame is the top-level envelope for every WebSocket message.
@@ -107,6 +109,12 @@ type SyncPayload struct {
 type ReadSyncPayload struct {
 	ChannelID int64 `json:"channel_id"`
 	ReadSeq   int64 `json:"read_seq"` // the seq that was just marked as read
+}
+
+// FriendEventPayload is pushed to a user when a friend request/accept/reject occurs.
+type FriendEventPayload struct {
+	EventType  string `json:"event_type"`   // "request", "accepted", "rejected"
+	FromUserID int64  `json:"from_user_id"` // the user who triggered the event
 }
 
 // PulsarPushEvent is the message published by MessageService to msg.push.{gateway_id}.
