@@ -65,6 +65,24 @@ func (s *MessageStore) Send(ctx context.Context, msg *model.Message) error {
 	return tx.Commit(ctx)
 }
 
+// GetByID returns a single message by primary key.
+func (s *MessageStore) GetByID(ctx context.Context, id int64) (*model.Message, error) {
+	var m model.Message
+	var clientMsgID *string
+	err := s.pool.QueryRow(ctx,
+		`SELECT id, channel_id, seq, client_msg_id, sender_id, msg_type, content, visible_to, reply_to, forwarded_from, created_at
+		 FROM messages WHERE id = $1`, id,
+	).Scan(&m.ID, &m.ChannelID, &m.Seq, &clientMsgID, &m.SenderID, &m.MsgType,
+		&m.Content, &m.VisibleTo, &m.ReplyTo, &m.ForwardedFrom, &m.CreatedAt)
+	if err != nil {
+		return nil, fmt.Errorf("get message by id: %w", err)
+	}
+	if clientMsgID != nil {
+		m.ClientMsgID = *clientMsgID
+	}
+	return &m, nil
+}
+
 func (s *MessageStore) FetchAfter(ctx context.Context, channelID int64, afterSeq int64, limit int) ([]model.Message, error) {
 	rows, err := s.pool.Query(ctx,
 		`SELECT id, channel_id, seq, client_msg_id, sender_id, msg_type, content, visible_to, reply_to, forwarded_from, created_at

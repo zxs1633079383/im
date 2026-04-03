@@ -66,6 +66,15 @@ export class AuthService {
     return resp;
   }
 
+  /** Update the current user's display_name and/or avatar_url. */
+  async updateProfile(displayName: string, avatarURL: string): Promise<void> {
+    const updated = await firstValueFrom(
+      this.http.put<User>(`${API_BASE}/users/me`, { display_name: displayName, avatar_url: avatarURL }),
+    );
+    this._user.set(updated);
+    localStorage.setItem(USER_KEY, JSON.stringify(updated));
+  }
+
   async fetchCurrentUser(): Promise<User> {
     const user = await firstValueFrom(
       this.http.get<User>(`${API_BASE}/auth/me`)

@@ -152,5 +152,47 @@
   >
     <button (click)="replyToMessage(contextMenuMsg()!)">&#x21A9; Reply</button>
     <button (click)="copyMessageText(contextMenuMsg()!)">&#x2398; Copy</button>
+    <button class="ctx-item" (click)="favoriteMessage(contextMenuMsg()!)">
+      {{ favoriteService.isFavorited(contextMenuMsg()!.id) ? '★ Unfavorite' : '☆ Favorite' }}
+    </button>
+    <button class="ctx-item" (click)="openForwardDialog(contextMenuMsg()!)">&#x27A1; Forward</button>
+  </div>
+}
+
+<!-- Forward dialog -->
+@if (forwardDialogVisible()) {
+  <div class="dialog-overlay" (click)="forwardDialogVisible.set(false)"></div>
+  <div class="forward-dialog" (click)="$event.stopPropagation()">
+    <div class="dialog-header">
+      <h3>Forward Message</h3>
+      <button class="dialog-close" (click)="forwardDialogVisible.set(false)">×</button>
+    </div>
+    <div class="dialog-body">
+      <p class="forward-preview">{{ forwardSource()?.content }}</p>
+      <p class="select-label">Select channels to forward to:</p>
+      <div class="channel-list">
+        @for (ch of channelService.channels(); track ch.id) {
+          @if (ch.type === 2) {
+            <label class="channel-option">
+              <input
+                type="checkbox"
+                [checked]="selectedForwardChannels().has(ch.id)"
+                (change)="toggleForwardChannel(ch.id)"
+              />
+              <span># {{ ch.name }}</span>
+            </label>
+          }
+        }
+      </div>
+    </div>
+    <div class="dialog-footer">
+      <button
+        class="btn-primary"
+        [disabled]="selectedForwardChannels().size === 0 || forwarding()"
+        (click)="confirmForward()"
+      >
+        {{ forwarding() ? 'Forwarding...' : 'Forward' }}
+      </button>
+    </div>
   </div>
 }

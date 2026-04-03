@@ -58,6 +58,8 @@ func run() int {
 
 	userStore := store.NewUserStore(pool)
 	authHandler := handler.NewAuthHandler(userStore, cfg.Gateway.JWTSecret, log)
+	profileHandler := handler.NewProfileHandler(userStore, log)
+	settingsHandler := handler.NewSettingsHandler(userStore, log)
 	jwtMiddleware := middleware.JWTAuth(cfg.Gateway.JWTSecret)
 
 	friendStore := store.NewFriendshipStore(pool)
@@ -68,6 +70,9 @@ func run() int {
 
 	messageStore := store.NewMessageStore(pool)
 	messageHandler := handler.NewMessageHandler(messageStore, channelStore, log)
+
+	favoriteStore := store.NewFavoriteStore(pool)
+	favoriteHandler := handler.NewFavoriteHandler(favoriteStore, log)
 
 	fileStore := store.NewFileStore(pool)
 	fileHandler := handler.NewFileHandler(fileStore, cfg.Gateway.UploadDir, log)
@@ -115,6 +120,13 @@ func run() int {
 	// Protected routes
 	mux.Handle("GET /api/auth/me", jwtMiddleware(http.HandlerFunc(authHandler.Me)))
 
+	// Profile route (JWT protected)
+	mux.Handle("PUT /api/users/me", jwtMiddleware(http.HandlerFunc(profileHandler.UpdateMe)))
+
+	// Settings routes (JWT protected)
+	mux.Handle("GET /api/settings", jwtMiddleware(http.HandlerFunc(settingsHandler.GetSettings)))
+	mux.Handle("PUT /api/settings", jwtMiddleware(http.HandlerFunc(settingsHandler.UpdateSettings)))
+
 	// Friend routes (JWT protected)
 	mux.Handle("POST /api/friends/request", jwtMiddleware(http.HandlerFunc(friendHandler.SendRequest)))
 	mux.Handle("POST /api/friends/accept", jwtMiddleware(http.HandlerFunc(friendHandler.AcceptRequest)))
@@ -141,6 +153,14 @@ func run() int {
 	mux.Handle("POST /api/channels/{id}/messages", jwtMiddleware(http.HandlerFunc(messageHandler.SendMessage)))
 	mux.Handle("GET /api/channels/{id}/messages", jwtMiddleware(http.HandlerFunc(messageHandler.FetchMessages)))
 	mux.Handle("POST /api/channels/{id}/read", jwtMiddleware(http.HandlerFunc(messageHandler.MarkRead)))
+
+	// Forward route (JWT protected)
+	mux.Handle("POST /api/messages/forward", jwtMiddleware(http.HandlerFunc(messageHandler.ForwardMessages)))
+
+	// Favorite routes (JWT protected)
+	mux.Handle("POST /api/favorites/{message_id}", jwtMiddleware(http.HandlerFunc(favoriteHandler.AddFavorite)))
+	mux.Handle("DELETE /api/favorites/{message_id}", jwtMiddleware(http.HandlerFunc(favoriteHandler.RemoveFavorite)))
+	mux.Handle("GET /api/favorites", jwtMiddleware(http.HandlerFunc(favoriteHandler.ListFavorites)))
 
 	// File routes (JWT protected)
 	mux.Handle("POST /api/files", jwtMiddleware(http.HandlerFunc(fileHandler.Upload)))

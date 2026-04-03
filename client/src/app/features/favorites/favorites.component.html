@@ -1,0 +1,39 @@
+<div class="favorites-page">
+  <div class="page-header">
+    <h2>Favorites</h2>
+  </div>
+
+  @if (loading()) {
+    <div class="loading">Loading favorites...</div>
+  }
+
+  @if (error()) {
+    <div class="error">{{ error() }}</div>
+  }
+
+  @if (!loading()) {
+    @if (favorites().length === 0) {
+      <div class="empty-state">
+        No favorited messages yet.<br />
+        Right-click any message in a chat to favorite it.
+      </div>
+    } @else {
+      <div class="favorites-list">
+        @for (fav of favorites(); track fav.message_id) {
+          <div class="favorite-item">
+            <div class="fav-content" (click)="jumpToMessage(fav)">
+              <div class="fav-meta">
+                <span class="fav-time">{{ fav.message.created_at | date:'medium' }}</span>
+                <span class="fav-channel">Channel #{{ fav.message.channel_id }}</span>
+              </div>
+              <div class="fav-text">{{ fav.message.content }}</div>
+            </div>
+            <button class="unfav-btn" (click)="removeFavorite(fav)" title="Remove favorite">
+              ★
+            </button>
+          </div>
+        }
+      </div>
+    }
+  }
+</div>

@@ -1,0 +1,92 @@
+<div class="settings-page">
+  <div class="page-header">
+    <h2>Settings</h2>
+  </div>
+
+  @if (loading()) {
+    <div class="loading">Loading settings...</div>
+  }
+
+  @if (error() && !loading()) {
+    <div class="alert alert-error">{{ error() }}</div>
+  }
+
+  @if (settings() && !loading()) {
+    <div class="settings-sections">
+
+      <!-- Notifications section -->
+      <div class="settings-section">
+        <h3 class="section-title">Notifications</h3>
+        <div class="setting-row">
+          <div class="setting-info">
+            <div class="setting-label">Enable Notifications</div>
+            <div class="setting-desc">Receive desktop notifications for new messages.</div>
+          </div>
+          <label class="toggle">
+            <input
+              type="checkbox"
+              [checked]="settings()!.notification_enabled"
+              (change)="updateNotification($any($event.target).checked)"
+            />
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+      </div>
+
+      <!-- Appearance section -->
+      <div class="settings-section">
+        <h3 class="section-title">Appearance</h3>
+        <div class="setting-row">
+          <div class="setting-info">
+            <div class="setting-label">Theme</div>
+            <div class="setting-desc">Choose your preferred color theme.</div>
+          </div>
+          <select
+            class="setting-select"
+            [value]="settings()!.theme"
+            (change)="updateTheme($any($event.target).value)"
+          >
+            @for (t of themes; track t.value) {
+              <option [value]="t.value">{{ t.label }}</option>
+            }
+          </select>
+        </div>
+      </div>
+
+      <!-- Language section -->
+      <div class="settings-section">
+        <h3 class="section-title">Language</h3>
+        <div class="setting-row">
+          <div class="setting-info">
+            <div class="setting-label">Display Language</div>
+            <div class="setting-desc">Set the language for the application interface.</div>
+          </div>
+          <select
+            class="setting-select"
+            [value]="settings()!.language"
+            (change)="updateLanguage($any($event.target).value)"
+          >
+            @for (l of languages; track l.value) {
+              <option [value]="l.value">{{ l.label }}</option>
+            }
+          </select>
+        </div>
+      </div>
+
+    </div>
+
+    @if (success()) {
+      <div class="alert alert-success">Settings saved!</div>
+    }
+
+    <div class="settings-actions">
+      <button
+        class="btn-primary"
+        [disabled]="saving()"
+        (click)="save()"
+      >
+        {{ saving() ? 'Saving...' : 'Save Settings' }}
+      </button>
+    </div>
+  }
+</div>

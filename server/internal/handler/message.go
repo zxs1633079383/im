@@ -15,6 +15,7 @@ import (
 // MsgStore is the subset of store.MessageStore used by MessageHandler.
 type MsgStore interface {
 	Send(ctx context.Context, msg *model.Message) error
+	GetByID(ctx context.Context, id int64) (*model.Message, error)
 	FetchForUser(ctx context.Context, channelID, userID int64, afterSeq int64, limit int) ([]model.Message, error)
 	FetchBefore(ctx context.Context, channelID, userID int64, beforeSeq int64, limit int) ([]model.Message, error)
 	FetchAround(ctx context.Context, channelID, userID int64, aroundSeq int64, limit int) ([]model.Message, error)
@@ -252,6 +253,83 @@ func (h *MessageHandler) MarkRead(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]int64{"seq": ch.Seq})
+}
+
+// ---------- POST /api/messages/forward ----------
+
+type forwardMessageBody struct {
+	MessageID        int64   `json:"message_id"`
+	TargetChannelIDs []int64 `json:"target_channel_ids"`
+}
+
+// ForwardMessages handles POST /api/messages/forward.
+// It copies the source message (with forwarded_from set) to each target channel
+// provided the caller is a member of each target channel.
+// Returns a list of newly created messages.
+func (h *MessageHandler) ForwardMessages(w http.ResponseWriter, r *http.Request) {
+	claims, ok := claimsFromCtx(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	var body forwardMessageBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	if body.MessageID == 0 {
+		writeError(w, http.StatusUnprocessableEntity, "message_id is required")
+		return
+	}
+	if len(body.TargetChannelIDs) == 0 {
+		writeError(w, http.StatusUnprocessableEntity, "target_channel_ids must not be empty")
+		return
+	}
+	if len(body.TargetChannelIDs) > 10 {
+		writeError(w, http.StatusUnprocessableEntity, "at most 10 target channels allowed")
+		return
+	}
+
+	// Fetch source message
+	source, err := h.messages.GetByID(r.Context(), body.MessageID)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "source message not found")
+		return
+	}
+
+	// Verify caller is a member of the source channel
+	if _, err := h.channels.GetMember(r.Context(), source.ChannelID, claims.UserID); err != nil {
+		writeError(w, http.StatusForbidden, "not a member of the source channel")
+		return
+	}
+
+	forwarded := make([]*model.Message, 0, len(body.TargetChannelIDs))
+	for _, targetID := range body.TargetChannelIDs {
+		// Verify caller is a member of the target channel
+		if _, err := h.channels.GetMember(r.Context(), targetID, claims.UserID); err != nil {
+			// Skip channels the caller is not a member of (silent skip)
+			h.log.Warn("forward skipped: not a member", "channel_id", targetID, "user_id", claims.UserID)
+			continue
+		}
+
+		fwd := &model.Message{
+			ChannelID:     targetID,
+			SenderID:      claims.UserID,
+			MsgType:       source.MsgType,
+			Content:       source.Content,
+			ForwardedFrom: &source.ID,
+		}
+
+		if err := h.messages.Send(r.Context(), fwd); err != nil {
+			h.log.Error("forward send", "error", err, "target_channel", targetID)
+			// Non-fatal: continue with remaining targets
+			continue
+		}
+		forwarded = append(forwarded, fwd)
+	}
+
+	writeJSON(w, http.StatusCreated, map[string][]*model.Message{"messages": forwarded})
 }
 
 // ---------- helpers ----------

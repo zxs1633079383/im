@@ -18,6 +18,7 @@ import { MessageService, Message, SendMessagePayload } from '../../core/messages
 import { AuthService } from '../../core/auth/auth.service';
 import { ChannelService, ChannelWithPreview } from '../../core/channels/channel.service';
 import { FileService, FileRecord } from '../../core/files/file.service';
+import { FavoriteService } from '../../core/favorites/favorite.service';
 
 export interface MessageGroup {
   senderId: number;
@@ -40,10 +41,11 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
   private route = inject(ActivatedRoute);
   private messageService = inject(MessageService);
   private auth = inject(AuthService);
-  private channelService = inject(ChannelService);
+  readonly channelService = inject(ChannelService);
   private router = inject(Router);
   private destroyRef = inject(DestroyRef);
   fileService = inject(FileService);
+  readonly favoriteService = inject(FavoriteService);
 
   @ViewChild('messageList') private messageListRef!: ElementRef<HTMLElement>;
 
@@ -402,6 +404,54 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
 
   cancelReply(): void {
     this.replyTarget.set(null);
+  }
+
+  // ---- Favorite ----
+
+  async favoriteMessage(msg: Message): Promise<void> {
+    this.closeContextMenu();
+    try {
+      if (this.favoriteService.isFavorited(msg.id)) {
+        await this.favoriteService.remove(msg.id);
+      } else {
+        await this.favoriteService.add(msg.id);
+      }
+    } catch { /* TODO: toast */ }
+  }
+
+  // ---- Forward dialog ----
+
+  readonly forwardDialogVisible = signal(false);
+  readonly forwardSource = signal<Message | null>(null);
+  readonly selectedForwardChannels = signal<Set<number>>(new Set());
+  readonly forwarding = signal(false);
+
+  openForwardDialog(msg: Message): void {
+    this.closeContextMenu();
+    this.forwardSource.set(msg);
+    this.selectedForwardChannels.set(new Set());
+    this.forwardDialogVisible.set(true);
+  }
+
+  toggleForwardChannel(channelId: number): void {
+    this.selectedForwardChannels.update(set => {
+      const copy = new Set(set);
+      copy.has(channelId) ? copy.delete(channelId) : copy.add(channelId);
+      return copy;
+    });
+  }
+
+  async confirmForward(): Promise<void> {
+    const msg = this.forwardSource();
+    const ids = [...this.selectedForwardChannels()];
+    if (!msg || ids.length === 0) return;
+    this.forwarding.set(true);
+    try {
+      await this.favoriteService.forward(msg.id, ids);
+      this.forwardDialogVisible.set(false);
+    } catch { /* TODO: toast */ } finally {
+      this.forwarding.set(false);
+    }
   }
 
   // ---- Reply preview helpers ----

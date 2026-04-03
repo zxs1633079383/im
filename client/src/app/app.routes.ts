@@ -51,6 +51,23 @@ export const routes: Routes = [
             (m) => m.SearchComponent
           ),
       },
+      {
+        path: 'profile',
+        loadComponent: () =>
+          import('./features/profile/profile.component').then(m => m.ProfileComponent),
+      },
+      {
+        path: 'settings',
+        loadComponent: () =>
+          import('./features/settings/settings.component').then(m => m.SettingsComponent),
+      },
+      {
+        path: 'favorites',
+        loadComponent: () =>
+          import('./features/favorites/favorites.component').then(
+            (m) => m.FavoritesComponent
+          ),
+      },
     ],
   },
   {

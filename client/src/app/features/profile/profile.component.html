@@ -1,0 +1,83 @@
+<div class="profile-page">
+  <div class="page-header">
+    <h2>Edit Profile</h2>
+  </div>
+
+  @if (user()) {
+    <div class="profile-card">
+      <!-- Avatar preview -->
+      <div class="avatar-section">
+        <div class="avatar-preview">
+          @if (avatarURL()) {
+            <img [src]="avatarURL()" alt="Avatar preview" />
+          } @else {
+            <div class="avatar-placeholder">
+              {{ (user()?.display_name ?? 'U')[0].toUpperCase() }}
+            </div>
+          }
+        </div>
+        <div class="avatar-hint">Enter a URL below to update your avatar</div>
+      </div>
+
+      <form (ngSubmit)="save()" #f="ngForm">
+        <!-- Username (read-only) -->
+        <div class="form-group">
+          <label>Username</label>
+          <input
+            type="text"
+            class="form-control readonly"
+            [value]="user()?.username"
+            readonly
+          />
+          <span class="hint">Username cannot be changed.</span>
+        </div>
+
+        <!-- Display name -->
+        <div class="form-group">
+          <label for="displayName">Display Name</label>
+          <input
+            id="displayName"
+            type="text"
+            class="form-control"
+            placeholder="Your display name"
+            maxlength="64"
+            [ngModel]="displayName()"
+            (ngModelChange)="displayName.set($event)"
+            name="displayName"
+            required
+          />
+        </div>
+
+        <!-- Avatar URL -->
+        <div class="form-group">
+          <label for="avatarURL">Avatar URL</label>
+          <input
+            id="avatarURL"
+            type="url"
+            class="form-control"
+            placeholder="https://example.com/avatar.png"
+            [ngModel]="avatarURL()"
+            (ngModelChange)="avatarURL.set($event)"
+            name="avatarURL"
+          />
+        </div>
+
+        @if (success()) {
+          <div class="alert alert-success">Profile updated successfully!</div>
+        }
+
+        @if (error()) {
+          <div class="alert alert-error">{{ error() }}</div>
+        }
+
+        <button
+          type="submit"
+          class="btn-primary"
+          [disabled]="saving() || !hasChanges"
+        >
+          {{ saving() ? 'Saving...' : 'Save Changes' }}
+        </button>
+      </form>
+    </div>
+  }
+</div>

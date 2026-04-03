@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -39,6 +40,15 @@ func (s *stubMsgStore) Send(_ context.Context, msg *model.Message) error {
 	s.nextSeq++
 	s.messages = append(s.messages, *msg)
 	return nil
+}
+
+func (s *stubMsgStore) GetByID(_ context.Context, id int64) (*model.Message, error) {
+	for i := range s.messages {
+		if s.messages[i].ID == id {
+			return &s.messages[i], nil
+		}
+	}
+	return nil, handler.ErrNotFound
 }
 
 func (s *stubMsgStore) FetchForUser(_ context.Context, channelID, userID int64, afterSeq int64, limit int) ([]model.Message, error) {
@@ -262,5 +272,31 @@ func TestMessageHandler_MarkRead_Success(t *testing.T) {
 	}
 	if cs.members[10][7].LastReadSeq != 5 {
 		t.Errorf("LastReadSeq = %d, want 5", cs.members[10][7].LastReadSeq)
+	}
+}
+
+func TestForwardMessages_RequiresAuth(t *testing.T) {
+	h, _, _ := newMessageHandler(t)
+	body := `{"message_id":1,"target_channel_ids":[2]}`
+	req := httptest.NewRequest(http.MethodPost, "/api/messages/forward",
+		strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	h.ForwardMessages(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("want 401, got %d", w.Code)
+	}
+}
+
+func TestForwardMessages_MissingMessageID(t *testing.T) {
+	h, _, _ := newMessageHandler(t)
+	req := httptest.NewRequest(http.MethodPost, "/api/messages/forward",
+		strings.NewReader(`{"target_channel_ids":[2]}`))
+	req.Header.Set("Content-Type", "application/json")
+	req = withClaims(req, 1, "alice")
+	w := httptest.NewRecorder()
+	h.ForwardMessages(w, req)
+	if w.Code != http.StatusUnprocessableEntity {
+		t.Errorf("want 422, got %d", w.Code)
 	}
 }
