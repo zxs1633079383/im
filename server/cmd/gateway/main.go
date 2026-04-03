@@ -69,6 +69,7 @@ func run() int {
 
 	channelStore := store.NewChannelStore(pool)
 	channelHandler := handler.NewChannelHandler(channelStore, userStore, log)
+	// Note: channelEventPusher wired below after hub creation.
 
 	messageStore := store.NewMessageStore(pool)
 	messageHandler := handler.NewMessageHandler(messageStore, channelStore, log)
@@ -96,6 +97,7 @@ func run() int {
 	messageHandler.WithAttachments(fileStore)
 	messageHandler.WithPusher(channelStore, &hubMessagePusher{hub: hub})
 	friendHandler.WithEventPusher(&hubFriendEventPusher{hub: hub})
+	channelHandler.WithEventPusher(&hubChannelEventPusher{hub: hub})
 	routing := gateway.NewRouting(rdb, gatewayID)
 
 	// Pulsar client.
@@ -268,6 +270,19 @@ func (p *hubFriendEventPusher) PushFriendEvent(targetUserID int64, eventType str
 	p.hub.PushToUser(targetUserID, gateway.TypeFriendEvent, gateway.FriendEventPayload{
 		EventType:  eventType,
 		FromUserID: fromUserID,
+	})
+}
+
+// hubChannelEventPusher adapts *gateway.Hub to handler.ChannelEventPusher.
+type hubChannelEventPusher struct {
+	hub *gateway.Hub
+}
+
+func (p *hubChannelEventPusher) PushChannelEvent(targetUserID int64, eventType string, channelID int64, name string) {
+	p.hub.PushToUser(targetUserID, gateway.TypeChannelEvent, gateway.ChannelEventPayload{
+		EventType: eventType,
+		ChannelID: channelID,
+		Name:      name,
 	})
 }
 

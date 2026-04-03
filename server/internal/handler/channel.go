@@ -32,17 +32,30 @@ type ChannelUserStore interface {
 	GetByID(ctx context.Context, id int64) (*model.User, error)
 }
 
+// ChannelEventPusher pushes channel events (e.g. "added") to online users.
+// Implemented by *gateway.Hub (via an adapter in main.go).
+type ChannelEventPusher interface {
+	PushChannelEvent(targetUserID int64, eventType string, channelID int64, name string)
+}
+
 // ---------- handler ----------
 
 // ChannelHandler serves all channel-related HTTP endpoints.
 type ChannelHandler struct {
-	channels ChannelStore
-	users    ChannelUserStore
-	log      *slog.Logger
+	channels     ChannelStore
+	users        ChannelUserStore
+	eventPusher  ChannelEventPusher // nil = no real-time notifications (e.g. in tests)
+	log          *slog.Logger
 }
 
 func NewChannelHandler(channels ChannelStore, users ChannelUserStore, log *slog.Logger) *ChannelHandler {
 	return &ChannelHandler{channels: channels, users: users, log: log}
+}
+
+// WithEventPusher sets the channel event pusher. Call after construction.
+func (h *ChannelHandler) WithEventPusher(p ChannelEventPusher) *ChannelHandler {
+	h.eventPusher = p
+	return h
 }
 
 // ---------- request body types ----------
@@ -63,6 +76,14 @@ type updateChannelBody struct {
 
 type addMemberBody struct {
 	UserID int64 `json:"user_id"`
+}
+
+// MemberWithUser enriches a ChannelMember with basic user profile fields.
+type MemberWithUser struct {
+	model.ChannelMember
+	Username    string `json:"username"`
+	DisplayName string `json:"display_name"`
+	AvatarURL   string `json:"avatar_url"`
 }
 
 // ---------- helpers ----------
@@ -143,13 +164,17 @@ func (h *ChannelHandler) CreateGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Add additional members
+	// Add additional members and notify each one
 	for _, uid := range body.MemberIDs {
 		if uid == claims.UserID {
 			continue // already added
 		}
 		if err := h.channels.AddMember(r.Context(), ch.ID, uid, model.MemberRoleMember); err != nil {
 			h.log.Warn("add member skipped", "user_id", uid, "error", err)
+			continue
+		}
+		if h.eventPusher != nil {
+			h.eventPusher.PushChannelEvent(uid, "added", ch.ID, ch.Name)
 		}
 	}
 
@@ -420,10 +445,18 @@ func (h *ChannelHandler) ListMembers(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	if members == nil {
-		members = []model.ChannelMember{}
+
+	result := make([]MemberWithUser, 0, len(members))
+	for _, m := range members {
+		mwu := MemberWithUser{ChannelMember: m}
+		if u, err := h.users.GetByID(r.Context(), m.UserID); err == nil {
+			mwu.Username = u.Username
+			mwu.DisplayName = u.DisplayName
+			mwu.AvatarURL = u.AvatarURL
+		}
+		result = append(result, mwu)
 	}
-	writeJSON(w, http.StatusOK, members)
+	writeJSON(w, http.StatusOK, result)
 }
 
 // ---------- POST /api/channels/{id}/leave ----------

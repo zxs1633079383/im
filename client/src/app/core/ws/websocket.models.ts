@@ -4,7 +4,8 @@ export type WSMessageType =
   | 'send' | 'send_ack'
   | 'sync' | 'sync_resp'
   | 'read_sync'
-  | 'friend_event';
+  | 'friend_event'
+  | 'channel_event';
 
 export interface WSFrame<T = unknown> {
   type: WSMessageType;
@@ -68,6 +69,12 @@ export interface ReadSyncPayload {
 export interface FriendEventPayload {
   event_type: string; // 'request' | 'accepted' | 'rejected'
   from_user_id: number;
+}
+
+export interface ChannelEventPayload {
+  event_type: string; // 'added'
+  channel_id: number;
+  name: string;
 }
 
 // Mirror of message.service.ts Message — kept here to avoid circular deps.

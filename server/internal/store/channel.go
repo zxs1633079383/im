@@ -189,7 +189,14 @@ func (s *ChannelStore) FindDM(ctx context.Context, userA, userB int64) (*model.C
 func (s *ChannelStore) ListByUserWithPreview(ctx context.Context, userID int64) ([]ChannelWithPreview, error) {
 	rows, err := s.pool.Query(ctx,
 		`SELECT
-		    c.id, c.type, c.name, c.avatar_url, c.seq, c.creator_id, c.created_at, c.updated_at,
+		    c.id, c.type,
+		    CASE WHEN c.type = 1 THEN (
+		        SELECT u.display_name FROM users u
+		        JOIN channel_members peer_cm ON peer_cm.channel_id = c.id AND peer_cm.user_id = u.id
+		        WHERE u.id != $1
+		        LIMIT 1
+		    ) ELSE c.name END AS name,
+		    c.avatar_url, c.seq, c.creator_id, c.created_at, c.updated_at,
 		    COALESCE(m.content, '')                         AS last_msg_content,
 		    COALESCE(m.created_at, c.created_at)            AS last_msg_at,
 		    GREATEST(

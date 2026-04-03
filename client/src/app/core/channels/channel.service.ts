@@ -2,7 +2,7 @@ import { Injectable, inject, signal, computed } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 import { WebSocketService } from '../ws/websocket.service';
-import { ReadSyncPayload } from '../ws/websocket.models';
+import { ReadSyncPayload, ChannelEventPayload } from '../ws/websocket.models';
 import { FriendService } from '../friends/friend.service';
 import { DatabaseService } from '../db/database.service';
 
@@ -33,6 +33,9 @@ export interface ChannelMember {
   phantom_count: number;
   phantom_at_read: number;
   joined_at: string;
+  username: string;
+  display_name: string;
+  avatar_url: string;
 }
 
 const API_BASE = 'http://localhost:8080/api';
@@ -67,6 +70,8 @@ export class ChannelService {
   constructor(private http: HttpClient) {
     // When another device marks a channel as read, update our local unread count.
     this.ws.readSync$.subscribe(event => this.handleReadSync(event));
+    // When added to a new channel (e.g. group creation), reload the channel list.
+    this.ws.channelEvent$.subscribe(event => this.handleChannelEvent(event));
   }
 
   // ---------- channel operations ----------
@@ -229,5 +234,14 @@ export class ChannelService {
           : ch
       )
     );
+  }
+
+  private handleChannelEvent(event: ChannelEventPayload): void {
+    // When added to a new channel, reload the full channel list so it appears in the sidebar.
+    if (event.event_type === 'added') {
+      this.loadChannels().catch(err =>
+        console.warn('[ChannelService] reload after channel_event failed', err)
+      );
+    }
   }
 }

@@ -9,6 +9,7 @@ import {
   SendACKPayload, SendPayload,
   ReadSyncPayload,
   FriendEventPayload,
+  ChannelEventPayload,
 } from './websocket.models';
 
 const WS_URL = 'ws://localhost:8080/ws';
@@ -39,6 +40,9 @@ export class WebSocketService implements OnDestroy {
 
   /** Emits when a friend event (request, accept, reject) arrives. */
   readonly friendEvent$ = new Subject<FriendEventPayload>();
+
+  /** Emits when a channel event (e.g. added to a group) arrives. */
+  readonly channelEvent$ = new Subject<ChannelEventPayload>();
 
   /** Local max seq per channel (channel_id as string → seq). Used in ping payload. */
   readonly channelSeqs: Record<string, number> = {};
@@ -217,6 +221,11 @@ export class WebSocketService implements OnDestroy {
 
       case 'friend_event': {
         this.friendEvent$.next(frame.payload as FriendEventPayload);
+        break;
+      }
+
+      case 'channel_event': {
+        this.channelEvent$.next(frame.payload as ChannelEventPayload);
         break;
       }
 
