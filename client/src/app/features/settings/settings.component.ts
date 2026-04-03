@@ -1,4 +1,4 @@
-import { Component, OnInit, inject, signal } from '@angular/core';
+import { Component, OnInit, inject, signal, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { HttpClient } from '@angular/common/http';
@@ -28,6 +28,10 @@ export class SettingsComponent implements OnInit {
 
   settings = signal<UserSettings | null>(null);
   loading = signal(false);
+
+  // These reflect the ACTUAL active theme/locale, so select boxes always match reality
+  currentTheme = computed(() => this.themeService.theme());
+  currentLanguage = computed(() => this.i18n.locale());
   saving = signal(false);
   success = signal(false);
   error = signal<string | null>(null);
@@ -72,10 +76,12 @@ export class SettingsComponent implements OnInit {
 
   updateTheme(value: string): void {
     this.settings.update(s => s ? { ...s, theme: value } : s);
+    this.themeService.applyTheme(value as Theme);  // Instant preview
   }
 
   updateLanguage(value: string): void {
     this.settings.update(s => s ? { ...s, language: value } : s);
+    this.i18n.setLocale(value);  // Instant switch
   }
 
   async save(): Promise<void> {

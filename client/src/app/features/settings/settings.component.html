@@ -43,7 +43,7 @@
           </div>
           <select
             class="setting-select"
-            [value]="settings()!.theme"
+            [value]="currentTheme()"
             (change)="updateTheme($any($event.target).value)"
           >
             @for (t of themes; track t.value) {
@@ -63,7 +63,7 @@
           </div>
           <select
             class="setting-select"
-            [value]="settings()!.language"
+            [value]="currentLanguage()"
             (change)="updateLanguage($any($event.target).value)"
           >
             @for (l of languages; track l.value) {
