@@ -138,6 +138,10 @@ func newV5Env(t *testing.T) *v5env {
 	scheduledRepo := repo.NewScheduledRepo(db)
 	scheduledSvc := service.NewScheduledService(scheduledRepo, channels, msgSvc)
 	imhttp.RegisterScheduledRoutes(authed, scheduledSvc)
+	quickReplyRepo := repo.NewQuickReplyRepo(db)
+	imhttp.RegisterQuickReplyRoutes(authed,
+		service.NewQuickReplyService(quickReplyRepo),
+	)
 	imhttp.RegisterMessageRoutes(authed, msgSvc,
 		imhttp.MessageRouteOpts{
 			Pusher:      pushes,
