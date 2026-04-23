@@ -95,7 +95,6 @@ func run() int {
 	jwtMiddleware := middleware.JWTAuth(cfg.Gateway.JWTSecret)
 
 	favoriteHandler := handler.NewFavoriteHandler(favoriteRepo, log)
-	fileHandler := handler.NewFileHandler(fileRepo, cfg.Gateway.UploadDir, log)
 
 	// Redis connection for routing.
 	redisCtx, redisCancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -140,10 +139,7 @@ func run() int {
 	mux.Handle("DELETE /api/favorites/{message_id}", jwtMiddleware(http.HandlerFunc(favoriteHandler.RemoveFavorite)))
 	mux.Handle("GET /api/favorites", jwtMiddleware(http.HandlerFunc(favoriteHandler.ListFavorites)))
 
-	// File routes (JWT protected)
-	mux.Handle("POST /api/files", jwtMiddleware(http.HandlerFunc(fileHandler.Upload)))
-	mux.Handle("GET /api/files/{id}", jwtMiddleware(http.HandlerFunc(fileHandler.Download)))
-	mux.Handle("GET /api/messages/{id}/attachments", jwtMiddleware(http.HandlerFunc(fileHandler.ListAttachments)))
+	// File routes are served by Gin in Phase 7.7 (see below).
 
 	// Search route is served by Gin in Phase 7.6 (see below).
 
@@ -207,6 +203,12 @@ func run() int {
 	// shape are preserved verbatim from the legacy SearchHandler.
 	searchSvc := service.NewSearchService(searchRepo)
 	imhttp.RegisterSearchRoutes(authedAPI, searchSvc, log)
+
+	// Phase 7.7 cut-over: file upload/download/list-attachments. The service
+	// owns disk writes (uploadDir layout preserved verbatim) and metadata
+	// inserts. No real-time hooks — file routes are pure CRUD over storage.
+	fileSvc := service.NewFileService(fileRepo, cfg.Gateway.UploadDir)
+	imhttp.RegisterFileRoutes(authedAPI, fileSvc, log)
 
 	srv := &http.Server{
 		Addr:         cfg.Gateway.HTTPAddr,
