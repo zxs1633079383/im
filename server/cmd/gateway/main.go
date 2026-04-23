@@ -94,7 +94,6 @@ func run() int {
 
 	jwtMiddleware := middleware.JWTAuth(cfg.Gateway.JWTSecret)
 
-	friendHandler := handler.NewFriendHandler(friendRepo, userRepo, log)
 	channelHandler := handler.NewChannelHandler(channelRepo, userRepo, log)
 	messageHandler := handler.NewMessageHandler(messageRepo, channelRepo, log)
 	favoriteHandler := handler.NewFavoriteHandler(favoriteRepo, log)
@@ -115,7 +114,6 @@ func run() int {
 	messageHandler.WithReadSyncer(&hubReadSyncer{hub: hub})
 	messageHandler.WithAttachments(fileRepo)
 	messageHandler.WithPusher(channelRepo, &hubMessagePusher{hub: hub})
-	friendHandler.WithEventPusher(&hubFriendEventPusher{hub: hub})
 	channelHandler.WithEventPusher(&hubChannelEventPusher{hub: hub})
 	routing := gateway.NewRouting(rdb, gatewayID)
 
@@ -140,17 +138,7 @@ func run() int {
 	mux.Handle("GET /ws", wsHandler)
 
 	// Profile + Settings routes are served by Gin in Phase 7.1 (see below).
-
-	// Friend routes (JWT protected)
-	mux.Handle("POST /api/friends/request", jwtMiddleware(http.HandlerFunc(friendHandler.SendRequest)))
-	mux.Handle("POST /api/friends/accept", jwtMiddleware(http.HandlerFunc(friendHandler.AcceptRequest)))
-	mux.Handle("POST /api/friends/reject", jwtMiddleware(http.HandlerFunc(friendHandler.RejectRequest)))
-	mux.Handle("GET /api/friends", jwtMiddleware(http.HandlerFunc(friendHandler.ListFriends)))
-	mux.Handle("GET /api/friends/pending", jwtMiddleware(http.HandlerFunc(friendHandler.ListPending)))
-	mux.Handle("POST /api/friends/block", jwtMiddleware(http.HandlerFunc(friendHandler.Block)))
-
-	// User search route (JWT protected)
-	mux.Handle("GET /api/users/search", jwtMiddleware(http.HandlerFunc(friendHandler.SearchUsers)))
+	// Friend + user-search routes are served by Gin in Phase 7.2 (see below).
 
 	// Channel routes (JWT protected)
 	mux.Handle("POST /api/channels", jwtMiddleware(http.HandlerFunc(channelHandler.CreateGroup)))
@@ -214,6 +202,12 @@ func run() int {
 	authedAPI.Use(middleware.JWTGin(cfg.Gateway.JWTSecret))
 	imhttp.RegisterProfileRoutes(authedAPI, profileSvc)
 	imhttp.RegisterSettingsRoutes(authedAPI, settingsSvc)
+
+	// Phase 7.2 cut-over: friend + user-search endpoints. The pusher hook is
+	// preserved (legacy WithEventPusher) so the addressee still receives a
+	// real-time WebSocket notification on a new friend request.
+	friendSvc := service.NewFriendService(friendRepo, userRepo)
+	imhttp.RegisterFriendRoutes(authedAPI, friendSvc, &hubFriendEventPusher{hub: hub})
 
 	srv := &http.Server{
 		Addr:         cfg.Gateway.HTTPAddr,
@@ -291,7 +285,7 @@ func (s *hubReadSyncer) PushReadSync(userID, channelID, readSeq int64) {
 	})
 }
 
-// hubFriendEventPusher adapts *gateway.Hub to handler.FriendEventPusher.
+// hubFriendEventPusher adapts *gateway.Hub to imhttp.FriendEventPusher.
 type hubFriendEventPusher struct {
 	hub *gateway.Hub
 }

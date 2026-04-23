@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+
+	"im-server/internal/auth"
 )
 
 // ContextKey is the type for keys stored in request context.
@@ -27,4 +29,11 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 // writeError writes a JSON error envelope {"error": msg} with the given status.
 func writeError(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, map[string]string{"error": msg})
+}
+
+// claimsFromCtx extracts the JWT claims set by JWTAuth middleware. Returns
+// (nil, false) when no claims are present so callers can write a 401.
+func claimsFromCtx(r *http.Request) (*auth.Claims, bool) {
+	c, ok := r.Context().Value(ClaimsKey).(*auth.Claims)
+	return c, ok && c != nil
 }
