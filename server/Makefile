@@ -82,4 +82,6 @@ verify-unit:
 
 verify-integration:
 	@echo "==> V3 integration (requires docker-compose running pg+redis+pulsar)"
-	go test -race -tags=integration -timeout 120s ./...
+	@echo "    (V5 group scenarios spin up one Postgres testcontainer per test;"
+	@echo "     600s timeout accommodates the container start-up overhead)"
+	go test -race -tags=integration -timeout 600s ./...
