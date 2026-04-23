@@ -180,7 +180,7 @@ func TestV5_6_MarkReadMultiDevice(t *testing.T) {
 }
 
 // TestV5_7_DeleteMessage: alice sends then soft-deletes; the broadcaster
-// fires msg_deleted.
+// fires msg_deleted exactly once for the channel.
 func TestV5_7_DeleteMessage(t *testing.T) {
 	env := newV5Env(t)
 	_, aliceTok := env.CreateUserAndToken("alice7", "a7@x.com")
@@ -189,21 +189,20 @@ func TestV5_7_DeleteMessage(t *testing.T) {
 	chID := env.CreateOrGetDM(aliceTok, bobID)
 	msgID := env.MustSendAndReturnMsgID(aliceTok, chID, "bye", "uuid-v5-7-1")
 
+	// Clear send-side broadcasts so the delete assertion is scoped precisely.
+	env.broadcasts.Reset()
 	env.DeleteMessage(aliceTok, msgID)
 
-	got := false
-	for _, ev := range env.broadcasts.Snapshot() {
-		if ev.ChannelID == chID && ev.EventType == imhttp.EventMsgDeleted {
-			got = true
-		}
-	}
-	if !got {
-		t.Fatalf("msg_deleted broadcast not observed; events=%+v", env.broadcasts.Snapshot())
+	// Delete broadcast is async via goroutine — wait for at least one event.
+	events := waitForBroadcastCount(t, env.broadcasts, 1, 2*time.Second)
+	if n := CountBroadcastsByType(events, chID, string(imhttp.EventMsgDeleted)); n != 1 {
+		t.Fatalf("msg_deleted broadcast count=%d, want 1; events=%+v", n, events)
 	}
 }
 
 // TestV5_8_EditMessage: alice edits her message; the broadcaster fires
-// msg_updated with the refreshed content.
+// msg_updated exactly once, and the refreshed content round-trips through
+// the read API.
 func TestV5_8_EditMessage(t *testing.T) {
 	env := newV5Env(t)
 	_, aliceTok := env.CreateUserAndToken("alice8", "a8@x.com")
@@ -212,6 +211,8 @@ func TestV5_8_EditMessage(t *testing.T) {
 	chID := env.CreateOrGetDM(aliceTok, bobID)
 	msgID := env.MustSendAndReturnMsgID(aliceTok, chID, "typo", "uuid-v5-8-1")
 
+	// Clear send-side broadcasts so the edit assertion is scoped precisely.
+	env.broadcasts.Reset()
 	env.EditMessage(aliceTok, msgID, "fixed")
 
 	// Fetch and confirm content is updated on the read side.
@@ -223,14 +224,10 @@ func TestV5_8_EditMessage(t *testing.T) {
 		t.Fatalf("no messages after edit")
 	}
 
-	found := false
-	for _, ev := range env.broadcasts.Snapshot() {
-		if ev.ChannelID == chID && ev.EventType == imhttp.EventMsgUpdated {
-			found = true
-		}
-	}
-	if !found {
-		t.Fatalf("msg_updated broadcast not observed")
+	// Edit broadcast is async via goroutine — wait for at least one event.
+	events := waitForBroadcastCount(t, env.broadcasts, 1, 2*time.Second)
+	if n := CountBroadcastsByType(events, chID, string(imhttp.EventMsgUpdated)); n != 1 {
+		t.Fatalf("msg_updated broadcast count=%d, want 1; events=%+v", n, events)
 	}
 }
 
