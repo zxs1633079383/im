@@ -8,6 +8,8 @@ import (
 )
 
 // TestM2_ApprovalCreateApprove: bob requests, alice (owner/approver) approves.
+// Verifies the approval_updated event fires exactly twice (requester +
+// approver) on both state transitions.
 func TestM2_ApprovalCreateApprove(t *testing.T) {
 	env := newV5Env(t)
 	aliceID, aliceTok := env.CreateUserAndToken("m2ap_alice", "m2ap_a@x.com")
@@ -31,11 +33,8 @@ func TestM2_ApprovalCreateApprove(t *testing.T) {
 	obj.Value("approver_id").Number().IsEqual(aliceID)
 	approvalID := int64(obj.Value("id").Number().Raw())
 
-	// Expect push to both requester + approver.
-	events := env.userPush.Snapshot()
-	if len(events) != 2 {
-		t.Fatalf("expected 2 push events on create, got %d: %+v", len(events), events)
-	}
+	// Expect approval_updated push to both requester + approver.
+	assertApprovalUpdatedFanout(t, env.userPush.Snapshot(), bobID, aliceID, "create")
 
 	// Alice approves.
 	env.userPush.Reset()
@@ -46,14 +45,40 @@ func TestM2_ApprovalCreateApprove(t *testing.T) {
 	decided.Value("status").Number().IsEqual(1) // approved
 	decided.Value("decision_note").String().IsEqual("ok")
 
-	// Both sides notified.
-	events = env.userPush.Snapshot()
-	if len(events) != 2 {
-		t.Fatalf("expected 2 push events on approve, got %d: %+v", len(events), events)
+	// Both sides notified with approval_updated.
+	assertApprovalUpdatedFanout(t, env.userPush.Snapshot(), bobID, aliceID, "approve")
+}
+
+// assertApprovalUpdatedFanout checks exactly 2 approval_updated events fired
+// targeting requester + approver. Shared across the approve/reject/cancel
+// tests to lock down the contract.
+func assertApprovalUpdatedFanout(
+	t *testing.T,
+	events []UserPushEvent,
+	requesterID, approverID int64,
+	phase string,
+) {
+	t.Helper()
+	var toRequester, toApprover int
+	for _, ev := range events {
+		if string(ev.EventType) != "approval_updated" {
+			continue
+		}
+		if ev.UserID == requesterID {
+			toRequester++
+		}
+		if ev.UserID == approverID {
+			toApprover++
+		}
+	}
+	if toRequester != 1 || toApprover != 1 {
+		t.Fatalf("%s: approval_updated fan-out wrong; requester=%d approver=%d events=%+v",
+			phase, toRequester, toApprover, events)
 	}
 }
 
-// TestM2_ApprovalReject: rejection sets status=2 and records note.
+// TestM2_ApprovalReject: rejection sets status=2 and records note. The
+// approval_updated event fires to requester + approver on reject.
 func TestM2_ApprovalReject(t *testing.T) {
 	env := newV5Env(t)
 	aliceID, aliceTok := env.CreateUserAndToken("m2apr_alice", "m2apr_a@x.com")
@@ -72,12 +97,17 @@ func TestM2_ApprovalReject(t *testing.T) {
 		Expect().Status(201).JSON().Object()
 	approvalID := int64(obj.Value("id").Number().Raw())
 
+	// Reset so the reject assertion is scoped precisely to that phase.
+	env.userPush.Reset()
 	decided := env.httpExpect.POST(fmt.Sprintf("/api/approvals/%d/reject", approvalID)).
 		WithHeader("Authorization", bearer(aliceTok)).
 		WithJSON(map[string]string{"note": "too high"}).
 		Expect().Status(200).JSON().Object()
 	decided.Value("status").Number().IsEqual(2) // rejected
 	decided.Value("decision_note").String().IsEqual("too high")
+
+	// Reject fans approval_updated to both sides.
+	assertApprovalUpdatedFanout(t, env.userPush.Snapshot(), bobID, aliceID, "reject")
 }
 
 // TestM2_ApprovalCancelPending: requester can cancel while pending.
@@ -99,11 +129,15 @@ func TestM2_ApprovalCancelPending(t *testing.T) {
 		Expect().Status(201).JSON().Object()
 	approvalID := int64(obj.Value("id").Number().Raw())
 
-	// Bob cancels.
+	// Reset push recorder so the cancel assertion is scoped to that phase.
+	env.userPush.Reset()
 	cancelled := env.httpExpect.POST(fmt.Sprintf("/api/approvals/%d/cancel", approvalID)).
 		WithHeader("Authorization", bearer(bobTok)).
 		Expect().Status(200).JSON().Object()
 	cancelled.Value("status").Number().IsEqual(3) // cancelled
+
+	// Cancel fans approval_updated to both sides.
+	assertApprovalUpdatedFanout(t, env.userPush.Snapshot(), bobID, aliceID, "cancel")
 
 	// Approving after cancel returns 409.
 	env.httpExpect.POST(fmt.Sprintf("/api/approvals/%d/approve", approvalID)).
