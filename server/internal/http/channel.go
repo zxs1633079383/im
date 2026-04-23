@@ -206,7 +206,7 @@ func RegisterChannelRoutes(authed *gin.RouterGroup, svc *service.ChannelService,
 			c.JSON(422, gin.H{"error": "user_id is required"})
 			return
 		}
-		err := svc.AddMember(c.Request.Context(), channelID, uid, in.UserID)
+		chName, err := svc.AddMember(c.Request.Context(), channelID, uid, in.UserID)
 		switch {
 		case errors.Is(err, service.ErrNotMember):
 			c.JSON(403, gin.H{"error": "not a member of this channel"})
@@ -215,6 +215,11 @@ func RegisterChannelRoutes(authed *gin.RouterGroup, svc *service.ChannelService,
 		case err != nil:
 			c.JSON(500, gin.H{"error": "internal error"})
 		default:
+			// Fire "added" to the newcomer — same payload shape the
+			// group-create fan-out uses (§BACKEND 1.1 channel_event).
+			if pusher != nil {
+				pusher.PushChannelEvent(in.UserID, "added", channelID, chName)
+			}
 			c.JSON(201, gin.H{"status": "added"})
 		}
 	})

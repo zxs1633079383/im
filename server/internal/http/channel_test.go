@@ -204,18 +204,42 @@ func TestChannelHandler_UpdateChannel_403_PlainMember(t *testing.T) {
 }
 
 func TestChannelHandler_AddMember_201(t *testing.T) {
-	r, ch, _ := setupChannelHandler(t, nil)
+	pusher := &recordingChannelPusher{}
+	r, ch, _ := setupChannelHandler(t, pusher)
 	tok := newChannelToken(t, 1, "alice")
 
 	ch.EXPECT().GetMember(mock.Anything, int64(7), int64(1)).
 		Return(&repo.ChannelMember{ChannelID: 7, UserID: 1, Role: repo.MemberRoleOwner}, nil)
 	ch.EXPECT().AddMember(mock.Anything, int64(7), int64(9), repo.MemberRoleMember).Return(nil)
+	// Post-insert name lookup feeds the channel_event "added" payload.
+	ch.EXPECT().GetByID(mock.Anything, int64(7)).
+		Return(&repo.Channel{ID: 7, Name: "team"}, nil)
 
 	testutil.NewExpect(t, r).POST("/api/channels/7/members").
 		WithHeader("Authorization", "Bearer "+tok).
 		WithJSON(map[string]int64{"user_id": 9}).
 		Expect().Status(201).JSON().Object().
 		Value("status").IsEqual("added")
+
+	got := pusher.snapshot()
+	require.Len(t, got, 1, "pusher must fire exactly once on add-member success")
+	require.Equal(t, channelPushEvent{target: 9, kind: "added", chID: 7, name: "team"}, got[0])
+}
+
+func TestChannelHandler_AddMember_403_NonAdmin_NoPush(t *testing.T) {
+	pusher := &recordingChannelPusher{}
+	r, ch, _ := setupChannelHandler(t, pusher)
+	tok := newChannelToken(t, 2, "bob")
+
+	ch.EXPECT().GetMember(mock.Anything, int64(7), int64(2)).
+		Return(&repo.ChannelMember{ChannelID: 7, UserID: 2, Role: repo.MemberRoleMember}, nil)
+
+	testutil.NewExpect(t, r).POST("/api/channels/7/members").
+		WithHeader("Authorization", "Bearer "+tok).
+		WithJSON(map[string]int64{"user_id": 9}).
+		Expect().Status(403)
+
+	require.Empty(t, pusher.snapshot(), "pusher must NOT fire on 403")
 }
 
 func TestChannelHandler_RemoveMember_403_OwnerProtected(t *testing.T) {

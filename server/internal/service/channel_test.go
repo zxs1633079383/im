@@ -164,6 +164,22 @@ func TestChannel_AddMember_RequiresAdmin(t *testing.T) {
 	ch.EXPECT().GetMember(mock.Anything, int64(5), int64(2)).
 		Return(&repo.ChannelMember{ChannelID: 5, UserID: 2, Role: repo.MemberRoleMember}, nil)
 
-	err := svc.AddMember(context.Background(), 5, 2, 9)
+	name, err := svc.AddMember(context.Background(), 5, 2, 9)
 	require.ErrorIs(t, err, service.ErrForbidden)
+	require.Empty(t, name, "non-admin must not leak channel name")
+}
+
+func TestChannel_AddMember_ReturnsChannelName(t *testing.T) {
+	svc, ch, _ := newChannelSvc(t)
+	ch.EXPECT().GetMember(mock.Anything, int64(5), int64(1)).
+		Return(&repo.ChannelMember{ChannelID: 5, UserID: 1, Role: repo.MemberRoleOwner}, nil)
+	ch.EXPECT().AddMember(mock.Anything, int64(5), int64(9), repo.MemberRoleMember).
+		Return(nil)
+	// Post-insert lookup powers the channel_event "added" payload.
+	ch.EXPECT().GetByID(mock.Anything, int64(5)).
+		Return(&repo.Channel{ID: 5, Name: "team"}, nil)
+
+	name, err := svc.AddMember(context.Background(), 5, 1, 9)
+	require.NoError(t, err)
+	require.Equal(t, "team", name)
 }
