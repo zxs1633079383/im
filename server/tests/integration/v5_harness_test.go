@@ -113,8 +113,13 @@ func newV5Env(t *testing.T) *v5env {
 		service.NewAnnouncementService(announcements, channels, governanceSvc),
 		broadcasts,
 	)
-	imhttp.RegisterMessageRoutes(authed,
-		service.NewMessageService(messages, channels, files),
+	msgSvc := service.NewMessageService(messages, channels, files)
+	urgentRepo := repo.NewUrgentRepo(db)
+	imhttp.RegisterUrgentRoutes(authed,
+		service.NewUrgentService(urgentRepo, messages, channels, msgSvc, governanceSvc),
+		broadcasts,
+	)
+	imhttp.RegisterMessageRoutes(authed, msgSvc,
 		imhttp.MessageRouteOpts{
 			Pusher:      pushes,
 			ReadSyncer:  readSyncs,
