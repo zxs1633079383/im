@@ -42,6 +42,9 @@ func NewAuthService(users repo.UserRepo, jwtSecret string) *AuthService {
 // Returns ErrUserExists if either the username or the email collides with an
 // existing record. The handler is responsible for length/format validation.
 func (s *AuthService) Register(ctx context.Context, username, email, password, displayName string) (*repo.User, string, error) {
+	ctx, span := tracer.Start(ctx, "AuthService.Register")
+	defer span.End()
+
 	// Duplicate username check.
 	if _, err := s.users.GetByUsername(ctx, username); err == nil {
 		return nil, "", ErrUserExists
@@ -85,6 +88,9 @@ func (s *AuthService) Register(ctx context.Context, username, email, password, d
 // Empty login or password, missing user, and bad password all collapse into
 // ErrBadCreds to prevent user enumeration.
 func (s *AuthService) Login(ctx context.Context, login, password string) (*repo.User, string, error) {
+	ctx, span := tracer.Start(ctx, "AuthService.Login")
+	defer span.End()
+
 	login = strings.TrimSpace(login)
 	if login == "" || password == "" {
 		return nil, "", ErrBadCreds
