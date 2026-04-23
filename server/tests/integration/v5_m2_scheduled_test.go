@@ -38,7 +38,7 @@ func TestM2_ScheduledCreateCancel(t *testing.T) {
 		Expect().Status(200)
 
 	// Pending list now empty for alice.
-	env.httpExpect.GET("/api/messages/scheduled?status=pending").
+	env.httpExpect.GET("/api/messages/scheduled").WithQuery("status", "pending").
 		WithHeader("Authorization", bearer(aliceTok)).
 		Expect().Status(200).JSON().Object().
 		Value("scheduled").Array().Length().IsEqual(0)

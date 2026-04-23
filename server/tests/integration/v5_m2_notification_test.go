@@ -66,7 +66,7 @@ func TestM2_NotificationMarkRead(t *testing.T) {
 	notifID := int64(obj.Value("id").Number().Raw())
 
 	// Unread list has 1.
-	env.httpExpect.GET("/api/notifications/received?unread_only=true").
+	env.httpExpect.GET("/api/notifications/received").WithQuery("unread_only", "true").
 		WithHeader("Authorization", bearer(bobTok)).
 		Expect().Status(200).JSON().Object().
 		Value("notifications").Array().Length().IsEqual(1)
@@ -77,7 +77,7 @@ func TestM2_NotificationMarkRead(t *testing.T) {
 		Expect().Status(200)
 
 	// Unread list now empty.
-	env.httpExpect.GET("/api/notifications/received?unread_only=true").
+	env.httpExpect.GET("/api/notifications/received").WithQuery("unread_only", "true").
 		WithHeader("Authorization", bearer(bobTok)).
 		Expect().Status(200).JSON().Object().
 		Value("notifications").Array().Length().IsEqual(0)
