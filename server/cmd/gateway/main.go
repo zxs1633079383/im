@@ -232,6 +232,11 @@ func run() int {
 	userPusher := &hubUserEventPusher{xpod: xpod}
 	imhttp.RegisterApprovalRoutes(authedAPI, approvalSvc, userPusher)
 
+	// M2-E: notifications — per-user inbox/outbox + mark-read.
+	notificationRepo := repo.NewNotificationRepo(gormDB)
+	notificationSvc := service.NewNotificationService(notificationRepo, userRepo)
+	imhttp.RegisterNotificationRoutes(authedAPI, notificationSvc, userPusher)
+
 	// Phase 7.5 cut-over: batch incremental sync. No real-time hooks — sync is
 	// pure pull, the algorithm + response shape are preserved verbatim from
 	// the legacy SyncHandler.
