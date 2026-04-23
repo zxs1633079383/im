@@ -43,7 +43,14 @@ vuln:
 	@which govulncheck > /dev/null || go install golang.org/x/vuln/cmd/govulncheck@latest
 	govulncheck ./...
 
+.PHONY: test-integration
+test-integration:
+	gotestsum --format pkgname -- -race -tags=integration -timeout 5m ./...
+
 check: lint vuln test-unit
+
+.PHONY: check-full
+check-full: lint vuln test-unit test-integration
 
 .PHONY: mocks
 mocks:
