@@ -237,6 +237,11 @@ func run() int {
 	notificationSvc := service.NewNotificationService(notificationRepo, userRepo)
 	imhttp.RegisterNotificationRoutes(authedAPI, notificationSvc, userPusher)
 
+	// M2-F: scheduled messages — CRUD + background worker.
+	scheduledRepo := repo.NewScheduledRepo(gormDB)
+	scheduledSvc := service.NewScheduledService(scheduledRepo, channelRepo, messageSvc)
+	scheduledWorker := service.NewScheduledWorker(scheduledSvc, log, service.ScheduledWorkerConfig{})
+
 	// Phase 7.5 cut-over: batch incremental sync. No real-time hooks — sync is
 	// pure pull, the algorithm + response shape are preserved verbatim from
 	// the legacy SyncHandler.
@@ -282,6 +287,11 @@ func run() int {
 		return 1
 	}
 	log.Info("push consumer started", "topic", pushConsumer.Topic())
+
+	// Start the scheduled-message worker. It polls for due rows and calls
+	// MessageService.SendMessage on each; runCancel() stops it.
+	go scheduledWorker.Run(runCtx)
+	log.Info("scheduled worker started")
 
 	go func() {
 		log.Info("HTTP server listening", "addr", cfg.Gateway.HTTPAddr)
