@@ -82,6 +82,11 @@ type fetchMessagesResp struct {
 	Messages []repo.Message `json:"messages"`
 }
 
+// editMessageReq is the PATCH /messages/:id body.
+type editMessageReq struct {
+	Content string `json:"content"`
+}
+
 // forwardMessageReq matches the legacy handler's body shape.
 type forwardMessageReq struct {
 	MessageID        int64   `json:"message_id"`
@@ -232,6 +237,52 @@ func RegisterMessageRoutes(authed *gin.RouterGroup, svc *service.MessageService,
 			opts.ReadSyncer.PushReadSync(uid, channelID, seq)
 		}
 		c.JSON(200, gin.H{"seq": seq})
+	})
+
+	// PATCH /api/messages/:id — edit the content of a message.
+	// Caller must be the original sender and the message must not already be
+	// soft-deleted. Returns the refreshed message snapshot.
+	authed.PATCH("/messages/:id", func(c *gin.Context) {
+		uid, ok := userIDFromCtx(c)
+		if !ok {
+			return
+		}
+		msgID, ok := pathInt64(c, "id")
+		if !ok {
+			return
+		}
+		var in editMessageReq
+		if err := c.ShouldBindJSON(&in); err != nil {
+			c.JSON(400, gin.H{"error": "invalid JSON"})
+			return
+		}
+		if in.Content == "" {
+			c.JSON(422, gin.H{"error": "content is required"})
+			return
+		}
+
+		msg, err := svc.EditMessage(c.Request.Context(), msgID, uid, in.Content)
+		switch {
+		case errors.Is(err, repo.ErrNotFound):
+			c.JSON(404, gin.H{"error": "message not found"})
+			return
+		case errors.Is(err, repo.ErrForbidden):
+			c.JSON(403, gin.H{"error": "not the message sender"})
+			return
+		case errors.Is(err, repo.ErrGone):
+			c.JSON(410, gin.H{"error": "message already deleted"})
+			return
+		case err != nil:
+			log.Error("edit message", "error", err, "msg_id", msgID, "user_id", uid)
+			c.JSON(500, gin.H{"error": "internal error"})
+			return
+		}
+
+		// Broadcast msg_updated carrying the full refreshed message.
+		if opts.Broadcaster != nil {
+			opts.Broadcaster.BroadcastToMembers(msg.ChannelID, EventMsgUpdated, msg)
+		}
+		c.JSON(200, msg)
 	})
 
 	// DELETE /api/messages/:id — soft-delete a message (revoke).

@@ -241,6 +241,23 @@ func (s *MessageService) ListMembers(ctx context.Context, channelID int64) ([]re
 	return s.channels.ListMembers(ctx, channelID)
 }
 
+// EditMessage updates the content of msgID on behalf of callerID. The caller
+// MUST be the original sender and the message must not be soft-deleted.
+// Returns the refreshed message so the transport can fan out a msg_updated
+// event carrying the post-edit snapshot.
+//
+// Errors bubble up directly:
+//   - repo.ErrNotFound  → 404
+//   - repo.ErrForbidden → 403 (not the sender)
+//   - repo.ErrGone      → 410 (already deleted — cannot edit a revoked msg)
+func (s *MessageService) EditMessage(ctx context.Context, msgID, callerID int64, content string) (*repo.Message, error) {
+	msg, err := s.messages.UpdateContent(ctx, msgID, callerID, content)
+	if err != nil {
+		return msg, err
+	}
+	return msg, nil
+}
+
 // DeleteMessage soft-deletes msgID on behalf of callerID. The caller MUST be
 // the original sender — any other user is refused with repo.ErrForbidden.
 // Returns the refreshed (soft-deleted) message so the transport can fan out
