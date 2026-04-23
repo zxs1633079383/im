@@ -234,6 +234,48 @@ func RegisterMessageRoutes(authed *gin.RouterGroup, svc *service.MessageService,
 		c.JSON(200, gin.H{"seq": seq})
 	})
 
+	// DELETE /api/messages/:id — soft-delete a message (revoke).
+	// Caller must be the original sender. Already-deleted messages are
+	// idempotent no-ops (200 OK, skip fan-out).
+	authed.DELETE("/messages/:id", func(c *gin.Context) {
+		uid, ok := userIDFromCtx(c)
+		if !ok {
+			return
+		}
+		msgID, ok := pathInt64(c, "id")
+		if !ok {
+			return
+		}
+
+		msg, err := svc.DeleteMessage(c.Request.Context(), msgID, uid)
+		switch {
+		case errors.Is(err, repo.ErrNotFound):
+			c.JSON(404, gin.H{"error": "message not found"})
+			return
+		case errors.Is(err, repo.ErrForbidden):
+			c.JSON(403, gin.H{"error": "not the message sender"})
+			return
+		case errors.Is(err, repo.ErrGone):
+			// Already deleted — idempotent success, no fan-out.
+			c.JSON(200, gin.H{"ok": true, "already_deleted": true})
+			return
+		case err != nil:
+			log.Error("delete message", "error", err, "msg_id", msgID, "user_id", uid)
+			c.JSON(500, gin.H{"error": "internal error"})
+			return
+		}
+
+		// Broadcast msg_deleted to every member of the channel.
+		if opts.Broadcaster != nil {
+			opts.Broadcaster.BroadcastToMembers(msg.ChannelID, EventMsgDeleted, gin.H{
+				"msg_id":     msg.ID,
+				"channel_id": msg.ChannelID,
+				"deleted_at": msg.DeletedAt,
+			})
+		}
+		c.JSON(200, gin.H{"ok": true})
+	})
+
 	// POST /api/messages/forward — copy a source message into N target channels.
 	authed.POST("/messages/forward", func(c *gin.Context) {
 		uid, ok := userIDFromCtx(c)

@@ -241,6 +241,23 @@ func (s *MessageService) ListMembers(ctx context.Context, channelID int64) ([]re
 	return s.channels.ListMembers(ctx, channelID)
 }
 
+// DeleteMessage soft-deletes msgID on behalf of callerID. The caller MUST be
+// the original sender — any other user is refused with repo.ErrForbidden.
+// Returns the refreshed (soft-deleted) message so the transport can fan out
+// a msg_deleted event to every channel member.
+//
+// Errors bubble up directly:
+//   - repo.ErrNotFound  → 404
+//   - repo.ErrForbidden → 403
+//   - repo.ErrGone      → idempotent success (transport returns 200 but skips fan-out)
+func (s *MessageService) DeleteMessage(ctx context.Context, msgID, callerID int64) (*repo.Message, error) {
+	msg, err := s.messages.SoftDelete(ctx, msgID, callerID)
+	if err != nil {
+		return msg, err // pass raw sentinels through; HTTP layer maps status codes
+	}
+	return msg, nil
+}
+
 // requireMember returns ErrNotMember when callerID is not a member of
 // channelID. Mirrors ChannelService.requireAdminOrOwner's shape.
 func (s *MessageService) requireMember(ctx context.Context, channelID, callerID int64) error {
