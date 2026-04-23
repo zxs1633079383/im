@@ -13,11 +13,14 @@ import (
 	"im-server/internal/config"
 	"im-server/internal/gateway"
 	"im-server/internal/handler"
+	imhttp "im-server/internal/http"
 	"im-server/internal/middleware"
 	"im-server/internal/model"
 	"im-server/internal/observability"
 	imPulsar "im-server/internal/pulsar"
 	"im-server/internal/store"
+
+	"github.com/gin-gonic/gin"
 )
 
 func main() {
@@ -203,9 +206,18 @@ func run() int {
 	// CORS middleware for development
 	corsHandler := corsMiddleware(mux)
 
+	// Wrap the legacy mux (with CORS) in a Gin engine that adds /healthz, /readyz,
+	// otelgin tracing, and acts as the entry point for new Gin-native handlers
+	// added in Phase 6+. Unmatched routes fall through to corsHandler -> mux.
+	engine := imhttp.New(imhttp.Config{
+		ServiceName: "im-gateway",
+		Legacy:      corsHandler,
+		Mode:        gin.ReleaseMode,
+	})
+
 	srv := &http.Server{
 		Addr:         cfg.Gateway.HTTPAddr,
-		Handler:      corsHandler,
+		Handler:      engine,
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  60 * time.Second,
