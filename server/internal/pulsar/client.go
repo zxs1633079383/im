@@ -116,6 +116,7 @@ type HandlerFunc func(ctx context.Context, data []byte) error
 // Consumer reads messages from a Pulsar topic and dispatches them to a handler.
 type Consumer struct {
 	inner   pulsarclient.Consumer
+	topic   string
 	handler HandlerFunc
 	log     *slog.Logger
 }
@@ -131,11 +132,16 @@ func (c *Client) NewConsumer(topic, subscriptionName string, handler HandlerFunc
 	if err != nil {
 		return nil, fmt.Errorf("subscribe to %s: %w", topic, err)
 	}
-	return &Consumer{inner: consumer, handler: handler, log: c.log}, nil
+	return &Consumer{inner: consumer, topic: topic, handler: handler, log: c.log}, nil
 }
 
 // Consume starts a blocking consume loop. It stops when ctx is cancelled.
-// Each message is dispatched to the handler; ACK on success, NACk on error.
+// Each message is dispatched to the handler; ACK on success, NACK on error.
+//
+// For each delivered message the loop extracts the OTel trace context from
+// msg.Properties() (injected by the producer) and opens a SpanKindConsumer
+// span named pulsar.consume.<topic>. The handler receives a context derived
+// from this span so its downstream work joins the same trace.
 func (cs *Consumer) Consume(ctx context.Context) error {
 	for {
 		msg, err := cs.inner.Receive(ctx)
@@ -145,11 +151,25 @@ func (cs *Consumer) Consume(ctx context.Context) error {
 			}
 			return fmt.Errorf("receive: %w", err)
 		}
-		if err := cs.handler(ctx, msg.Payload()); err != nil {
+
+		msgCtx := otel.GetTextMapPropagator().Extract(ctx,
+			propagation.MapCarrier(msg.Properties()))
+		msgCtx, span := pulsarTracer.Start(msgCtx, "pulsar.consume."+cs.topic,
+			trace.WithSpanKind(trace.SpanKindConsumer),
+			trace.WithAttributes(
+				attribute.String("messaging.system", "pulsar"),
+				attribute.String("messaging.source.name", cs.topic),
+				attribute.String("messaging.operation", "process"),
+			))
+
+		if err := cs.handler(msgCtx, msg.Payload()); err != nil {
+			span.RecordError(err)
+			span.End()
 			cs.log.Warn("message handler error, nacking", "error", err)
 			cs.inner.Nack(msg)
 			continue
 		}
+		span.End()
 		cs.inner.Ack(msg)
 	}
 }
