@@ -112,6 +112,19 @@ func run() int {
 	}
 	defer pulsarClient.Close()
 
+	// Per-topic producer cache for cross-pod push fan-out.
+	producerCache := gateway.NewProducerCache(pulsarClient)
+	defer producerCache.Close()
+
+	// Environment controls Pulsar tenant/namespace for push topics.
+	// prod / pre get dedicated namespaces; everything else falls into the
+	// per-developer local bucket (see gateway.PushTopicFor).
+	env := os.Getenv("IM_ENV")
+	if env == "" {
+		env = "local"
+	}
+	log.Info("gateway environment", "env", env)
+
 	// Push consumer subscribes to msg.push.{gatewayID}.
 	pushConsumer := gateway.NewPushConsumer(hub, gatewayID, log)
 
@@ -156,17 +169,30 @@ func run() int {
 	imhttp.RegisterProfileRoutes(authedAPI, profileSvc)
 	imhttp.RegisterSettingsRoutes(authedAPI, settingsSvc)
 
+	// Shared cross-pod push dependencies for every hook below. Each pusher
+	// struct holds the same set of deps so any fan-out (friend / channel /
+	// message / read-sync) can reach a user attached to another pod via
+	// Pulsar when the target isn't local.
+	xpod := crossPodDeps{
+		hub:       hub,
+		routing:   routing,
+		cache:     producerCache,
+		gatewayID: gatewayID,
+		env:       env,
+		log:       log,
+	}
+
 	// Phase 7.2 cut-over: friend + user-search endpoints. The pusher hook is
 	// preserved (legacy WithEventPusher) so the addressee still receives a
 	// real-time WebSocket notification on a new friend request.
 	friendSvc := service.NewFriendService(friendRepo, userRepo)
-	imhttp.RegisterFriendRoutes(authedAPI, friendSvc, &hubFriendEventPusher{hub: hub})
+	imhttp.RegisterFriendRoutes(authedAPI, friendSvc, &hubFriendEventPusher{xpod: xpod})
 
 	// Phase 7.3 cut-over: channel endpoints. The pusher hook is preserved
 	// (legacy WithEventPusher) so newly added members still receive a
 	// real-time WebSocket "added" event.
 	channelSvc := service.NewChannelService(channelRepo, userRepo)
-	imhttp.RegisterChannelRoutes(authedAPI, channelSvc, &hubChannelEventPusher{hub: hub})
+	imhttp.RegisterChannelRoutes(authedAPI, channelSvc, &hubChannelEventPusher{xpod: xpod})
 
 	// Phase 7.4 cut-over: message endpoints. All three legacy hooks are
 	// preserved — Pusher fans new messages out to online members, ReadSyncer
@@ -174,9 +200,10 @@ func run() int {
 	// repo handles attachment linkage on send.
 	messageSvc := service.NewMessageService(messageRepo, channelRepo, fileRepo)
 	imhttp.RegisterMessageRoutes(authedAPI, messageSvc, imhttp.MessageRouteOpts{
-		Pusher:     &hubMessagePusher{hub: hub},
-		ReadSyncer: &hubReadSyncer{hub: hub},
-		Logger:     log,
+		Pusher:      &hubMessagePusher{xpod: xpod},
+		ReadSyncer:  &hubReadSyncer{xpod: xpod},
+		Broadcaster: &hubEventBroadcaster{xpod: xpod, svc: messageSvc},
+		Logger:      log,
 	})
 
 	// Phase 7.5 cut-over: batch incremental sync. No real-time hooks — sync is
@@ -247,9 +274,30 @@ func run() int {
 	return 0
 }
 
-// hubMessagePusher adapts *gateway.Hub to imhttp.MessagePusher.
+// crossPodDeps bundles the shared state every HTTP-side pusher needs to fan
+// events out across pods via Pulsar. A single value is built in run() and
+// copied (by value — all fields are pointers) into each pusher struct.
+type crossPodDeps struct {
+	hub       *gateway.Hub
+	routing   *gateway.Routing
+	cache     *gateway.ProducerCache
+	gatewayID string
+	env       string
+	log       *slog.Logger
+}
+
+// dispatch delivers (msgType, payload) to userID via the local hub when
+// possible, and falls back to cross-pod Pulsar fan-out otherwise.
+func (x crossPodDeps) dispatch(userID int64, msgType gateway.WSMessageType, payload any) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	x.hub.CrossPodPush(ctx, userID, msgType, payload,
+		x.routing, x.cache, x.gatewayID, x.env, x.log)
+}
+
+// hubMessagePusher adapts crossPodDeps to imhttp.MessagePusher.
 type hubMessagePusher struct {
-	hub *gateway.Hub
+	xpod crossPodDeps
 }
 
 func (p *hubMessagePusher) PushMessage(userID int64, msg *repo.Message) {
@@ -264,44 +312,66 @@ func (p *hubMessagePusher) PushMessage(userID int64, msg *repo.Message) {
 		VisibleTo: []int64(msg.VisibleTo),
 		CreatedAt: msg.CreatedAt,
 	}
-	p.hub.PushToUser(userID, gateway.TypePushMsg, payload)
+	p.xpod.dispatch(userID, gateway.TypePushMsg, payload)
 }
 
-// hubReadSyncer adapts *gateway.Hub to imhttp.ReadSyncPusher.
+// hubReadSyncer adapts crossPodDeps to imhttp.ReadSyncPusher.
 type hubReadSyncer struct {
-	hub *gateway.Hub
+	xpod crossPodDeps
 }
 
 func (s *hubReadSyncer) PushReadSync(userID, channelID, readSeq int64) {
-	s.hub.PushToUser(userID, gateway.TypeReadSync, gateway.ReadSyncPayload{
+	s.xpod.dispatch(userID, gateway.TypeReadSync, gateway.ReadSyncPayload{
 		ChannelID: channelID,
 		ReadSeq:   readSeq,
 	})
 }
 
-// hubFriendEventPusher adapts *gateway.Hub to imhttp.FriendEventPusher.
+// hubFriendEventPusher adapts crossPodDeps to imhttp.FriendEventPusher.
 type hubFriendEventPusher struct {
-	hub *gateway.Hub
+	xpod crossPodDeps
 }
 
 func (p *hubFriendEventPusher) PushFriendEvent(targetUserID int64, eventType string, fromUserID int64) {
-	p.hub.PushToUser(targetUserID, gateway.TypeFriendEvent, gateway.FriendEventPayload{
+	p.xpod.dispatch(targetUserID, gateway.TypeFriendEvent, gateway.FriendEventPayload{
 		EventType:  eventType,
 		FromUserID: fromUserID,
 	})
 }
 
-// hubChannelEventPusher adapts *gateway.Hub to imhttp.ChannelEventPusher.
+// hubChannelEventPusher adapts crossPodDeps to imhttp.ChannelEventPusher.
 type hubChannelEventPusher struct {
-	hub *gateway.Hub
+	xpod crossPodDeps
 }
 
 func (p *hubChannelEventPusher) PushChannelEvent(targetUserID int64, eventType string, channelID int64, name string) {
-	p.hub.PushToUser(targetUserID, gateway.TypeChannelEvent, gateway.ChannelEventPayload{
+	p.xpod.dispatch(targetUserID, gateway.TypeChannelEvent, gateway.ChannelEventPayload{
 		EventType: eventType,
 		ChannelID: channelID,
 		Name:      name,
 	})
+}
+
+// hubEventBroadcaster implements imhttp.MessageEventBroadcaster. It fans
+// arbitrary WS events (msg_updated / msg_deleted) to every member of a
+// channel by enumerating via the message service and pushing through the
+// shared cross-pod dispatch.
+type hubEventBroadcaster struct {
+	xpod crossPodDeps
+	svc  *service.MessageService
+}
+
+func (b *hubEventBroadcaster) BroadcastToMembers(channelID int64, eventType imhttp.MessageEventType, payload any) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	members, err := b.svc.ListMembers(ctx, channelID)
+	if err != nil {
+		b.xpod.log.Warn("broadcast: list members failed", "error", err, "channel_id", channelID)
+		return
+	}
+	for _, m := range members {
+		b.xpod.dispatch(m.UserID, gateway.WSMessageType(eventType), payload)
+	}
 }
 
 // corsMiddleware adds permissive CORS headers for local Tauri development.

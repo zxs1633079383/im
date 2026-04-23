@@ -25,6 +25,26 @@ type ReadSyncPusher interface {
 	PushReadSync(userID int64, channelID int64, readSeq int64)
 }
 
+// MessageEventType is a typed alias for WS event name strings. The http
+// package stays decoupled from the gateway package by using plain strings;
+// the broadcaster implementation in cmd/gateway/main.go converts back to
+// gateway.WSMessageType.
+type MessageEventType string
+
+const (
+	// EventMsgUpdated is fired when a message is edited.
+	EventMsgUpdated MessageEventType = "msg_updated"
+	// EventMsgDeleted is fired when a message is soft-deleted (revoke).
+	EventMsgDeleted MessageEventType = "msg_deleted"
+)
+
+// MessageEventBroadcaster fans arbitrary WS events out to every member of a
+// channel. Used by edit/delete endpoints where we push a full snapshot of the
+// mutated message rather than a PushMsgPayload.
+type MessageEventBroadcaster interface {
+	BroadcastToMembers(channelID int64, eventType MessageEventType, payload any)
+}
+
 // MessageRouteOpts bundles the optional dependency hooks. All hooks are
 // nil-safe — pass a zero MessageRouteOpts to disable every side-channel (the
 // integration test does this; production wires both).
@@ -36,6 +56,10 @@ type MessageRouteOpts struct {
 	// ReadSyncer pushes read_sync events to the caller's other devices on
 	// MarkRead. nil disables cross-device read sync.
 	ReadSyncer ReadSyncPusher
+	// Broadcaster fans msg_updated / msg_deleted events out to channel
+	// members. nil disables edit/revoke broadcasts (endpoints still return
+	// success; clients fall back to sync).
+	Broadcaster MessageEventBroadcaster
 	// Logger is used for non-fatal background errors (push fan-out failures,
 	// route-level 500 detail). nil falls back to slog.Default().
 	Logger *slog.Logger
