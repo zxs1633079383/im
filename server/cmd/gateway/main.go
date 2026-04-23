@@ -96,7 +96,6 @@ func run() int {
 
 	favoriteHandler := handler.NewFavoriteHandler(favoriteRepo, log)
 	fileHandler := handler.NewFileHandler(fileRepo, cfg.Gateway.UploadDir, log)
-	syncHandler := handler.NewSyncHandler(channelRepo, messageRepo, log)
 
 	// Redis connection for routing.
 	redisCtx, redisCancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -145,9 +144,6 @@ func run() int {
 	mux.Handle("POST /api/files", jwtMiddleware(http.HandlerFunc(fileHandler.Upload)))
 	mux.Handle("GET /api/files/{id}", jwtMiddleware(http.HandlerFunc(fileHandler.Download)))
 	mux.Handle("GET /api/messages/{id}/attachments", jwtMiddleware(http.HandlerFunc(fileHandler.ListAttachments)))
-
-	// Sync route (JWT protected)
-	mux.Handle("POST /api/sync", jwtMiddleware(http.HandlerFunc(syncHandler.Sync)))
 
 	// Search route (JWT protected). SearchRepo satisfies all three handler
 	// search interfaces; pass it three times.
@@ -202,6 +198,12 @@ func run() int {
 		ReadSyncer: &hubReadSyncer{hub: hub},
 		Logger:     log,
 	})
+
+	// Phase 7.5 cut-over: batch incremental sync. No real-time hooks — sync is
+	// pure pull, the algorithm + response shape are preserved verbatim from
+	// the legacy SyncHandler.
+	syncSvc := service.NewSyncService(channelRepo, messageRepo)
+	imhttp.RegisterSyncRoutes(authedAPI, syncSvc, log)
 
 	srv := &http.Server{
 		Addr:         cfg.Gateway.HTTPAddr,
