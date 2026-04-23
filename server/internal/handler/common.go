@@ -51,3 +51,17 @@ func pathID(r *http.Request, key string) (int64, bool) {
 	id, err := strconv.ParseInt(s, 10, 64)
 	return id, err == nil
 }
+
+// parseIntParam parses a query parameter string as int64, returning def on
+// empty or invalid input. Promoted from the legacy message.go before the
+// Phase 7.4 cut-over removed that file — search.go still references it.
+func parseIntParam(s string, def int64) int64 {
+	if s == "" {
+		return def
+	}
+	v, err := strconv.ParseInt(s, 10, 64)
+	if err != nil {
+		return def
+	}
+	return v
+}

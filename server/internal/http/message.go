@@ -1,0 +1,303 @@
+package http
+
+import (
+	"context"
+	"errors"
+	"log/slog"
+	"strconv"
+
+	"github.com/gin-gonic/gin"
+
+	"im-server/internal/repo"
+	"im-server/internal/service"
+)
+
+// MessagePusher pushes a message to an online user via the gateway hub.
+// Mirrors handler.MessagePusher exactly so the existing
+// hubMessagePusher adapter in cmd/gateway/main.go works unchanged.
+type MessagePusher interface {
+	PushMessage(userID int64, msg *repo.Message)
+}
+
+// ReadSyncPusher pushes read-receipt sync events to other devices of the same
+// user. Mirrors handler.ReadSyncPusher.
+type ReadSyncPusher interface {
+	PushReadSync(userID int64, channelID int64, readSeq int64)
+}
+
+// MessageRouteOpts bundles the optional dependency hooks. All hooks are
+// nil-safe — pass a zero MessageRouteOpts to disable every side-channel (the
+// integration test does this; production wires both).
+type MessageRouteOpts struct {
+	// Pusher fans out new messages to online channel members. Member listing
+	// goes through MessageService.ListMembers (the service already owns its
+	// channel store).
+	Pusher MessagePusher
+	// ReadSyncer pushes read_sync events to the caller's other devices on
+	// MarkRead. nil disables cross-device read sync.
+	ReadSyncer ReadSyncPusher
+	// Logger is used for non-fatal background errors (push fan-out failures,
+	// route-level 500 detail). nil falls back to slog.Default().
+	Logger *slog.Logger
+}
+
+// sendMessageReq mirrors the legacy handler's body shape exactly so existing
+// clients continue to work after the cut-over.
+type sendMessageReq struct {
+	Content     string  `json:"content"`
+	ClientMsgID string  `json:"client_msg_id"`
+	MsgType     int16   `json:"msg_type"`
+	VisibleTo   []int64 `json:"visible_to"`
+	ReplyTo     *int64  `json:"reply_to"`
+	FileIDs     []int64 `json:"file_ids"`
+}
+
+// fetchMessagesResp wraps the slice in a {"messages": [...]} envelope to match
+// the legacy handler's response shape.
+type fetchMessagesResp struct {
+	Messages []repo.Message `json:"messages"`
+}
+
+// forwardMessageReq matches the legacy handler's body shape.
+type forwardMessageReq struct {
+	MessageID        int64   `json:"message_id"`
+	TargetChannelIDs []int64 `json:"target_channel_ids"`
+}
+
+// RegisterMessageRoutes wires the four message endpoints onto authed. authed
+// must already have JWT middleware applied (see RegisterProfileRoutes for the
+// contract).
+//
+// opts.Pusher / opts.ReadSyncer are optional — pass a zero MessageRouteOpts to
+// disable all real-time side-channels (tests do this). Production wires both
+// hub-backed implementations from cmd/gateway/main.go.
+func RegisterMessageRoutes(authed *gin.RouterGroup, svc *service.MessageService, opts MessageRouteOpts) {
+	log := opts.Logger
+	if log == nil {
+		log = slog.Default()
+	}
+
+	// POST /api/channels/:id/messages — send a new message.
+	authed.POST("/channels/:id/messages", func(c *gin.Context) {
+		uid, ok := userIDFromCtx(c)
+		if !ok {
+			return
+		}
+		channelID, ok := pathInt64(c, "id")
+		if !ok {
+			return
+		}
+		var in sendMessageReq
+		if err := c.ShouldBindJSON(&in); err != nil {
+			c.JSON(400, gin.H{"error": "invalid JSON"})
+			return
+		}
+		if in.Content == "" {
+			c.JSON(422, gin.H{"error": "content is required"})
+			return
+		}
+
+		msg, err := svc.SendMessage(c.Request.Context(), service.SendParams{
+			ChannelID:   channelID,
+			SenderID:    uid,
+			Content:     in.Content,
+			MsgType:     in.MsgType,
+			ClientMsgID: in.ClientMsgID,
+			VisibleTo:   in.VisibleTo,
+			ReplyTo:     in.ReplyTo,
+			FileIDs:     in.FileIDs,
+		})
+		switch {
+		case errors.Is(err, service.ErrNotMember):
+			c.JSON(403, gin.H{"error": "not a member of this channel"})
+			return
+		case err != nil:
+			log.Error("send message", "error", err, "channel_id", channelID, "user_id", uid)
+			c.JSON(500, gin.H{"error": "internal error"})
+			return
+		}
+
+		// Push to online channel members via WebSocket (non-blocking,
+		// best-effort — same goroutine pattern as the legacy handler).
+		// Use context.Background() because the request context will be
+		// cancelled as soon as the response is written; the goroutine
+		// continues independently.
+		if opts.Pusher != nil {
+			go pushToMembers(context.Background(), svc, opts.Pusher, msg, log)
+		}
+
+		c.JSON(201, msg)
+	})
+
+	// GET /api/channels/:id/messages — fetch messages with paging.
+	// Exactly one of after_seq, before_seq, around_seq may be provided;
+	// missing → default "latest N" path.
+	authed.GET("/channels/:id/messages", func(c *gin.Context) {
+		uid, ok := userIDFromCtx(c)
+		if !ok {
+			return
+		}
+		channelID, ok := pathInt64(c, "id")
+		if !ok {
+			return
+		}
+
+		limit := parseLimit(c.Query("limit"))
+
+		var (
+			msgs []repo.Message
+			err  error
+			ctx  = c.Request.Context()
+		)
+		switch {
+		case c.Query("after_seq") != "":
+			afterSeq := parseInt64(c.Query("after_seq"), 0)
+			msgs, err = svc.FetchAfter(ctx, channelID, uid, afterSeq, limit)
+		case c.Query("before_seq") != "":
+			beforeSeq := parseInt64(c.Query("before_seq"), 0)
+			msgs, err = svc.FetchMessages(ctx, channelID, uid, beforeSeq, limit)
+		case c.Query("around_seq") != "":
+			aroundSeq := parseInt64(c.Query("around_seq"), 0)
+			msgs, err = svc.FetchAround(ctx, channelID, uid, aroundSeq, limit)
+		default:
+			// Default: latest `limit` messages (before seq=MaxInt64-ish).
+			msgs, err = svc.FetchMessages(ctx, channelID, uid, 1<<62, limit)
+		}
+
+		switch {
+		case errors.Is(err, service.ErrNotMember):
+			c.JSON(403, gin.H{"error": "not a member of this channel"})
+			return
+		case err != nil:
+			log.Error("fetch messages", "error", err, "channel_id", channelID, "user_id", uid)
+			c.JSON(500, gin.H{"error": "internal error"})
+			return
+		}
+		if msgs == nil {
+			msgs = []repo.Message{}
+		}
+		c.JSON(200, fetchMessagesResp{Messages: msgs})
+	})
+
+	// POST /api/channels/:id/read — mark caller's last_read_seq to current seq.
+	authed.POST("/channels/:id/read", func(c *gin.Context) {
+		uid, ok := userIDFromCtx(c)
+		if !ok {
+			return
+		}
+		channelID, ok := pathInt64(c, "id")
+		if !ok {
+			return
+		}
+
+		seq, err := svc.MarkRead(c.Request.Context(), channelID, uid)
+		switch {
+		case errors.Is(err, service.ErrNotMember):
+			c.JSON(403, gin.H{"error": "not a member of this channel"})
+			return
+		case errors.Is(err, repo.ErrNotFound):
+			c.JSON(404, gin.H{"error": "channel not found"})
+			return
+		case err != nil:
+			log.Error("mark read", "error", err, "channel_id", channelID, "user_id", uid)
+			c.JSON(500, gin.H{"error": "internal error"})
+			return
+		}
+
+		if opts.ReadSyncer != nil {
+			opts.ReadSyncer.PushReadSync(uid, channelID, seq)
+		}
+		c.JSON(200, gin.H{"seq": seq})
+	})
+
+	// POST /api/messages/forward — copy a source message into N target channels.
+	authed.POST("/messages/forward", func(c *gin.Context) {
+		uid, ok := userIDFromCtx(c)
+		if !ok {
+			return
+		}
+		var in forwardMessageReq
+		if err := c.ShouldBindJSON(&in); err != nil {
+			c.JSON(400, gin.H{"error": "invalid JSON"})
+			return
+		}
+		if in.MessageID == 0 {
+			c.JSON(422, gin.H{"error": "message_id is required"})
+			return
+		}
+		if len(in.TargetChannelIDs) == 0 {
+			c.JSON(422, gin.H{"error": "target_channel_ids must not be empty"})
+			return
+		}
+		if len(in.TargetChannelIDs) > 10 {
+			c.JSON(422, gin.H{"error": "at most 10 target channels allowed"})
+			return
+		}
+
+		forwarded, err := svc.ForwardMessages(c.Request.Context(), uid, service.ForwardParams{
+			MessageID:        in.MessageID,
+			TargetChannelIDs: in.TargetChannelIDs,
+		})
+		switch {
+		case errors.Is(err, service.ErrSourceNotFound):
+			c.JSON(404, gin.H{"error": "source message not found"})
+			return
+		case errors.Is(err, service.ErrSourceNotMember):
+			c.JSON(403, gin.H{"error": "not a member of the source channel"})
+			return
+		case err != nil:
+			log.Error("forward messages", "error", err, "user_id", uid)
+			c.JSON(500, gin.H{"error": "internal error"})
+			return
+		}
+		c.JSON(201, gin.H{"messages": forwarded})
+	})
+}
+
+// pushToMembers fans out a push notification to all online channel members.
+// Directed messages get a phantom for non-visible users — same semantics as
+// the legacy handler.pushToMembers.
+func pushToMembers(ctx context.Context, svc *service.MessageService, pusher MessagePusher, msg *repo.Message, log *slog.Logger) {
+	members, err := svc.ListMembers(ctx, msg.ChannelID)
+	if err != nil {
+		log.Error("list members for push", "channel_id", msg.ChannelID, "error", err)
+		return
+	}
+	for _, m := range members {
+		pushMsg := msg
+		if msg.VisibleTo != nil && !msg.IsVisibleTo(m.UserID) {
+			pushMsg = &repo.Message{
+				ChannelID: msg.ChannelID,
+				Seq:       msg.Seq,
+				MsgType:   repo.MsgTypePhantom,
+				CreatedAt: msg.CreatedAt,
+			}
+		}
+		pusher.PushMessage(m.UserID, pushMsg)
+	}
+}
+
+// parseLimit returns the messages-per-page limit from the query string,
+// clamping to [1, 100] with a default of 50 to match the legacy handler.
+func parseLimit(s string) int {
+	v := parseInt64(s, 50)
+	if v > 100 {
+		v = 100
+	}
+	if v < 1 {
+		v = 1
+	}
+	return int(v)
+}
+
+// parseInt64 parses s as int64, returning def on empty or invalid input.
+func parseInt64(s string, def int64) int64 {
+	if s == "" {
+		return def
+	}
+	v, err := strconv.ParseInt(s, 10, 64)
+	if err != nil {
+		return def
+	}
+	return v
+}

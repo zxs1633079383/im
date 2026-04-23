@@ -94,7 +94,6 @@ func run() int {
 
 	jwtMiddleware := middleware.JWTAuth(cfg.Gateway.JWTSecret)
 
-	messageHandler := handler.NewMessageHandler(messageRepo, channelRepo, log)
 	favoriteHandler := handler.NewFavoriteHandler(favoriteRepo, log)
 	fileHandler := handler.NewFileHandler(fileRepo, cfg.Gateway.UploadDir, log)
 	syncHandler := handler.NewSyncHandler(channelRepo, messageRepo, log)
@@ -110,9 +109,6 @@ func run() int {
 
 	// Hub and routing.
 	hub := gateway.NewHub()
-	messageHandler.WithReadSyncer(&hubReadSyncer{hub: hub})
-	messageHandler.WithAttachments(fileRepo)
-	messageHandler.WithPusher(channelRepo, &hubMessagePusher{hub: hub})
 	routing := gateway.NewRouting(rdb, gatewayID)
 
 	// Pulsar client.
@@ -138,14 +134,7 @@ func run() int {
 	// Profile + Settings routes are served by Gin in Phase 7.1 (see below).
 	// Friend + user-search routes are served by Gin in Phase 7.2 (see below).
 	// Channel routes are served by Gin in Phase 7.3 (see below).
-
-	// Message routes (JWT protected)
-	mux.Handle("POST /api/channels/{id}/messages", jwtMiddleware(http.HandlerFunc(messageHandler.SendMessage)))
-	mux.Handle("GET /api/channels/{id}/messages", jwtMiddleware(http.HandlerFunc(messageHandler.FetchMessages)))
-	mux.Handle("POST /api/channels/{id}/read", jwtMiddleware(http.HandlerFunc(messageHandler.MarkRead)))
-
-	// Forward route (JWT protected)
-	mux.Handle("POST /api/messages/forward", jwtMiddleware(http.HandlerFunc(messageHandler.ForwardMessages)))
+	// Message + forward routes are served by Gin in Phase 7.4 (see below).
 
 	// Favorite routes (JWT protected)
 	mux.Handle("POST /api/favorites/{message_id}", jwtMiddleware(http.HandlerFunc(favoriteHandler.AddFavorite)))
@@ -203,6 +192,17 @@ func run() int {
 	channelSvc := service.NewChannelService(channelRepo, userRepo)
 	imhttp.RegisterChannelRoutes(authedAPI, channelSvc, &hubChannelEventPusher{hub: hub})
 
+	// Phase 7.4 cut-over: message endpoints. All three legacy hooks are
+	// preserved — Pusher fans new messages out to online members, ReadSyncer
+	// echoes read receipts to other devices of the same user, and the file
+	// repo handles attachment linkage on send.
+	messageSvc := service.NewMessageService(messageRepo, channelRepo, fileRepo)
+	imhttp.RegisterMessageRoutes(authedAPI, messageSvc, imhttp.MessageRouteOpts{
+		Pusher:     &hubMessagePusher{hub: hub},
+		ReadSyncer: &hubReadSyncer{hub: hub},
+		Logger:     log,
+	})
+
 	srv := &http.Server{
 		Addr:         cfg.Gateway.HTTPAddr,
 		Handler:      engine,
@@ -247,12 +247,12 @@ func run() int {
 	return 0
 }
 
-// hubMessagePusher adapts *gateway.Hub to handler.MessagePusher.
+// hubMessagePusher adapts *gateway.Hub to imhttp.MessagePusher.
 type hubMessagePusher struct {
 	hub *gateway.Hub
 }
 
-func (p *hubMessagePusher) PushMessage(userID int64, msg *repo.Message) { //nolint:unused
+func (p *hubMessagePusher) PushMessage(userID int64, msg *repo.Message) {
 	payload := gateway.PushMsgPayload{
 		PushID:    fmt.Sprintf("http-%d-%d", msg.ChannelID, msg.Seq),
 		ChannelID: msg.ChannelID,
@@ -267,7 +267,7 @@ func (p *hubMessagePusher) PushMessage(userID int64, msg *repo.Message) { //noli
 	p.hub.PushToUser(userID, gateway.TypePushMsg, payload)
 }
 
-// hubReadSyncer adapts *gateway.Hub to handler.ReadSyncPusher.
+// hubReadSyncer adapts *gateway.Hub to imhttp.ReadSyncPusher.
 type hubReadSyncer struct {
 	hub *gateway.Hub
 }
