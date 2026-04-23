@@ -62,6 +62,7 @@ type v5env struct {
 	broadcasts  *BroadcastRecorder
 	friendPush  *FriendRecorder
 	channelPush *ChannelRecorder
+	userPush    *UserPushRecorder
 }
 
 // newV5Env builds a fresh V5 environment. Every test gets its own DB (one
@@ -90,6 +91,7 @@ func newV5Env(t *testing.T) *v5env {
 	broadcasts := &BroadcastRecorder{}
 	friendPush := &FriendRecorder{}
 	channelPush := &ChannelRecorder{}
+	userPush := &UserPushRecorder{}
 
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
@@ -118,6 +120,11 @@ func newV5Env(t *testing.T) *v5env {
 	imhttp.RegisterUrgentRoutes(authed,
 		service.NewUrgentService(urgentRepo, messages, channels, msgSvc, governanceSvc),
 		broadcasts,
+	)
+	approvalRepo := repo.NewApprovalRepo(db)
+	imhttp.RegisterApprovalRoutes(authed,
+		service.NewApprovalService(approvalRepo, channels, governanceSvc),
+		userPush,
 	)
 	imhttp.RegisterMessageRoutes(authed, msgSvc,
 		imhttp.MessageRouteOpts{
@@ -151,6 +158,7 @@ func newV5Env(t *testing.T) *v5env {
 		broadcasts:  broadcasts,
 		friendPush:  friendPush,
 		channelPush: channelPush,
+		userPush:    userPush,
 	}
 }
 
@@ -492,4 +500,43 @@ func (r *ChannelRecorder) Snapshot() []ChannelEvent {
 	out := make([]ChannelEvent, len(r.events))
 	copy(out, r.events)
 	return out
+}
+
+// UserPushRecorder captures UserEventPusher.PushToUser calls. Used by the M2-D
+// (approval) and M2-E (notification) tests to verify per-user fan-out.
+type UserPushRecorder struct {
+	mu     sync.Mutex
+	events []UserPushEvent
+}
+
+// UserPushEvent is a single captured PushToUser invocation.
+type UserPushEvent struct {
+	UserID    int64
+	EventType imhttp.MessageEventType
+	Payload   any
+}
+
+// PushToUser satisfies imhttp.UserEventPusher.
+func (r *UserPushRecorder) PushToUser(userID int64, eventType imhttp.MessageEventType, payload any) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.events = append(r.events, UserPushEvent{
+		UserID: userID, EventType: eventType, Payload: payload,
+	})
+}
+
+// Snapshot returns a copy of every user push event so far.
+func (r *UserPushRecorder) Snapshot() []UserPushEvent {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make([]UserPushEvent, len(r.events))
+	copy(out, r.events)
+	return out
+}
+
+// Reset clears every recorded event.
+func (r *UserPushRecorder) Reset() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.events = nil
 }
