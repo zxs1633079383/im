@@ -41,6 +41,9 @@ func NewChannelGovernanceService(
 func (s *ChannelGovernanceService) PatchChannel(
 	ctx context.Context, channelID, callerID int64, p PatchChannelFields,
 ) (*repo.Channel, error) {
+	ctx, span := tracer.Start(ctx, "ChannelGovernanceService.PatchChannel")
+	defer span.End()
+
 	if err := s.requireManagerOrOwner(ctx, channelID, callerID); err != nil {
 		return nil, err
 	}
@@ -55,6 +58,9 @@ func (s *ChannelGovernanceService) PatchChannel(
 func (s *ChannelGovernanceService) AddManager(
 	ctx context.Context, channelID, callerID, targetID int64,
 ) error {
+	ctx, span := tracer.Start(ctx, "ChannelGovernanceService.AddManager")
+	defer span.End()
+
 	if err := s.requireOwner(ctx, channelID, callerID); err != nil {
 		return err
 	}
@@ -93,6 +99,9 @@ func (s *ChannelGovernanceService) ListManagers(
 func (s *ChannelGovernanceService) PinMessage(
 	ctx context.Context, channelID, callerID, msgID int64,
 ) error {
+	ctx, span := tracer.Start(ctx, "ChannelGovernanceService.PinMessage")
+	defer span.End()
+
 	if err := s.requireManagerOrOwner(ctx, channelID, callerID); err != nil {
 		return err
 	}
