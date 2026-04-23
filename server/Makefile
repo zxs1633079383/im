@@ -56,3 +56,30 @@ check-full: lint vuln test-unit test-integration
 mocks:
 	@which mockery > /dev/null || GOTOOLCHAIN=go1.26.2 go install github.com/vektra/mockery/v2@v2.50.0
 	@grep -q "^packages:" .mockery.yaml 2>/dev/null && mockery || echo "no packages registered yet — skip"
+
+# -----------------------------------------------------------------------------
+# Tiered verification (OVERALL.md §5.1):
+#   V1 = build + lint   (fast, no infra)
+#   V2 = race-enabled unit tests (no infra)
+#   V3 = integration tests (requires docker-compose: pg + redis + pulsar)
+#
+# `make verify-all` runs V1 + V2. V3 is opt-in via `make verify-integration`.
+# -----------------------------------------------------------------------------
+.PHONY: verify-all verify-build verify-unit verify-integration
+
+verify-all: verify-build verify-unit
+	@echo "V1 + V2 GREEN. integration/smoke/cluster require a running docker-compose."
+
+verify-build:
+	@echo "==> V1 build + lint"
+	go build ./...
+	go vet ./...
+	@command -v golangci-lint >/dev/null 2>&1 && golangci-lint run || echo "(golangci-lint not installed, skipped)"
+
+verify-unit:
+	@echo "==> V2 unit tests"
+	go test -race -short ./...
+
+verify-integration:
+	@echo "==> V3 integration (requires docker-compose running pg+redis+pulsar)"
+	go test -race -tags=integration -timeout 120s ./...
