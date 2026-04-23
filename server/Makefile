@@ -20,10 +20,39 @@ migrate-down:
 migrate-create:
 	migrate create -ext sql -dir migrations -seq $(name)
 
-test:
-	go test ./... -v -count=1
+.PHONY: test test-unit test-cover
+test: test-unit
 
-test-short:
-	go test ./... -v -short -count=1
+test-unit:
+	gotestsum --format pkgname -- -race -short -timeout 60s ./...
+
+test-cover:
+	gotestsum --format pkgname -- -race -short -coverprofile=coverage.out -covermode=atomic ./...
+	go tool cover -html=coverage.out -o coverage.html
+	@echo "Coverage report: coverage.html"
 
 .DEFAULT_GOAL := build-all
+
+.PHONY: lint
+lint:
+	@which golangci-lint > /dev/null || (echo "install: brew install golangci-lint" && exit 1)
+	golangci-lint run ./...
+
+.PHONY: vuln check
+vuln:
+	@which govulncheck > /dev/null || go install golang.org/x/vuln/cmd/govulncheck@latest
+	govulncheck ./...
+
+.PHONY: test-integration
+test-integration:
+	gotestsum --format pkgname -- -race -tags=integration -timeout 5m ./...
+
+check: lint vuln test-unit
+
+.PHONY: check-full
+check-full: lint vuln test-unit test-integration
+
+.PHONY: mocks
+mocks:
+	@which mockery > /dev/null || GOTOOLCHAIN=go1.26.2 go install github.com/vektra/mockery/v2@v2.50.0
+	@grep -q "^packages:" .mockery.yaml 2>/dev/null && mockery || echo "no packages registered yet — skip"

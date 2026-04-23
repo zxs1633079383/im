@@ -3,3 +3,7 @@ bin/
 /message
 /sync
 *.test
+
+# Test coverage
+coverage.out
+coverage.html

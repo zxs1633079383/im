@@ -12,11 +12,14 @@ import (
 
 	"im-server/internal/config"
 	"im-server/internal/gateway"
-	"im-server/internal/handler"
+	imhttp "im-server/internal/http"
 	"im-server/internal/middleware"
-	"im-server/internal/model"
+	"im-server/internal/observability"
 	imPulsar "im-server/internal/pulsar"
-	"im-server/internal/store"
+	"im-server/internal/repo"
+	"im-server/internal/service"
+
+	"github.com/gin-gonic/gin"
 )
 
 func main() {
@@ -25,7 +28,24 @@ func main() {
 }
 
 func run() int {
-	log := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	baseHandler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})
+	log := slog.New(observability.NewTraceHandler(baseHandler))
+	slog.SetDefault(log)
+
+	otelShutdown, err := observability.Init(context.Background(), observability.Config{
+		ServiceName:    "im-gateway",
+		ServiceVersion: "dev",
+		Disabled:       os.Getenv("OTEL_DISABLED") == "true",
+	})
+	if err != nil {
+		log.Error("otel init", "error", err)
+		return 1
+	}
+	defer func() {
+		shutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = otelShutdown(shutCtx)
+	}()
 
 	cfgPath := os.Getenv("IM_CONFIG")
 	if cfgPath == "" {
@@ -47,44 +67,33 @@ func run() int {
 	gatewayID := config.ResolveGatewayID(cfg)
 	log.Info("gateway id resolved", "gateway_id", gatewayID)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	pool, err := store.NewPGPool(ctx, cfg.PG.DSN, cfg.PG.MaxConns)
+	// Open the GORM-backed Postgres connection. The repo package owns the
+	// pool; we close the underlying *sql.DB on shutdown.
+	gormDB, err := repo.Open(repo.Config{DSN: cfg.PG.DSN, MaxOpen: cfg.PG.MaxConns})
 	if err != nil {
 		log.Error("connect to postgres", "error", err)
 		return 1
 	}
-	defer pool.Close()
+	defer func() {
+		if sqlDB, e := gormDB.DB(); e == nil {
+			_ = sqlDB.Close()
+		}
+	}()
 
-	userStore := store.NewUserStore(pool)
-	authHandler := handler.NewAuthHandler(userStore, cfg.Gateway.JWTSecret, log)
-	profileHandler := handler.NewProfileHandler(userStore, log)
-	settingsHandler := handler.NewSettingsHandler(userStore, log)
-	jwtMiddleware := middleware.JWTAuth(cfg.Gateway.JWTSecret)
-
-	friendStore := store.NewFriendshipStore(pool)
-	friendHandler := handler.NewFriendHandler(friendStore, userStore, log)
-	// Note: eventPusher wired below after hub creation.
-
-	channelStore := store.NewChannelStore(pool)
-	channelHandler := handler.NewChannelHandler(channelStore, userStore, log)
-	// Note: channelEventPusher wired below after hub creation.
-
-	messageStore := store.NewMessageStore(pool)
-	messageHandler := handler.NewMessageHandler(messageStore, channelStore, log)
-
-	favoriteStore := store.NewFavoriteStore(pool)
-	favoriteHandler := handler.NewFavoriteHandler(favoriteStore, log)
-
-	fileStore := store.NewFileStore(pool)
-	fileHandler := handler.NewFileHandler(fileStore, cfg.Gateway.UploadDir, log)
-
-	syncHandler := handler.NewSyncHandler(channelStore, messageStore, log)
+	// Construct repositories. UserSettingsRepo is split out from UserRepo
+	// in the new repo package (the legacy store.UserStore conflated both).
+	userRepo := repo.NewUserRepo(gormDB)
+	userSettingsRepo := repo.NewUserSettingsRepo(gormDB)
+	channelRepo := repo.NewChannelRepo(gormDB)
+	messageRepo := repo.NewMessageRepo(gormDB, channelRepo)
+	friendRepo := repo.NewFriendshipRepo(gormDB)
+	favoriteRepo := repo.NewFavoriteRepo(gormDB)
+	fileRepo := repo.NewFileRepo(gormDB)
+	searchRepo := repo.NewSearchRepo(gormDB)
 
 	// Redis connection for routing.
 	redisCtx, redisCancel := context.WithTimeout(context.Background(), 5*time.Second)
-	rdb, err := store.NewRedisClient(redisCtx, cfg.Redis.Addr, cfg.Redis.Password, cfg.Redis.DB)
+	rdb, err := repo.OpenRedis(redisCtx, cfg.Redis.Addr, cfg.Redis.Password, cfg.Redis.DB)
 	redisCancel()
 	if err != nil {
 		log.Error("connect to redis", "error", err)
@@ -93,11 +102,6 @@ func run() int {
 
 	// Hub and routing.
 	hub := gateway.NewHub()
-	messageHandler.WithReadSyncer(&hubReadSyncer{hub: hub})
-	messageHandler.WithAttachments(fileStore)
-	messageHandler.WithPusher(channelStore, &hubMessagePusher{hub: hub})
-	friendHandler.WithEventPusher(&hubFriendEventPusher{hub: hub})
-	channelHandler.WithEventPusher(&hubChannelEventPusher{hub: hub})
 	routing := gateway.NewRouting(rdb, gatewayID)
 
 	// Pulsar client.
@@ -111,83 +115,97 @@ func run() int {
 	// Push consumer subscribes to msg.push.{gatewayID}.
 	pushConsumer := gateway.NewPushConsumer(hub, gatewayID, log)
 
-	// WsHandler wires hub, routing, channelStore, and JWT secret together.
-	wsHandler := gateway.NewWsHandler(hub, routing, cfg.Gateway.JWTSecret, gatewayID, channelStore, log)
-	wsHandler.WithSendSupport(messageStore, channelStore)
+	// WsHandler wires hub, routing, channelRepo, and JWT secret together.
+	wsHandler := gateway.NewWsHandler(hub, routing, cfg.Gateway.JWTSecret, gatewayID, channelRepo, log)
+	wsHandler.WithSendSupport(messageRepo, channelRepo)
 
 	mux := http.NewServeMux()
 
 	// WebSocket route.
 	mux.Handle("GET /ws", wsHandler)
 
-	// Public auth routes
-	mux.HandleFunc("POST /api/auth/register", authHandler.Register)
-	mux.HandleFunc("POST /api/auth/login", authHandler.Login)
-
-	// Protected routes
-	mux.Handle("GET /api/auth/me", jwtMiddleware(http.HandlerFunc(authHandler.Me)))
-
-	// Profile route (JWT protected)
-	mux.Handle("PUT /api/users/me", jwtMiddleware(http.HandlerFunc(profileHandler.UpdateMe)))
-
-	// Settings routes (JWT protected)
-	mux.Handle("GET /api/settings", jwtMiddleware(http.HandlerFunc(settingsHandler.GetSettings)))
-	mux.Handle("PUT /api/settings", jwtMiddleware(http.HandlerFunc(settingsHandler.UpdateSettings)))
-
-	// Friend routes (JWT protected)
-	mux.Handle("POST /api/friends/request", jwtMiddleware(http.HandlerFunc(friendHandler.SendRequest)))
-	mux.Handle("POST /api/friends/accept", jwtMiddleware(http.HandlerFunc(friendHandler.AcceptRequest)))
-	mux.Handle("POST /api/friends/reject", jwtMiddleware(http.HandlerFunc(friendHandler.RejectRequest)))
-	mux.Handle("GET /api/friends", jwtMiddleware(http.HandlerFunc(friendHandler.ListFriends)))
-	mux.Handle("GET /api/friends/pending", jwtMiddleware(http.HandlerFunc(friendHandler.ListPending)))
-	mux.Handle("POST /api/friends/block", jwtMiddleware(http.HandlerFunc(friendHandler.Block)))
-
-	// User search route (JWT protected)
-	mux.Handle("GET /api/users/search", jwtMiddleware(http.HandlerFunc(friendHandler.SearchUsers)))
-
-	// Channel routes (JWT protected)
-	mux.Handle("POST /api/channels", jwtMiddleware(http.HandlerFunc(channelHandler.CreateGroup)))
-	mux.Handle("POST /api/channels/dm", jwtMiddleware(http.HandlerFunc(channelHandler.CreateOrGetDM)))
-	mux.Handle("GET /api/channels", jwtMiddleware(http.HandlerFunc(channelHandler.ListChannels)))
-	mux.Handle("GET /api/channels/{id}", jwtMiddleware(http.HandlerFunc(channelHandler.GetChannel)))
-	mux.Handle("PUT /api/channels/{id}", jwtMiddleware(http.HandlerFunc(channelHandler.UpdateChannel)))
-	mux.Handle("POST /api/channels/{id}/members", jwtMiddleware(http.HandlerFunc(channelHandler.AddMember)))
-	mux.Handle("DELETE /api/channels/{id}/members/{user_id}", jwtMiddleware(http.HandlerFunc(channelHandler.RemoveMember)))
-	mux.Handle("GET /api/channels/{id}/members", jwtMiddleware(http.HandlerFunc(channelHandler.ListMembers)))
-	mux.Handle("POST /api/channels/{id}/leave", jwtMiddleware(http.HandlerFunc(channelHandler.LeaveChannel)))
-
-	// Message routes (JWT protected)
-	mux.Handle("POST /api/channels/{id}/messages", jwtMiddleware(http.HandlerFunc(messageHandler.SendMessage)))
-	mux.Handle("GET /api/channels/{id}/messages", jwtMiddleware(http.HandlerFunc(messageHandler.FetchMessages)))
-	mux.Handle("POST /api/channels/{id}/read", jwtMiddleware(http.HandlerFunc(messageHandler.MarkRead)))
-
-	// Forward route (JWT protected)
-	mux.Handle("POST /api/messages/forward", jwtMiddleware(http.HandlerFunc(messageHandler.ForwardMessages)))
-
-	// Favorite routes (JWT protected)
-	mux.Handle("POST /api/favorites/{message_id}", jwtMiddleware(http.HandlerFunc(favoriteHandler.AddFavorite)))
-	mux.Handle("DELETE /api/favorites/{message_id}", jwtMiddleware(http.HandlerFunc(favoriteHandler.RemoveFavorite)))
-	mux.Handle("GET /api/favorites", jwtMiddleware(http.HandlerFunc(favoriteHandler.ListFavorites)))
-
-	// File routes (JWT protected)
-	mux.Handle("POST /api/files", jwtMiddleware(http.HandlerFunc(fileHandler.Upload)))
-	mux.Handle("GET /api/files/{id}", jwtMiddleware(http.HandlerFunc(fileHandler.Download)))
-	mux.Handle("GET /api/messages/{id}/attachments", jwtMiddleware(http.HandlerFunc(fileHandler.ListAttachments)))
-
-	// Sync route (JWT protected)
-	mux.Handle("POST /api/sync", jwtMiddleware(http.HandlerFunc(syncHandler.Sync)))
-
-	// Search route (JWT protected)
-	searchStore := store.NewSearchStore(pool)
-	searchHandler := handler.NewSearchHandler(searchStore, searchStore, searchStore, log)
-	mux.Handle("GET /api/search", jwtMiddleware(http.HandlerFunc(searchHandler.Search)))
+	// All HTTP API endpoints are now served by Gin (Phase 6 + Phase 7.1–7.8).
+	// Profile + Settings: Phase 7.1. Friend + user-search: Phase 7.2.
+	// Channel: Phase 7.3. Message + forward: Phase 7.4. Sync: Phase 7.5.
+	// Search: Phase 7.6. File: Phase 7.7. Favorites: Phase 7.8.
+	// The legacy mux retains only the WebSocket route.
 
 	// CORS middleware for development
 	corsHandler := corsMiddleware(mux)
 
+	// Wrap the legacy mux (with CORS) in a Gin engine that adds /healthz, /readyz,
+	// otelgin tracing, and acts as the entry point for new Gin-native handlers
+	// added in Phase 6+. Unmatched routes fall through to corsHandler -> mux.
+	engine := imhttp.New(imhttp.Config{
+		ServiceName: "im-gateway",
+		Legacy:      corsHandler,
+		Mode:        gin.ReleaseMode,
+	})
+
+	// Phase 6 cut-over: auth endpoints now run on Gin, in front of the legacy
+	// mux fallthrough. /api/auth/{register,login,me} are served by Gin.
+	authSvc := service.NewAuthService(userRepo, cfg.Gateway.JWTSecret)
+	imhttp.RegisterAuthRoutes(engine, authSvc, userRepo, cfg.Gateway.JWTSecret)
+
+	// Phase 7.1 cut-over: profile + settings endpoints. These share a single
+	// JWT-protected /api group so the middleware is constructed once.
+	profileSvc := service.NewProfileService(userRepo)
+	settingsSvc := service.NewSettingsService(userSettingsRepo)
+	authedAPI := engine.Group("/api")
+	authedAPI.Use(middleware.JWTGin(cfg.Gateway.JWTSecret))
+	imhttp.RegisterProfileRoutes(authedAPI, profileSvc)
+	imhttp.RegisterSettingsRoutes(authedAPI, settingsSvc)
+
+	// Phase 7.2 cut-over: friend + user-search endpoints. The pusher hook is
+	// preserved (legacy WithEventPusher) so the addressee still receives a
+	// real-time WebSocket notification on a new friend request.
+	friendSvc := service.NewFriendService(friendRepo, userRepo)
+	imhttp.RegisterFriendRoutes(authedAPI, friendSvc, &hubFriendEventPusher{hub: hub})
+
+	// Phase 7.3 cut-over: channel endpoints. The pusher hook is preserved
+	// (legacy WithEventPusher) so newly added members still receive a
+	// real-time WebSocket "added" event.
+	channelSvc := service.NewChannelService(channelRepo, userRepo)
+	imhttp.RegisterChannelRoutes(authedAPI, channelSvc, &hubChannelEventPusher{hub: hub})
+
+	// Phase 7.4 cut-over: message endpoints. All three legacy hooks are
+	// preserved — Pusher fans new messages out to online members, ReadSyncer
+	// echoes read receipts to other devices of the same user, and the file
+	// repo handles attachment linkage on send.
+	messageSvc := service.NewMessageService(messageRepo, channelRepo, fileRepo)
+	imhttp.RegisterMessageRoutes(authedAPI, messageSvc, imhttp.MessageRouteOpts{
+		Pusher:     &hubMessagePusher{hub: hub},
+		ReadSyncer: &hubReadSyncer{hub: hub},
+		Logger:     log,
+	})
+
+	// Phase 7.5 cut-over: batch incremental sync. No real-time hooks — sync is
+	// pure pull, the algorithm + response shape are preserved verbatim from
+	// the legacy SyncHandler.
+	syncSvc := service.NewSyncService(channelRepo, messageRepo)
+	imhttp.RegisterSyncRoutes(authedAPI, syncSvc, log)
+
+	// Phase 7.6 cut-over: multi-type search (messages/users/channels). No
+	// real-time hooks — search is pure read, the per-type fan-out + response
+	// shape are preserved verbatim from the legacy SearchHandler.
+	searchSvc := service.NewSearchService(searchRepo)
+	imhttp.RegisterSearchRoutes(authedAPI, searchSvc, log)
+
+	// Phase 7.7 cut-over: file upload/download/list-attachments. The service
+	// owns disk writes (uploadDir layout preserved verbatim) and metadata
+	// inserts. No real-time hooks — file routes are pure CRUD over storage.
+	fileSvc := service.NewFileService(fileRepo, cfg.Gateway.UploadDir)
+	imhttp.RegisterFileRoutes(authedAPI, fileSvc, log)
+
+	// Phase 7.8 cut-over: favorites add/remove/list. With this slice the
+	// internal/handler package is fully retired — every HTTP API endpoint
+	// now runs on Gin.
+	favoriteSvc := service.NewFavoriteService(favoriteRepo)
+	imhttp.RegisterFavoriteRoutes(authedAPI, favoriteSvc)
+
 	srv := &http.Server{
 		Addr:         cfg.Gateway.HTTPAddr,
-		Handler:      corsHandler,
+		Handler:      engine,
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  60 * time.Second,
@@ -229,12 +247,12 @@ func run() int {
 	return 0
 }
 
-// hubMessagePusher adapts *gateway.Hub to handler.MessagePusher.
+// hubMessagePusher adapts *gateway.Hub to imhttp.MessagePusher.
 type hubMessagePusher struct {
 	hub *gateway.Hub
 }
 
-func (p *hubMessagePusher) PushMessage(userID int64, msg *model.Message) { //nolint:unused
+func (p *hubMessagePusher) PushMessage(userID int64, msg *repo.Message) {
 	payload := gateway.PushMsgPayload{
 		PushID:    fmt.Sprintf("http-%d-%d", msg.ChannelID, msg.Seq),
 		ChannelID: msg.ChannelID,
@@ -242,14 +260,14 @@ func (p *hubMessagePusher) PushMessage(userID int64, msg *model.Message) { //nol
 		ServerID:  msg.ID,
 		SenderID:  msg.SenderID,
 		Content:   msg.Content,
-		MsgType:   int16(msg.MsgType),
-		VisibleTo: msg.VisibleTo,
+		MsgType:   msg.MsgType,
+		VisibleTo: []int64(msg.VisibleTo),
 		CreatedAt: msg.CreatedAt,
 	}
 	p.hub.PushToUser(userID, gateway.TypePushMsg, payload)
 }
 
-// hubReadSyncer adapts *gateway.Hub to handler.ReadSyncPusher.
+// hubReadSyncer adapts *gateway.Hub to imhttp.ReadSyncPusher.
 type hubReadSyncer struct {
 	hub *gateway.Hub
 }
@@ -261,7 +279,7 @@ func (s *hubReadSyncer) PushReadSync(userID, channelID, readSeq int64) {
 	})
 }
 
-// hubFriendEventPusher adapts *gateway.Hub to handler.FriendEventPusher.
+// hubFriendEventPusher adapts *gateway.Hub to imhttp.FriendEventPusher.
 type hubFriendEventPusher struct {
 	hub *gateway.Hub
 }
@@ -273,7 +291,7 @@ func (p *hubFriendEventPusher) PushFriendEvent(targetUserID int64, eventType str
 	})
 }
 
-// hubChannelEventPusher adapts *gateway.Hub to handler.ChannelEventPusher.
+// hubChannelEventPusher adapts *gateway.Hub to imhttp.ChannelEventPusher.
 type hubChannelEventPusher struct {
 	hub *gateway.Hub
 }
