@@ -10,9 +10,16 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/lib/pq"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"im-server/internal/auth"
 	"im-server/internal/repo"
 )
+
+// wsTracer is the OpenTelemetry tracer for WS frame dispatch spans.
+// Each non-heartbeat frame handler opens a span rooted at this tracer.
+var wsTracer = otel.Tracer("im-gateway/ws")
 
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
@@ -165,12 +172,7 @@ func (h *WsHandler) readPump(conn *Conn) {
 			// Treat ping as liveness proof — refresh lastPong.
 			conn.lastPong = time.Now()
 		case TypePushACK:
-			var ack PushACKPayload
-			if err := json.Unmarshal(frame.Payload, &ack); err == nil {
-				h.log.Debug("push_ack received", "push_id", ack.PushID)
-				// Notify push consumer waiting on this push_id.
-				globalACKRegistry.resolve(ack.PushID)
-			}
+			h.handlePushACK(conn, frame.Payload)
 		case TypeSend:
 			h.handleSend(conn, frame.Payload)
 		default:
@@ -179,8 +181,40 @@ func (h *WsHandler) readPump(conn *Conn) {
 	}
 }
 
+// handlePushACK processes a TypePushACK frame: resolves any pending push waiter.
+// Wrapped in an OTel span so client ACK delivery is observable end-to-end.
+func (h *WsHandler) handlePushACK(conn *Conn, payload json.RawMessage) {
+	_, span := wsTracer.Start(context.Background(), "ws.push_ack",
+		trace.WithSpanKind(trace.SpanKindServer),
+		trace.WithAttributes(
+			attribute.Int64("user_id", conn.UserID),
+			attribute.String("device_id", conn.DeviceID),
+		))
+	defer span.End()
+
+	var ack PushACKPayload
+	if err := json.Unmarshal(payload, &ack); err != nil {
+		span.RecordError(err)
+		return
+	}
+	span.SetAttributes(attribute.String("push_id", ack.PushID))
+	h.log.Debug("push_ack received", "push_id", ack.PushID)
+	// Notify push consumer waiting on this push_id.
+	globalACKRegistry.resolve(ack.PushID)
+}
+
 // handleSend processes a TypeSend frame: persists the message and pushes to channel members.
+// The handler opens an OTel span (root for this WS frame) so downstream DB and Pulsar
+// operations are linked into a single trace.
 func (h *WsHandler) handleSend(conn *Conn, payload json.RawMessage) {
+	ctx, span := wsTracer.Start(context.Background(), "ws.send",
+		trace.WithSpanKind(trace.SpanKindServer),
+		trace.WithAttributes(
+			attribute.Int64("user_id", conn.UserID),
+			attribute.String("device_id", conn.DeviceID),
+		))
+	defer span.End()
+
 	if h.msgStore == nil || h.members == nil {
 		h.log.Debug("ws send not supported (no msgStore/members configured)")
 		return
@@ -188,6 +222,7 @@ func (h *WsHandler) handleSend(conn *Conn, payload json.RawMessage) {
 
 	var sp SendPayload
 	if err := json.Unmarshal(payload, &sp); err != nil {
+		span.RecordError(err)
 		h.log.Debug("malformed send payload", "error", err)
 		return
 	}
@@ -195,9 +230,13 @@ func (h *WsHandler) handleSend(conn *Conn, payload json.RawMessage) {
 		h.log.Debug("send payload missing channel_id or content")
 		return
 	}
+	span.SetAttributes(
+		attribute.Int64("channel_id", sp.ChannelID),
+		attribute.String("client_msg_id", sp.ClientMsgID),
+	)
 
 	// Verify membership.
-	if _, err := h.members.GetMember(context.Background(), sp.ChannelID, conn.UserID); err != nil {
+	if _, err := h.members.GetMember(ctx, sp.ChannelID, conn.UserID); err != nil {
 		h.log.Debug("ws send: not a member", "channel_id", sp.ChannelID, "user_id", conn.UserID)
 		return
 	}
@@ -216,10 +255,15 @@ func (h *WsHandler) handleSend(conn *Conn, payload json.RawMessage) {
 		VisibleTo:   pq.Int64Array(sp.VisibleTo),
 	}
 
-	if err := h.msgStore.Send(context.Background(), msg); err != nil {
+	if err := h.msgStore.Send(ctx, msg); err != nil {
+		span.RecordError(err)
 		h.log.Error("ws send: store failed", "error", err, "user_id", conn.UserID)
 		return
 	}
+	span.SetAttributes(
+		attribute.Int64("server_msg_id", msg.ID),
+		attribute.Int64("seq", msg.Seq),
+	)
 
 	// Send ACK back to the sender.
 	ack := SendACKPayload{
@@ -231,7 +275,8 @@ func (h *WsHandler) handleSend(conn *Conn, payload json.RawMessage) {
 	conn.Push(TypeSendACK, ack)
 	conn.UpdateKnownSeq(msg.ChannelID, msg.Seq)
 
-	// Fan out push to all channel members.
+	// Fan out push to all channel members. Use background ctx because the goroutine
+	// outlives the span (we don't want the span to wait on the fan-out).
 	go func() {
 		members, err := h.members.ListMembers(context.Background(), msg.ChannelID)
 		if err != nil {
