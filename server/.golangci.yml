@@ -23,6 +23,8 @@ issues:
       linters: [gosec, errcheck, unparam]
     - path: internal/repo/mocks/
       linters: [unused, gocritic, revive]
+    - path: internal/deps/
+      linters: [unused, gocritic, revive]
     # TODO: remove these once Phase 5 (store→repo) and Phase 6/7 (handler→Gin) complete
     - path: internal/store/
       linters: [errcheck, gosec, gocritic]
