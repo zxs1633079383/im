@@ -62,6 +62,9 @@ type CreateAnnouncementParams struct {
 
 // Create inserts a new announcement. Manager+ only.
 func (s *AnnouncementService) Create(ctx context.Context, p CreateAnnouncementParams) (*repo.Announcement, error) {
+	ctx, span := tracer.Start(ctx, "AnnouncementService.Create")
+	defer span.End()
+
 	if p.Title == "" {
 		return nil, ErrAnnouncementTitleEmpty
 	}
@@ -100,6 +103,9 @@ func (s *AnnouncementService) Create(ctx context.Context, p CreateAnnouncementPa
 // Ack records an acknowledgement from userID on announcementID. Any member
 // of the announcement's channel may ack.
 func (s *AnnouncementService) Ack(ctx context.Context, announcementID, userID int64) error {
+	ctx, span := tracer.Start(ctx, "AnnouncementService.Ack")
+	defer span.End()
+
 	a, err := s.announcements.GetByID(ctx, announcementID)
 	if err != nil {
 		return err
@@ -115,6 +121,9 @@ func (s *AnnouncementService) Ack(ctx context.Context, announcementID, userID in
 
 // ListAcks returns the ack rows for announcementID. Manager+ only.
 func (s *AnnouncementService) ListAcks(ctx context.Context, announcementID, callerID int64) ([]repo.AnnouncementAck, error) {
+	ctx, span := tracer.Start(ctx, "AnnouncementService.ListAcks")
+	defer span.End()
+
 	a, err := s.announcements.GetByID(ctx, announcementID)
 	if err != nil {
 		return nil, err
@@ -135,6 +144,9 @@ func (s *AnnouncementService) ListAcks(ctx context.Context, announcementID, call
 // ListByChannel returns recent non-deleted announcements for channelID.
 // Members only.
 func (s *AnnouncementService) ListByChannel(ctx context.Context, channelID, callerID int64, limit, offset int) ([]repo.Announcement, error) {
+	ctx, span := tracer.Start(ctx, "AnnouncementService.ListByChannel")
+	defer span.End()
+
 	if err := s.requireMember(ctx, channelID, callerID); err != nil {
 		return nil, err
 	}
@@ -143,6 +155,9 @@ func (s *AnnouncementService) ListByChannel(ctx context.Context, channelID, call
 
 // Get returns a single announcement. Members only.
 func (s *AnnouncementService) Get(ctx context.Context, announcementID, callerID int64) (*repo.Announcement, error) {
+	ctx, span := tracer.Start(ctx, "AnnouncementService.Get")
+	defer span.End()
+
 	a, err := s.announcements.GetByID(ctx, announcementID)
 	if err != nil {
 		return nil, err
@@ -156,6 +171,9 @@ func (s *AnnouncementService) Get(ctx context.Context, announcementID, callerID 
 // Delete soft-deletes announcementID. Allowed if caller is the creator, OR
 // caller is manager/owner of the channel.
 func (s *AnnouncementService) Delete(ctx context.Context, announcementID, callerID int64) error {
+	ctx, span := tracer.Start(ctx, "AnnouncementService.Delete")
+	defer span.End()
+
 	a, err := s.announcements.GetByID(ctx, announcementID)
 	if err != nil {
 		return err

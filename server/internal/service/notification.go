@@ -45,6 +45,9 @@ type NotificationSendParams struct {
 // Send inserts a new notification. Returns the persisted row so the transport
 // can echo it back and fan the WS event to the receiver.
 func (s *NotificationService) Send(ctx context.Context, p NotificationSendParams) (*repo.Notification, error) {
+	ctx, span := tracer.Start(ctx, "NotificationService.Send")
+	defer span.End()
+
 	if p.Title == "" {
 		return nil, ErrNotificationTitleEmpty
 	}
@@ -73,15 +76,24 @@ func (s *NotificationService) Send(ctx context.Context, p NotificationSendParams
 
 // ListReceived returns the caller's inbox.
 func (s *NotificationService) ListReceived(ctx context.Context, receiverID int64, unreadOnly bool, limit int, cursor int64) ([]repo.Notification, error) {
+	ctx, span := tracer.Start(ctx, "NotificationService.ListReceived")
+	defer span.End()
+
 	return s.notifications.ListReceived(ctx, receiverID, unreadOnly, limit, cursor)
 }
 
 // ListSent returns the caller's outbox.
 func (s *NotificationService) ListSent(ctx context.Context, senderID int64, limit int, cursor int64) ([]repo.Notification, error) {
+	ctx, span := tracer.Start(ctx, "NotificationService.ListSent")
+	defer span.End()
+
 	return s.notifications.ListSent(ctx, senderID, limit, cursor)
 }
 
 // MarkRead marks a notification read. Only the receiver may mark.
 func (s *NotificationService) MarkRead(ctx context.Context, id, callerID int64) error {
+	ctx, span := tracer.Start(ctx, "NotificationService.MarkRead")
+	defer span.End()
+
 	return s.notifications.MarkRead(ctx, id, callerID)
 }

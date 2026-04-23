@@ -61,6 +61,9 @@ func NewUrgentService(
 func (s *UrgentService) SendUrgent(
 	ctx context.Context, channelID, senderID int64, content, clientMsgID string,
 ) (*repo.Message, error) {
+	ctx, span := tracer.Start(ctx, "UrgentService.SendUrgent")
+	defer span.End()
+
 	if content == "" {
 		return nil, ErrUrgentContentEmpty
 	}
@@ -84,6 +87,9 @@ func (s *UrgentService) SendUrgent(
 // ConfirmUrgent records the caller's confirmation for msgID. Caller must be
 // a member of the message's channel.
 func (s *UrgentService) ConfirmUrgent(ctx context.Context, msgID, callerID int64) error {
+	ctx, span := tracer.Start(ctx, "UrgentService.ConfirmUrgent")
+	defer span.End()
+
 	m, err := s.messages.GetByID(ctx, msgID)
 	if err != nil {
 		return err
@@ -100,6 +106,9 @@ func (s *UrgentService) ConfirmUrgent(ctx context.Context, msgID, callerID int64
 // CancelUrgent clears the urgent flag on msgID. Allowed when caller is the
 // original sender, OR caller is manager/owner of the channel.
 func (s *UrgentService) CancelUrgent(ctx context.Context, msgID, callerID int64) error {
+	ctx, span := tracer.Start(ctx, "UrgentService.CancelUrgent")
+	defer span.End()
+
 	m, err := s.messages.GetByID(ctx, msgID)
 	if err != nil {
 		return err
@@ -125,6 +134,9 @@ func (s *UrgentService) CancelUrgent(ctx context.Context, msgID, callerID int64)
 // ListConfirmations returns the user IDs that have confirmed msgID. Any member
 // of the channel may see the list.
 func (s *UrgentService) ListConfirmations(ctx context.Context, msgID, callerID int64) ([]int64, error) {
+	ctx, span := tracer.Start(ctx, "UrgentService.ListConfirmations")
+	defer span.End()
+
 	m, err := s.messages.GetByID(ctx, msgID)
 	if err != nil {
 		return nil, err

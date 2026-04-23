@@ -61,6 +61,9 @@ type ScheduledCreateParams struct {
 // Create validates + inserts a pending scheduled message. scheduled_at must be
 // at least 60 seconds in the future; sender must be a member of channel.
 func (s *ScheduledService) Create(ctx context.Context, p ScheduledCreateParams) (*repo.ScheduledMessage, error) {
+	ctx, span := tracer.Start(ctx, "ScheduledService.Create")
+	defer span.End()
+
 	if p.Content == "" {
 		return nil, ErrScheduledContentEmpty
 	}
@@ -93,6 +96,9 @@ func (s *ScheduledService) Create(ctx context.Context, p ScheduledCreateParams) 
 // Cancel transitions a pending scheduled message to cancelled. Only the
 // sender may cancel.
 func (s *ScheduledService) Cancel(ctx context.Context, id, callerID int64) error {
+	ctx, span := tracer.Start(ctx, "ScheduledService.Cancel")
+	defer span.End()
+
 	sm, err := s.scheduled.GetByID(ctx, id)
 	if err != nil {
 		return err
@@ -114,12 +120,18 @@ func (s *ScheduledService) Cancel(ctx context.Context, id, callerID int64) error
 
 // List returns the caller's queue. statusFilter -1 = all.
 func (s *ScheduledService) List(ctx context.Context, callerID int64, statusFilter int16, limit int, cursor int64) ([]repo.ScheduledMessage, error) {
+	ctx, span := tracer.Start(ctx, "ScheduledService.List")
+	defer span.End()
+
 	return s.scheduled.ListBySender(ctx, callerID, statusFilter, limit, cursor)
 }
 
 // FetchDue is the worker-facing accessor — pure delegate so the worker can
 // consume one tiny interface (ScheduledDeliverer).
 func (s *ScheduledService) FetchDue(ctx context.Context, now time.Time, limit int) ([]repo.ScheduledMessage, error) {
+	ctx, span := tracer.Start(ctx, "ScheduledService.FetchDue")
+	defer span.End()
+
 	return s.scheduled.FetchDue(ctx, now, limit)
 }
 
@@ -128,6 +140,9 @@ func (s *ScheduledService) FetchDue(ctx context.Context, now time.Time, limit in
 // SendMessage failure, marks the row failed and returns the error. Callers
 // (worker + tests) may invoke Deliver directly to bypass the poller timing.
 func (s *ScheduledService) Deliver(ctx context.Context, sm *repo.ScheduledMessage) (*repo.Message, error) {
+	ctx, span := tracer.Start(ctx, "ScheduledService.Deliver")
+	defer span.End()
+
 	if sm == nil {
 		return nil, errors.New("nil scheduled message")
 	}
