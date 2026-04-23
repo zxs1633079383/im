@@ -98,6 +98,9 @@ func NewMessageService(messages repo.MessageRepo, channels MsgChannelStore, file
 // match the legacy behaviour: log + continue (returned through the err arg
 // only when *every* link failed is unnecessary — non-fatal).
 func (s *MessageService) SendMessage(ctx context.Context, p SendParams) (*repo.Message, error) {
+	ctx, span := tracer.Start(ctx, "MessageService.SendMessage")
+	defer span.End()
+
 	if _, err := s.channels.GetMember(ctx, p.ChannelID, p.SenderID); err != nil {
 		if errors.Is(err, repo.ErrNotFound) {
 			return nil, ErrNotMember
@@ -145,6 +148,9 @@ func (s *MessageService) SendMessage(ctx context.Context, p SendParams) (*repo.M
 // layer maps this to GET ?before_seq=… and (with beforeSeq=MaxInt64) the
 // default "latest N" path.
 func (s *MessageService) FetchMessages(ctx context.Context, channelID, callerID, beforeSeq int64, limit int) ([]repo.Message, error) {
+	ctx, span := tracer.Start(ctx, "MessageService.FetchMessages")
+	defer span.End()
+
 	if err := s.requireMember(ctx, channelID, callerID); err != nil {
 		return nil, err
 	}
@@ -154,6 +160,9 @@ func (s *MessageService) FetchMessages(ctx context.Context, channelID, callerID,
 // FetchAfter returns up to limit messages with seq > afterSeq for a member of
 // channelID. Used for the "catch-up since last sync" path.
 func (s *MessageService) FetchAfter(ctx context.Context, channelID, callerID, afterSeq int64, limit int) ([]repo.Message, error) {
+	ctx, span := tracer.Start(ctx, "MessageService.FetchAfter")
+	defer span.End()
+
 	if err := s.requireMember(ctx, channelID, callerID); err != nil {
 		return nil, err
 	}
@@ -163,6 +172,9 @@ func (s *MessageService) FetchAfter(ctx context.Context, channelID, callerID, af
 // FetchAround returns up to limit messages centered on aroundSeq for a member
 // of channelID. Used for the "jump to message + show context" path.
 func (s *MessageService) FetchAround(ctx context.Context, channelID, callerID, aroundSeq int64, limit int) ([]repo.Message, error) {
+	ctx, span := tracer.Start(ctx, "MessageService.FetchAround")
+	defer span.End()
+
 	if err := s.requireMember(ctx, channelID, callerID); err != nil {
 		return nil, err
 	}
@@ -173,6 +185,9 @@ func (s *MessageService) FetchAround(ctx context.Context, channelID, callerID, a
 // and returns the seq written so the transport can echo it. ErrNotMember when
 // the caller isn't a member; repo.ErrNotFound when the channel is missing.
 func (s *MessageService) MarkRead(ctx context.Context, channelID, callerID int64) (int64, error) {
+	ctx, span := tracer.Start(ctx, "MessageService.MarkRead")
+	defer span.End()
+
 	if err := s.requireMember(ctx, channelID, callerID); err != nil {
 		return 0, err
 	}
@@ -196,6 +211,9 @@ func (s *MessageService) MarkRead(ctx context.Context, channelID, callerID int64
 // ErrSourceNotMember when the caller is not a member of the source channel.
 // Per-target "not a member" cases are silent skips (not errors).
 func (s *MessageService) ForwardMessages(ctx context.Context, callerID int64, p ForwardParams) ([]*repo.Message, error) {
+	ctx, span := tracer.Start(ctx, "MessageService.ForwardMessages")
+	defer span.End()
+
 	source, err := s.messages.GetByID(ctx, p.MessageID)
 	if err != nil {
 		if errors.Is(err, repo.ErrNotFound) {
@@ -256,6 +274,9 @@ func (s *MessageService) FetchAroundTimestamp(
 	ts time.Time,
 	limit int,
 ) ([]repo.Message, bool, bool, error) {
+	ctx, span := tracer.Start(ctx, "MessageService.FetchAroundTimestamp")
+	defer span.End()
+
 	if err := s.requireMember(ctx, channelID, callerID); err != nil {
 		return nil, false, false, err
 	}
@@ -286,6 +307,9 @@ func (s *MessageService) FetchAroundTimestamp(
 //   - repo.ErrNotFound → 404 (message does not exist)
 //   - ErrNotMember     → 403 (caller not in the message's channel)
 func (s *MessageService) GetReaders(ctx context.Context, msgID, callerID int64, limit int, cursor int64) ([]int64, int64, error) {
+	ctx, span := tracer.Start(ctx, "MessageService.GetReaders")
+	defer span.End()
+
 	msg, err := s.messages.GetByID(ctx, msgID)
 	if err != nil {
 		return nil, 0, err
@@ -303,6 +327,9 @@ func (s *MessageService) GetReaders(ctx context.Context, msgID, callerID int64, 
 //   - repo.ErrNotFound → 404 (root message does not exist)
 //   - ErrNotMember     → 403 (caller not in the root message's channel)
 func (s *MessageService) GetReplies(ctx context.Context, rootMsgID, callerID int64) ([]repo.Message, error) {
+	ctx, span := tracer.Start(ctx, "MessageService.GetReplies")
+	defer span.End()
+
 	root, err := s.messages.GetByID(ctx, rootMsgID)
 	if err != nil {
 		return nil, err
@@ -323,6 +350,9 @@ func (s *MessageService) GetReplies(ctx context.Context, rootMsgID, callerID int
 //   - repo.ErrForbidden → 403 (not the sender)
 //   - repo.ErrGone      → 410 (already deleted — cannot edit a revoked msg)
 func (s *MessageService) EditMessage(ctx context.Context, msgID, callerID int64, content string) (*repo.Message, error) {
+	ctx, span := tracer.Start(ctx, "MessageService.EditMessage")
+	defer span.End()
+
 	msg, err := s.messages.UpdateContent(ctx, msgID, callerID, content)
 	if err != nil {
 		return msg, err
@@ -340,6 +370,9 @@ func (s *MessageService) EditMessage(ctx context.Context, msgID, callerID int64,
 //   - repo.ErrForbidden → 403
 //   - repo.ErrGone      → idempotent success (transport returns 200 but skips fan-out)
 func (s *MessageService) DeleteMessage(ctx context.Context, msgID, callerID int64) (*repo.Message, error) {
+	ctx, span := tracer.Start(ctx, "MessageService.DeleteMessage")
+	defer span.End()
+
 	msg, err := s.messages.SoftDelete(ctx, msgID, callerID)
 	if err != nil {
 		return msg, err // pass raw sentinels through; HTTP layer maps status codes
