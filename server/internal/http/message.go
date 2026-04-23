@@ -239,6 +239,39 @@ func RegisterMessageRoutes(authed *gin.RouterGroup, svc *service.MessageService,
 		c.JSON(200, gin.H{"seq": seq})
 	})
 
+	// GET /api/messages/:id/readers — list user IDs who have read up to (or
+	// past) this message. Cursor-paginated on user_id; default limit 50.
+	authed.GET("/messages/:id/readers", func(c *gin.Context) {
+		uid, ok := userIDFromCtx(c)
+		if !ok {
+			return
+		}
+		msgID, ok := pathInt64(c, "id")
+		if !ok {
+			return
+		}
+		limit := parseLimit(c.Query("limit"))
+		cursor := parseInt64(c.Query("cursor"), 0)
+
+		readers, next, err := svc.GetReaders(c.Request.Context(), msgID, uid, limit, cursor)
+		switch {
+		case errors.Is(err, repo.ErrNotFound):
+			c.JSON(404, gin.H{"error": "message not found"})
+			return
+		case errors.Is(err, service.ErrNotMember):
+			c.JSON(403, gin.H{"error": "not a member of this channel"})
+			return
+		case err != nil:
+			log.Error("get readers", "error", err, "msg_id", msgID, "user_id", uid)
+			c.JSON(500, gin.H{"error": "internal error"})
+			return
+		}
+		if readers == nil {
+			readers = []int64{}
+		}
+		c.JSON(200, gin.H{"readers": readers, "next_cursor": next})
+	})
+
 	// GET /api/messages/:id/replies — list every non-deleted reply to the
 	// given root message. Caller must be a member of the channel.
 	authed.GET("/messages/:id/replies", func(c *gin.Context) {

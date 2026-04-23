@@ -241,6 +241,24 @@ func (s *MessageService) ListMembers(ctx context.Context, channelID int64) ([]re
 	return s.channels.ListMembers(ctx, channelID)
 }
 
+// GetReaders returns the user_ids of channel members who have read up to at
+// least the seq of msgID. Pagination uses a cursor on user_id (pass 0 to
+// start). Returns (readers, nextCursor, err).
+//
+// Errors:
+//   - repo.ErrNotFound → 404 (message does not exist)
+//   - ErrNotMember     → 403 (caller not in the message's channel)
+func (s *MessageService) GetReaders(ctx context.Context, msgID, callerID int64, limit int, cursor int64) ([]int64, int64, error) {
+	msg, err := s.messages.GetByID(ctx, msgID)
+	if err != nil {
+		return nil, 0, err
+	}
+	if err := s.requireMember(ctx, msg.ChannelID, callerID); err != nil {
+		return nil, 0, err
+	}
+	return s.messages.GetReaders(ctx, msg.ChannelID, msg.Seq, cursor, limit)
+}
+
 // GetReplies returns every non-deleted reply to rootMsgID for a caller who is
 // a member of the root message's channel. Results are ordered by seq ASC.
 //
