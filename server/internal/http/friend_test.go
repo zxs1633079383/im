@@ -114,28 +114,58 @@ func TestFriendHandler_SendRequest_409_Duplicate(t *testing.T) {
 }
 
 func TestFriendHandler_AcceptRequest_404_NotAddressee(t *testing.T) {
-	r, fs, _ := setupFriendHandler(t, nil)
+	pusher := &recordingPusher{}
+	r, fs, _ := setupFriendHandler(t, pusher)
 	tok := newFriendToken(t, 1, "alice")
 
-	fs.EXPECT().AcceptRequest(mock.Anything, int64(7), int64(1)).Return(repo.ErrNotFound)
+	fs.EXPECT().AcceptRequest(mock.Anything, int64(7), int64(1)).
+		Return(int64(0), repo.ErrNotFound)
 
 	testutil.NewExpect(t, r).POST("/api/friends/accept").
 		WithHeader("Authorization", "Bearer "+tok).
 		WithJSON(map[string]int64{"friendship_id": 7}).
 		Expect().Status(404)
+
+	require.Empty(t, pusher.snapshot(), "pusher must NOT fire on 404")
+}
+
+func TestFriendHandler_AcceptRequest_200_PushesEventToRequester(t *testing.T) {
+	pusher := &recordingPusher{}
+	r, fs, _ := setupFriendHandler(t, pusher)
+	// bob (uid=2) accepts a request originally sent by alice (requester=1).
+	tok := newFriendToken(t, 2, "bob")
+
+	fs.EXPECT().AcceptRequest(mock.Anything, int64(7), int64(2)).
+		Return(int64(1), nil)
+
+	testutil.NewExpect(t, r).POST("/api/friends/accept").
+		WithHeader("Authorization", "Bearer "+tok).
+		WithJSON(map[string]int64{"friendship_id": 7}).
+		Expect().Status(200).JSON().Object().
+		Value("status").IsEqual("accepted")
+
+	got := pusher.snapshot()
+	require.Len(t, got, 1, "pusher must fire exactly once on accept success")
+	require.Equal(t, friendPushEvent{target: 1, kind: "accepted", from: 2}, got[0])
 }
 
 func TestFriendHandler_RejectRequest_OK(t *testing.T) {
-	r, fs, _ := setupFriendHandler(t, nil)
+	pusher := &recordingPusher{}
+	r, fs, _ := setupFriendHandler(t, pusher)
 	tok := newFriendToken(t, 2, "bob")
 
-	fs.EXPECT().RejectRequest(mock.Anything, int64(7), int64(2)).Return(nil)
+	fs.EXPECT().RejectRequest(mock.Anything, int64(7), int64(2)).
+		Return(int64(1), nil)
 
 	testutil.NewExpect(t, r).POST("/api/friends/reject").
 		WithHeader("Authorization", "Bearer "+tok).
 		WithJSON(map[string]int64{"friendship_id": 7}).
 		Expect().Status(200).JSON().Object().
 		Value("status").IsEqual("rejected")
+
+	got := pusher.snapshot()
+	require.Len(t, got, 1, "pusher must fire exactly once on reject success")
+	require.Equal(t, friendPushEvent{target: 1, kind: "rejected", from: 2}, got[0])
 }
 
 func TestFriendHandler_ListFriends_EmptyArray(t *testing.T) {

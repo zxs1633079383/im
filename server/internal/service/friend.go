@@ -47,15 +47,21 @@ func (s *FriendService) SendRequest(ctx context.Context, requesterID, addresseeI
 // AcceptRequest marks the pending friendship friendshipID accepted, but only
 // if userID is the addressee. Returns repo.ErrNotFound otherwise (so the
 // transport layer can map non-addressee callers to 404).
-func (s *FriendService) AcceptRequest(ctx context.Context, friendshipID, userID int64) error {
+//
+// On success the original requester's user ID is returned so the caller can
+// push a real-time friend_event back to them without re-querying the repo.
+// Zero is returned alongside any non-nil error.
+func (s *FriendService) AcceptRequest(ctx context.Context, friendshipID, userID int64) (int64, error) {
 	ctx, span := tracer.Start(ctx, "FriendService.AcceptRequest")
 	defer span.End()
 
 	return s.friends.AcceptRequest(ctx, friendshipID, userID)
 }
 
-// RejectRequest mirrors AcceptRequest but flips the row to rejected.
-func (s *FriendService) RejectRequest(ctx context.Context, friendshipID, userID int64) error {
+// RejectRequest mirrors AcceptRequest but flips the row to rejected. Returns
+// the original requester's user ID on success (see AcceptRequest for the
+// rationale — the transport layer uses it for the real-time push).
+func (s *FriendService) RejectRequest(ctx context.Context, friendshipID, userID int64) (int64, error) {
 	ctx, span := tracer.Start(ctx, "FriendService.RejectRequest")
 	defer span.End()
 

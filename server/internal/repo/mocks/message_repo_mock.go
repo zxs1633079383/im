@@ -4,12 +4,10 @@ package mocks
 
 import (
 	context "context"
+	repo "im-server/internal/repo"
 	time "time"
 
-	repo "im-server/internal/repo"
-
 	mock "github.com/stretchr/testify/mock"
-
 	gorm "gorm.io/gorm"
 )
 
@@ -24,6 +22,64 @@ type MessageRepoMock_Expecter struct {
 
 func (_m *MessageRepoMock) EXPECT() *MessageRepoMock_Expecter {
 	return &MessageRepoMock_Expecter{mock: &_m.Mock}
+}
+
+// AllocSeqAndInsert provides a mock function with given fields: ctx, tx, msg
+func (_m *MessageRepoMock) AllocSeqAndInsert(ctx context.Context, tx *gorm.DB, msg *repo.Message) (int64, error) {
+	ret := _m.Called(ctx, tx, msg)
+
+	if len(ret) == 0 {
+		panic("no return value specified for AllocSeqAndInsert")
+	}
+
+	var r0 int64
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, *gorm.DB, *repo.Message) (int64, error)); ok {
+		return rf(ctx, tx, msg)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, *gorm.DB, *repo.Message) int64); ok {
+		r0 = rf(ctx, tx, msg)
+	} else {
+		r0 = ret.Get(0).(int64)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, *gorm.DB, *repo.Message) error); ok {
+		r1 = rf(ctx, tx, msg)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// MessageRepoMock_AllocSeqAndInsert_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'AllocSeqAndInsert'
+type MessageRepoMock_AllocSeqAndInsert_Call struct {
+	*mock.Call
+}
+
+// AllocSeqAndInsert is a helper method to define mock.On call
+//   - ctx context.Context
+//   - tx *gorm.DB
+//   - msg *repo.Message
+func (_e *MessageRepoMock_Expecter) AllocSeqAndInsert(ctx interface{}, tx interface{}, msg interface{}) *MessageRepoMock_AllocSeqAndInsert_Call {
+	return &MessageRepoMock_AllocSeqAndInsert_Call{Call: _e.mock.On("AllocSeqAndInsert", ctx, tx, msg)}
+}
+
+func (_c *MessageRepoMock_AllocSeqAndInsert_Call) Run(run func(ctx context.Context, tx *gorm.DB, msg *repo.Message)) *MessageRepoMock_AllocSeqAndInsert_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(*gorm.DB), args[2].(*repo.Message))
+	})
+	return _c
+}
+
+func (_c *MessageRepoMock_AllocSeqAndInsert_Call) Return(_a0 int64, _a1 error) *MessageRepoMock_AllocSeqAndInsert_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *MessageRepoMock_AllocSeqAndInsert_Call) RunAndReturn(run func(context.Context, *gorm.DB, *repo.Message) (int64, error)) *MessageRepoMock_AllocSeqAndInsert_Call {
+	_c.Call.Return(run)
+	return _c
 }
 
 // FetchAfter provides a mock function with given fields: ctx, channelID, afterSeq, limit
@@ -145,6 +201,77 @@ func (_c *MessageRepoMock_FetchAround_Call) Return(_a0 []repo.Message, _a1 error
 }
 
 func (_c *MessageRepoMock_FetchAround_Call) RunAndReturn(run func(context.Context, int64, int64, int64, int) ([]repo.Message, error)) *MessageRepoMock_FetchAround_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// FetchAroundTimestamp provides a mock function with given fields: ctx, channelID, userID, ts, limit
+func (_m *MessageRepoMock) FetchAroundTimestamp(ctx context.Context, channelID int64, userID int64, ts time.Time, limit int) ([]repo.Message, []repo.Message, error) {
+	ret := _m.Called(ctx, channelID, userID, ts, limit)
+
+	if len(ret) == 0 {
+		panic("no return value specified for FetchAroundTimestamp")
+	}
+
+	var r0 []repo.Message
+	var r1 []repo.Message
+	var r2 error
+	if rf, ok := ret.Get(0).(func(context.Context, int64, int64, time.Time, int) ([]repo.Message, []repo.Message, error)); ok {
+		return rf(ctx, channelID, userID, ts, limit)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, int64, int64, time.Time, int) []repo.Message); ok {
+		r0 = rf(ctx, channelID, userID, ts, limit)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]repo.Message)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, int64, int64, time.Time, int) []repo.Message); ok {
+		r1 = rf(ctx, channelID, userID, ts, limit)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).([]repo.Message)
+		}
+	}
+
+	if rf, ok := ret.Get(2).(func(context.Context, int64, int64, time.Time, int) error); ok {
+		r2 = rf(ctx, channelID, userID, ts, limit)
+	} else {
+		r2 = ret.Error(2)
+	}
+
+	return r0, r1, r2
+}
+
+// MessageRepoMock_FetchAroundTimestamp_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'FetchAroundTimestamp'
+type MessageRepoMock_FetchAroundTimestamp_Call struct {
+	*mock.Call
+}
+
+// FetchAroundTimestamp is a helper method to define mock.On call
+//   - ctx context.Context
+//   - channelID int64
+//   - userID int64
+//   - ts time.Time
+//   - limit int
+func (_e *MessageRepoMock_Expecter) FetchAroundTimestamp(ctx interface{}, channelID interface{}, userID interface{}, ts interface{}, limit interface{}) *MessageRepoMock_FetchAroundTimestamp_Call {
+	return &MessageRepoMock_FetchAroundTimestamp_Call{Call: _e.mock.On("FetchAroundTimestamp", ctx, channelID, userID, ts, limit)}
+}
+
+func (_c *MessageRepoMock_FetchAroundTimestamp_Call) Run(run func(ctx context.Context, channelID int64, userID int64, ts time.Time, limit int)) *MessageRepoMock_FetchAroundTimestamp_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(int64), args[2].(int64), args[3].(time.Time), args[4].(int))
+	})
+	return _c
+}
+
+func (_c *MessageRepoMock_FetchAroundTimestamp_Call) Return(older []repo.Message, newer []repo.Message, err error) *MessageRepoMock_FetchAroundTimestamp_Call {
+	_c.Call.Return(older, newer, err)
+	return _c
+}
+
+func (_c *MessageRepoMock_FetchAroundTimestamp_Call) RunAndReturn(run func(context.Context, int64, int64, time.Time, int) ([]repo.Message, []repo.Message, error)) *MessageRepoMock_FetchAroundTimestamp_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -273,6 +400,66 @@ func (_c *MessageRepoMock_FetchForUser_Call) RunAndReturn(run func(context.Conte
 	return _c
 }
 
+// FetchReplies provides a mock function with given fields: ctx, rootID, userID
+func (_m *MessageRepoMock) FetchReplies(ctx context.Context, rootID int64, userID int64) ([]repo.Message, error) {
+	ret := _m.Called(ctx, rootID, userID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for FetchReplies")
+	}
+
+	var r0 []repo.Message
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, int64, int64) ([]repo.Message, error)); ok {
+		return rf(ctx, rootID, userID)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, int64, int64) []repo.Message); ok {
+		r0 = rf(ctx, rootID, userID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]repo.Message)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, int64, int64) error); ok {
+		r1 = rf(ctx, rootID, userID)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// MessageRepoMock_FetchReplies_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'FetchReplies'
+type MessageRepoMock_FetchReplies_Call struct {
+	*mock.Call
+}
+
+// FetchReplies is a helper method to define mock.On call
+//   - ctx context.Context
+//   - rootID int64
+//   - userID int64
+func (_e *MessageRepoMock_Expecter) FetchReplies(ctx interface{}, rootID interface{}, userID interface{}) *MessageRepoMock_FetchReplies_Call {
+	return &MessageRepoMock_FetchReplies_Call{Call: _e.mock.On("FetchReplies", ctx, rootID, userID)}
+}
+
+func (_c *MessageRepoMock_FetchReplies_Call) Run(run func(ctx context.Context, rootID int64, userID int64)) *MessageRepoMock_FetchReplies_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(int64), args[2].(int64))
+	})
+	return _c
+}
+
+func (_c *MessageRepoMock_FetchReplies_Call) Return(_a0 []repo.Message, _a1 error) *MessageRepoMock_FetchReplies_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *MessageRepoMock_FetchReplies_Call) RunAndReturn(run func(context.Context, int64, int64) ([]repo.Message, error)) *MessageRepoMock_FetchReplies_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetByID provides a mock function with given fields: ctx, id
 func (_m *MessageRepoMock) GetByID(ctx context.Context, id int64) (*repo.Message, error) {
 	ret := _m.Called(ctx, id)
@@ -332,6 +519,75 @@ func (_c *MessageRepoMock_GetByID_Call) RunAndReturn(run func(context.Context, i
 	return _c
 }
 
+// GetReaders provides a mock function with given fields: ctx, channelID, seq, cursor, limit
+func (_m *MessageRepoMock) GetReaders(ctx context.Context, channelID int64, seq int64, cursor int64, limit int) ([]int64, int64, error) {
+	ret := _m.Called(ctx, channelID, seq, cursor, limit)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetReaders")
+	}
+
+	var r0 []int64
+	var r1 int64
+	var r2 error
+	if rf, ok := ret.Get(0).(func(context.Context, int64, int64, int64, int) ([]int64, int64, error)); ok {
+		return rf(ctx, channelID, seq, cursor, limit)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, int64, int64, int64, int) []int64); ok {
+		r0 = rf(ctx, channelID, seq, cursor, limit)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]int64)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, int64, int64, int64, int) int64); ok {
+		r1 = rf(ctx, channelID, seq, cursor, limit)
+	} else {
+		r1 = ret.Get(1).(int64)
+	}
+
+	if rf, ok := ret.Get(2).(func(context.Context, int64, int64, int64, int) error); ok {
+		r2 = rf(ctx, channelID, seq, cursor, limit)
+	} else {
+		r2 = ret.Error(2)
+	}
+
+	return r0, r1, r2
+}
+
+// MessageRepoMock_GetReaders_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetReaders'
+type MessageRepoMock_GetReaders_Call struct {
+	*mock.Call
+}
+
+// GetReaders is a helper method to define mock.On call
+//   - ctx context.Context
+//   - channelID int64
+//   - seq int64
+//   - cursor int64
+//   - limit int
+func (_e *MessageRepoMock_Expecter) GetReaders(ctx interface{}, channelID interface{}, seq interface{}, cursor interface{}, limit interface{}) *MessageRepoMock_GetReaders_Call {
+	return &MessageRepoMock_GetReaders_Call{Call: _e.mock.On("GetReaders", ctx, channelID, seq, cursor, limit)}
+}
+
+func (_c *MessageRepoMock_GetReaders_Call) Run(run func(ctx context.Context, channelID int64, seq int64, cursor int64, limit int)) *MessageRepoMock_GetReaders_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(int64), args[2].(int64), args[3].(int64), args[4].(int))
+	})
+	return _c
+}
+
+func (_c *MessageRepoMock_GetReaders_Call) Return(readers []int64, nextCursor int64, err error) *MessageRepoMock_GetReaders_Call {
+	_c.Call.Return(readers, nextCursor, err)
+	return _c
+}
+
+func (_c *MessageRepoMock_GetReaders_Call) RunAndReturn(run func(context.Context, int64, int64, int64, int) ([]int64, int64, error)) *MessageRepoMock_GetReaders_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Send provides a mock function with given fields: ctx, msg
 func (_m *MessageRepoMock) Send(ctx context.Context, msg *repo.Message) error {
 	ret := _m.Called(ctx, msg)
@@ -379,67 +635,62 @@ func (_c *MessageRepoMock_Send_Call) RunAndReturn(run func(context.Context, *rep
 	return _c
 }
 
-// AllocSeqAndInsert provides a mock function with given fields: ctx, tx, msg
-func (_m *MessageRepoMock) AllocSeqAndInsert(ctx context.Context, tx *gorm.DB, msg *repo.Message) (int64, error) {
-	ret := _m.Called(ctx, tx, msg)
+// SoftDelete provides a mock function with given fields: ctx, msgID, callerID
+func (_m *MessageRepoMock) SoftDelete(ctx context.Context, msgID int64, callerID int64) (*repo.Message, error) {
+	ret := _m.Called(ctx, msgID, callerID)
 
 	if len(ret) == 0 {
-		panic("no return value specified for AllocSeqAndInsert")
+		panic("no return value specified for SoftDelete")
 	}
 
-	var r0 int64
+	var r0 *repo.Message
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, *gorm.DB, *repo.Message) (int64, error)); ok {
-		return rf(ctx, tx, msg)
+	if rf, ok := ret.Get(0).(func(context.Context, int64, int64) (*repo.Message, error)); ok {
+		return rf(ctx, msgID, callerID)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, *gorm.DB, *repo.Message) int64); ok {
-		r0 = rf(ctx, tx, msg)
+	if rf, ok := ret.Get(0).(func(context.Context, int64, int64) *repo.Message); ok {
+		r0 = rf(ctx, msgID, callerID)
 	} else {
-		r0 = ret.Get(0).(int64)
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*repo.Message)
+		}
 	}
-	if rf, ok := ret.Get(1).(func(context.Context, *gorm.DB, *repo.Message) error); ok {
-		r1 = rf(ctx, tx, msg)
+
+	if rf, ok := ret.Get(1).(func(context.Context, int64, int64) error); ok {
+		r1 = rf(ctx, msgID, callerID)
 	} else {
 		r1 = ret.Error(1)
 	}
+
 	return r0, r1
 }
 
-// MessageRepoMock_AllocSeqAndInsert_Call captures an expected call.
-type MessageRepoMock_AllocSeqAndInsert_Call struct {
+// MessageRepoMock_SoftDelete_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SoftDelete'
+type MessageRepoMock_SoftDelete_Call struct {
 	*mock.Call
 }
 
-// AllocSeqAndInsert sets up an expectation on AllocSeqAndInsert.
-func (_e *MessageRepoMock_Expecter) AllocSeqAndInsert(ctx interface{}, tx interface{}, msg interface{}) *MessageRepoMock_AllocSeqAndInsert_Call {
-	return &MessageRepoMock_AllocSeqAndInsert_Call{Call: _e.mock.On("AllocSeqAndInsert", ctx, tx, msg)}
+// SoftDelete is a helper method to define mock.On call
+//   - ctx context.Context
+//   - msgID int64
+//   - callerID int64
+func (_e *MessageRepoMock_Expecter) SoftDelete(ctx interface{}, msgID interface{}, callerID interface{}) *MessageRepoMock_SoftDelete_Call {
+	return &MessageRepoMock_SoftDelete_Call{Call: _e.mock.On("SoftDelete", ctx, msgID, callerID)}
 }
 
-func (_c *MessageRepoMock_AllocSeqAndInsert_Call) Run(run func(ctx context.Context, tx *gorm.DB, msg *repo.Message)) *MessageRepoMock_AllocSeqAndInsert_Call {
+func (_c *MessageRepoMock_SoftDelete_Call) Run(run func(ctx context.Context, msgID int64, callerID int64)) *MessageRepoMock_SoftDelete_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var a0 context.Context
-		if args[0] != nil {
-			a0 = args[0].(context.Context)
-		}
-		var a1 *gorm.DB
-		if args[1] != nil {
-			a1 = args[1].(*gorm.DB)
-		}
-		var a2 *repo.Message
-		if args[2] != nil {
-			a2 = args[2].(*repo.Message)
-		}
-		run(a0, a1, a2)
+		run(args[0].(context.Context), args[1].(int64), args[2].(int64))
 	})
 	return _c
 }
 
-func (_c *MessageRepoMock_AllocSeqAndInsert_Call) Return(_a0 int64, _a1 error) *MessageRepoMock_AllocSeqAndInsert_Call {
+func (_c *MessageRepoMock_SoftDelete_Call) Return(_a0 *repo.Message, _a1 error) *MessageRepoMock_SoftDelete_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *MessageRepoMock_AllocSeqAndInsert_Call) RunAndReturn(run func(context.Context, *gorm.DB, *repo.Message) (int64, error)) *MessageRepoMock_AllocSeqAndInsert_Call {
+func (_c *MessageRepoMock_SoftDelete_Call) RunAndReturn(run func(context.Context, int64, int64) (*repo.Message, error)) *MessageRepoMock_SoftDelete_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -459,24 +710,40 @@ func (_m *MessageRepoMock) UpdateContent(ctx context.Context, msgID int64, calle
 	}
 	if rf, ok := ret.Get(0).(func(context.Context, int64, int64, string) *repo.Message); ok {
 		r0 = rf(ctx, msgID, callerID, content)
-	} else if ret.Get(0) != nil {
-		r0 = ret.Get(0).(*repo.Message)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*repo.Message)
+		}
 	}
+
 	if rf, ok := ret.Get(1).(func(context.Context, int64, int64, string) error); ok {
 		r1 = rf(ctx, msgID, callerID, content)
 	} else {
 		r1 = ret.Error(1)
 	}
+
 	return r0, r1
 }
 
-// MessageRepoMock_UpdateContent_Call captures an expected call.
+// MessageRepoMock_UpdateContent_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'UpdateContent'
 type MessageRepoMock_UpdateContent_Call struct {
 	*mock.Call
 }
 
+// UpdateContent is a helper method to define mock.On call
+//   - ctx context.Context
+//   - msgID int64
+//   - callerID int64
+//   - content string
 func (_e *MessageRepoMock_Expecter) UpdateContent(ctx interface{}, msgID interface{}, callerID interface{}, content interface{}) *MessageRepoMock_UpdateContent_Call {
 	return &MessageRepoMock_UpdateContent_Call{Call: _e.mock.On("UpdateContent", ctx, msgID, callerID, content)}
+}
+
+func (_c *MessageRepoMock_UpdateContent_Call) Run(run func(ctx context.Context, msgID int64, callerID int64, content string)) *MessageRepoMock_UpdateContent_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(int64), args[2].(int64), args[3].(string))
+	})
+	return _c
 }
 
 func (_c *MessageRepoMock_UpdateContent_Call) Return(_a0 *repo.Message, _a1 error) *MessageRepoMock_UpdateContent_Call {
@@ -484,175 +751,8 @@ func (_c *MessageRepoMock_UpdateContent_Call) Return(_a0 *repo.Message, _a1 erro
 	return _c
 }
 
-// SoftDelete provides a mock function with given fields: ctx, msgID, callerID
-func (_m *MessageRepoMock) SoftDelete(ctx context.Context, msgID int64, callerID int64) (*repo.Message, error) {
-	ret := _m.Called(ctx, msgID, callerID)
-
-	if len(ret) == 0 {
-		panic("no return value specified for SoftDelete")
-	}
-
-	var r0 *repo.Message
-	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, int64, int64) (*repo.Message, error)); ok {
-		return rf(ctx, msgID, callerID)
-	}
-	if rf, ok := ret.Get(0).(func(context.Context, int64, int64) *repo.Message); ok {
-		r0 = rf(ctx, msgID, callerID)
-	} else if ret.Get(0) != nil {
-		r0 = ret.Get(0).(*repo.Message)
-	}
-	if rf, ok := ret.Get(1).(func(context.Context, int64, int64) error); ok {
-		r1 = rf(ctx, msgID, callerID)
-	} else {
-		r1 = ret.Error(1)
-	}
-	return r0, r1
-}
-
-// MessageRepoMock_SoftDelete_Call captures an expected call.
-type MessageRepoMock_SoftDelete_Call struct {
-	*mock.Call
-}
-
-func (_e *MessageRepoMock_Expecter) SoftDelete(ctx interface{}, msgID interface{}, callerID interface{}) *MessageRepoMock_SoftDelete_Call {
-	return &MessageRepoMock_SoftDelete_Call{Call: _e.mock.On("SoftDelete", ctx, msgID, callerID)}
-}
-
-func (_c *MessageRepoMock_SoftDelete_Call) Return(_a0 *repo.Message, _a1 error) *MessageRepoMock_SoftDelete_Call {
-	_c.Call.Return(_a0, _a1)
-	return _c
-}
-
-// FetchAroundTimestamp provides a mock function with given fields: ctx, channelID, userID, ts, limit
-func (_m *MessageRepoMock) FetchAroundTimestamp(ctx context.Context, channelID int64, userID int64, ts time.Time, limit int) ([]repo.Message, []repo.Message, error) {
-	ret := _m.Called(ctx, channelID, userID, ts, limit)
-
-	if len(ret) == 0 {
-		panic("no return value specified for FetchAroundTimestamp")
-	}
-
-	var r0 []repo.Message
-	var r1 []repo.Message
-	var r2 error
-	if rf, ok := ret.Get(0).(func(context.Context, int64, int64, time.Time, int) ([]repo.Message, []repo.Message, error)); ok {
-		return rf(ctx, channelID, userID, ts, limit)
-	}
-	if rf, ok := ret.Get(0).(func(context.Context, int64, int64, time.Time, int) []repo.Message); ok {
-		r0 = rf(ctx, channelID, userID, ts, limit)
-	} else if ret.Get(0) != nil {
-		r0 = ret.Get(0).([]repo.Message)
-	}
-	if rf, ok := ret.Get(1).(func(context.Context, int64, int64, time.Time, int) []repo.Message); ok {
-		r1 = rf(ctx, channelID, userID, ts, limit)
-	} else if ret.Get(1) != nil {
-		r1 = ret.Get(1).([]repo.Message)
-	}
-	if rf, ok := ret.Get(2).(func(context.Context, int64, int64, time.Time, int) error); ok {
-		r2 = rf(ctx, channelID, userID, ts, limit)
-	} else {
-		r2 = ret.Error(2)
-	}
-	return r0, r1, r2
-}
-
-// MessageRepoMock_FetchAroundTimestamp_Call captures an expected call.
-type MessageRepoMock_FetchAroundTimestamp_Call struct {
-	*mock.Call
-}
-
-func (_e *MessageRepoMock_Expecter) FetchAroundTimestamp(ctx interface{}, channelID interface{}, userID interface{}, ts interface{}, limit interface{}) *MessageRepoMock_FetchAroundTimestamp_Call {
-	return &MessageRepoMock_FetchAroundTimestamp_Call{Call: _e.mock.On("FetchAroundTimestamp", ctx, channelID, userID, ts, limit)}
-}
-
-func (_c *MessageRepoMock_FetchAroundTimestamp_Call) Return(_a0 []repo.Message, _a1 []repo.Message, _a2 error) *MessageRepoMock_FetchAroundTimestamp_Call {
-	_c.Call.Return(_a0, _a1, _a2)
-	return _c
-}
-
-// FetchReplies provides a mock function with given fields: ctx, rootID, userID
-func (_m *MessageRepoMock) FetchReplies(ctx context.Context, rootID int64, userID int64) ([]repo.Message, error) {
-	ret := _m.Called(ctx, rootID, userID)
-
-	if len(ret) == 0 {
-		panic("no return value specified for FetchReplies")
-	}
-
-	var r0 []repo.Message
-	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, int64, int64) ([]repo.Message, error)); ok {
-		return rf(ctx, rootID, userID)
-	}
-	if rf, ok := ret.Get(0).(func(context.Context, int64, int64) []repo.Message); ok {
-		r0 = rf(ctx, rootID, userID)
-	} else if ret.Get(0) != nil {
-		r0 = ret.Get(0).([]repo.Message)
-	}
-	if rf, ok := ret.Get(1).(func(context.Context, int64, int64) error); ok {
-		r1 = rf(ctx, rootID, userID)
-	} else {
-		r1 = ret.Error(1)
-	}
-	return r0, r1
-}
-
-// MessageRepoMock_FetchReplies_Call captures an expected call.
-type MessageRepoMock_FetchReplies_Call struct {
-	*mock.Call
-}
-
-func (_e *MessageRepoMock_Expecter) FetchReplies(ctx interface{}, rootID interface{}, userID interface{}) *MessageRepoMock_FetchReplies_Call {
-	return &MessageRepoMock_FetchReplies_Call{Call: _e.mock.On("FetchReplies", ctx, rootID, userID)}
-}
-
-func (_c *MessageRepoMock_FetchReplies_Call) Return(_a0 []repo.Message, _a1 error) *MessageRepoMock_FetchReplies_Call {
-	_c.Call.Return(_a0, _a1)
-	return _c
-}
-
-// GetReaders provides a mock function with given fields: ctx, channelID, seq, cursor, limit
-func (_m *MessageRepoMock) GetReaders(ctx context.Context, channelID int64, seq int64, cursor int64, limit int) ([]int64, int64, error) {
-	ret := _m.Called(ctx, channelID, seq, cursor, limit)
-
-	if len(ret) == 0 {
-		panic("no return value specified for GetReaders")
-	}
-
-	var r0 []int64
-	var r1 int64
-	var r2 error
-	if rf, ok := ret.Get(0).(func(context.Context, int64, int64, int64, int) ([]int64, int64, error)); ok {
-		return rf(ctx, channelID, seq, cursor, limit)
-	}
-	if rf, ok := ret.Get(0).(func(context.Context, int64, int64, int64, int) []int64); ok {
-		r0 = rf(ctx, channelID, seq, cursor, limit)
-	} else if ret.Get(0) != nil {
-		r0 = ret.Get(0).([]int64)
-	}
-	if rf, ok := ret.Get(1).(func(context.Context, int64, int64, int64, int) int64); ok {
-		r1 = rf(ctx, channelID, seq, cursor, limit)
-	} else {
-		r1 = ret.Get(1).(int64)
-	}
-	if rf, ok := ret.Get(2).(func(context.Context, int64, int64, int64, int) error); ok {
-		r2 = rf(ctx, channelID, seq, cursor, limit)
-	} else {
-		r2 = ret.Error(2)
-	}
-	return r0, r1, r2
-}
-
-// MessageRepoMock_GetReaders_Call captures an expected call.
-type MessageRepoMock_GetReaders_Call struct {
-	*mock.Call
-}
-
-func (_e *MessageRepoMock_Expecter) GetReaders(ctx interface{}, channelID interface{}, seq interface{}, cursor interface{}, limit interface{}) *MessageRepoMock_GetReaders_Call {
-	return &MessageRepoMock_GetReaders_Call{Call: _e.mock.On("GetReaders", ctx, channelID, seq, cursor, limit)}
-}
-
-func (_c *MessageRepoMock_GetReaders_Call) Return(_a0 []int64, _a1 int64, _a2 error) *MessageRepoMock_GetReaders_Call {
-	_c.Call.Return(_a0, _a1, _a2)
+func (_c *MessageRepoMock_UpdateContent_Call) RunAndReturn(run func(context.Context, int64, int64, string) (*repo.Message, error)) *MessageRepoMock_UpdateContent_Call {
+	_c.Call.Return(run)
 	return _c
 }
 

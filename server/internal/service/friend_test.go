@@ -50,20 +50,35 @@ func TestFriend_SendRequest_RepoError(t *testing.T) {
 func TestFriend_AcceptRequest_NotFound(t *testing.T) {
 	fs := mocks.NewFriendshipRepoMock(t)
 	us := mocks.NewUserRepoMock(t)
-	fs.EXPECT().AcceptRequest(mock.Anything, int64(7), int64(99)).Return(repo.ErrNotFound)
+	fs.EXPECT().AcceptRequest(mock.Anything, int64(7), int64(99)).Return(int64(0), repo.ErrNotFound)
 
 	svc := service.NewFriendService(fs, us)
-	err := svc.AcceptRequest(context.Background(), 7, 99)
+	_, err := svc.AcceptRequest(context.Background(), 7, 99)
 	require.ErrorIs(t, err, repo.ErrNotFound)
+}
+
+func TestFriend_AcceptRequest_ReturnsRequesterID(t *testing.T) {
+	fs := mocks.NewFriendshipRepoMock(t)
+	us := mocks.NewUserRepoMock(t)
+	// The repo returns the original requester's id so the transport layer
+	// can fan the real-time push back to them.
+	fs.EXPECT().AcceptRequest(mock.Anything, int64(7), int64(2)).Return(int64(99), nil)
+
+	svc := service.NewFriendService(fs, us)
+	requesterID, err := svc.AcceptRequest(context.Background(), 7, 2)
+	require.NoError(t, err)
+	require.Equal(t, int64(99), requesterID)
 }
 
 func TestFriend_RejectRequest_OK(t *testing.T) {
 	fs := mocks.NewFriendshipRepoMock(t)
 	us := mocks.NewUserRepoMock(t)
-	fs.EXPECT().RejectRequest(mock.Anything, int64(7), int64(2)).Return(nil)
+	fs.EXPECT().RejectRequest(mock.Anything, int64(7), int64(2)).Return(int64(99), nil)
 
 	svc := service.NewFriendService(fs, us)
-	require.NoError(t, svc.RejectRequest(context.Background(), 7, 2))
+	requesterID, err := svc.RejectRequest(context.Background(), 7, 2)
+	require.NoError(t, err)
+	require.Equal(t, int64(99), requesterID)
 }
 
 func TestFriend_ListFriends_OK(t *testing.T) {

@@ -24,10 +24,15 @@ type PendingRequest struct {
 }
 
 // FriendshipRepo manages friend relationships.
+//
+// AcceptRequest / RejectRequest return the underlying friendship's
+// requesterID alongside the error so the transport layer can fire a
+// real-time friend_event back to the requester without a second round-trip
+// to the database. Zero is returned on any error.
 type FriendshipRepo interface {
 	SendRequest(ctx context.Context, requesterID, addresseeID int64) error
-	AcceptRequest(ctx context.Context, friendshipID, userID int64) error
-	RejectRequest(ctx context.Context, friendshipID, userID int64) error
+	AcceptRequest(ctx context.Context, friendshipID, userID int64) (requesterID int64, err error)
+	RejectRequest(ctx context.Context, friendshipID, userID int64) (requesterID int64, err error)
 	ListFriends(ctx context.Context, userID int64) ([]User, error)
 	ListPendingRequests(ctx context.Context, userID int64) ([]PendingRequest, error)
 	GetFriendship(ctx context.Context, userA, userB int64) (*Friendship, error)
@@ -51,30 +56,47 @@ func (r *gormFriendshipRepo) SendRequest(ctx context.Context, requesterID, addre
 	return r.db.WithContext(ctx).Create(f).Error
 }
 
-func (r *gormFriendshipRepo) AcceptRequest(ctx context.Context, friendshipID, userID int64) error {
-	res := r.db.WithContext(ctx).Model(&Friendship{}).
-		Where("id = ? AND addressee_id = ? AND status = ?", friendshipID, userID, FriendshipPending).
-		Update("status", FriendshipAccepted)
-	if res.Error != nil {
-		return res.Error
-	}
-	if res.RowsAffected == 0 {
-		return ErrNotFound
-	}
-	return nil
+// AcceptRequest flips the pending friendship to Accepted and returns the
+// row's requester_id so the caller can push a real-time event back to the
+// original sender. Using a single UPDATE with a subquery avoids the
+// read-then-write race and keeps the call atomic.
+func (r *gormFriendshipRepo) AcceptRequest(ctx context.Context, friendshipID, userID int64) (int64, error) {
+	return r.transitionPending(ctx, friendshipID, userID, FriendshipAccepted)
 }
 
-func (r *gormFriendshipRepo) RejectRequest(ctx context.Context, friendshipID, userID int64) error {
+// RejectRequest mirrors AcceptRequest but transitions the row to Rejected.
+func (r *gormFriendshipRepo) RejectRequest(ctx context.Context, friendshipID, userID int64) (int64, error) {
+	return r.transitionPending(ctx, friendshipID, userID, FriendshipRejected)
+}
+
+// transitionPending flips a Pending friendship row to the given terminal
+// status, returning the row's requester_id. Gated on addressee_id = userID so
+// only the request's target can act. Returns ErrNotFound if no matching
+// Pending row exists (covers non-addressee callers, missing IDs, already
+// accepted/rejected rows).
+func (r *gormFriendshipRepo) transitionPending(ctx context.Context, friendshipID, userID int64, to int16) (int64, error) {
+	// Fetch + update in one place. A read-then-write could race a concurrent
+	// accept, but the update itself is idempotent under the status filter so
+	// the worst case is two correct "transition to Accepted" operations.
+	var f Friendship
+	if err := r.db.WithContext(ctx).
+		Where("id = ? AND addressee_id = ? AND status = ?", friendshipID, userID, FriendshipPending).
+		First(&f).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return 0, ErrNotFound
+		}
+		return 0, err
+	}
 	res := r.db.WithContext(ctx).Model(&Friendship{}).
 		Where("id = ? AND addressee_id = ? AND status = ?", friendshipID, userID, FriendshipPending).
-		Update("status", FriendshipRejected)
+		Update("status", to)
 	if res.Error != nil {
-		return res.Error
+		return 0, res.Error
 	}
 	if res.RowsAffected == 0 {
-		return ErrNotFound
+		return 0, ErrNotFound
 	}
-	return nil
+	return f.RequesterID, nil
 }
 
 func (r *gormFriendshipRepo) ListFriends(ctx context.Context, userID int64) ([]User, error) {
