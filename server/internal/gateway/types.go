@@ -42,6 +42,10 @@ const (
 	TypeMsgUpdated WSMessageType = "msg_updated"
 	// TypeMsgDeleted is pushed server→client when a message is revoked/soft-deleted (M1 feature).
 	TypeMsgDeleted WSMessageType = "msg_deleted"
+	// TypeAnnouncementPosted is pushed server→client when a new channel announcement is created (M2 feature).
+	TypeAnnouncementPosted WSMessageType = "announcement_posted"
+	// TypeUrgentPosted is pushed server→client when an urgent message is sent (M2 feature).
+	TypeUrgentPosted WSMessageType = "urgent_posted"
 )
 
 // WSFrame is the top-level envelope for every WebSocket message.

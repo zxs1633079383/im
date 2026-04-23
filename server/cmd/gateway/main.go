@@ -204,12 +204,19 @@ func run() int {
 	// echoes read receipts to other devices of the same user, and the file
 	// repo handles attachment linkage on send.
 	messageSvc := service.NewMessageService(messageRepo, channelRepo, fileRepo)
+	msgBroadcaster := &hubEventBroadcaster{xpod: xpod, svc: messageSvc}
 	imhttp.RegisterMessageRoutes(authedAPI, messageSvc, imhttp.MessageRouteOpts{
 		Pusher:      &hubMessagePusher{xpod: xpod},
 		ReadSyncer:  &hubReadSyncer{xpod: xpod},
-		Broadcaster: &hubEventBroadcaster{xpod: xpod, svc: messageSvc},
+		Broadcaster: msgBroadcaster,
 		Logger:      log,
 	})
+
+	// M2-B: channel announcements. Re-uses the message broadcaster so
+	// announcement_posted fans out to the same member set as msg_updated.
+	announcementRepo := repo.NewAnnouncementRepo(gormDB)
+	announcementSvc := service.NewAnnouncementService(announcementRepo, channelRepo, governanceSvc)
+	imhttp.RegisterAnnouncementRoutes(authedAPI, announcementSvc, msgBroadcaster)
 
 	// Phase 7.5 cut-over: batch incremental sync. No real-time hooks — sync is
 	// pure pull, the algorithm + response shape are preserved verbatim from
