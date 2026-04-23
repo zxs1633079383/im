@@ -1,6 +1,12 @@
 package gateway
 
-import "sync"
+import (
+	"context"
+	"sync"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/metric"
+)
 
 // Hub is the in-process connection registry.
 // It is safe for concurrent use from multiple goroutines.
@@ -9,9 +15,38 @@ type Hub struct {
 	conns map[int64][]*Conn // userID → list of active connections
 }
 
-// NewHub creates an empty Hub.
+// NewHub creates an empty Hub and registers an OTel ObservableGauge that
+// reports the live WebSocket connection count.
 func NewHub() *Hub {
-	return &Hub{conns: make(map[int64][]*Conn)}
+	h := &Hub{conns: make(map[int64][]*Conn)}
+	_ = h.registerMetrics()
+	return h
+}
+
+// connCount returns the number of currently registered connections across all users.
+func (h *Hub) connCount() int {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	n := 0
+	for _, list := range h.conns {
+		n += len(list)
+	}
+	return n
+}
+
+// registerMetrics registers the im.ws.active_connections ObservableGauge.
+// Errors are returned but the caller may safely ignore them — failure to
+// register a metric must not prevent the gateway from serving traffic.
+func (h *Hub) registerMetrics() error {
+	meter := otel.Meter("im-gateway")
+	_, err := meter.Int64ObservableGauge("im.ws.active_connections",
+		metric.WithDescription("Active WebSocket connections on this gateway pod"),
+		metric.WithInt64Callback(func(_ context.Context, o metric.Int64Observer) error {
+			o.Observe(int64(h.connCount()))
+			return nil
+		}),
+	)
+	return err
 }
 
 // Register adds a connection to the hub.

@@ -1,0 +1,92 @@
+// Package observability wires the OpenTelemetry SDK (traces + metrics)
+// for im-server services. Callers invoke Init at startup and defer the
+// returned ShutdownFunc to flush pending exports on graceful shutdown.
+package observability
+
+import (
+	"context"
+	"fmt"
+	"time"
+
+	"go.opentelemetry.io/contrib/instrumentation/runtime"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+	"go.opentelemetry.io/otel/propagation"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/resource"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
+)
+
+// Config configures the OpenTelemetry SDK.
+// SampleRatio defaults to 1.0 if zero. Disabled returns a noop shutdown.
+type Config struct {
+	ServiceName    string
+	ServiceVersion string
+	SampleRatio    float64
+	Disabled       bool
+}
+
+// ShutdownFunc flushes pending exports and shuts down providers.
+// Honors the passed context's deadline.
+type ShutdownFunc func(context.Context) error
+
+// Init wires global TracerProvider and MeterProvider with OTLP/gRPC exporters
+// (endpoint via OTEL_EXPORTER_OTLP_ENDPOINT) and starts runtime metrics.
+// Returns a ShutdownFunc that the caller MUST defer.
+func Init(ctx context.Context, cfg Config) (ShutdownFunc, error) {
+	if cfg.Disabled {
+		return func(context.Context) error { return nil }, nil
+	}
+	if cfg.SampleRatio == 0 {
+		cfg.SampleRatio = 1.0
+	}
+
+	res, err := resource.New(ctx,
+		resource.WithAttributes(
+			semconv.ServiceName(cfg.ServiceName),
+			semconv.ServiceVersion(cfg.ServiceVersion),
+		),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("resource: %w", err)
+	}
+
+	traceExp, err := otlptracegrpc.New(ctx, otlptracegrpc.WithInsecure())
+	if err != nil {
+		return nil, fmt.Errorf("trace exporter: %w", err)
+	}
+	tp := sdktrace.NewTracerProvider(
+		sdktrace.WithBatcher(traceExp, sdktrace.WithBatchTimeout(5*time.Second)),
+		sdktrace.WithResource(res),
+		sdktrace.WithSampler(sdktrace.ParentBased(sdktrace.TraceIDRatioBased(cfg.SampleRatio))),
+	)
+	otel.SetTracerProvider(tp)
+	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
+		propagation.TraceContext{}, propagation.Baggage{},
+	))
+
+	metricExp, err := otlpmetricgrpc.New(ctx, otlpmetricgrpc.WithInsecure())
+	if err != nil {
+		return nil, fmt.Errorf("metric exporter: %w", err)
+	}
+	mp := sdkmetric.NewMeterProvider(
+		sdkmetric.WithResource(res),
+		sdkmetric.WithReader(sdkmetric.NewPeriodicReader(metricExp,
+			sdkmetric.WithInterval(15*time.Second))),
+	)
+	otel.SetMeterProvider(mp)
+
+	if err := runtime.Start(runtime.WithMinimumReadMemStatsInterval(time.Second)); err != nil {
+		return nil, fmt.Errorf("runtime metrics: %w", err)
+	}
+
+	return func(ctx context.Context) error {
+		ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		defer cancel()
+		_ = tp.Shutdown(ctx)
+		_ = mp.Shutdown(ctx)
+		return nil
+	}, nil
+}

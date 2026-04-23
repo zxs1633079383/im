@@ -1,0 +1,15 @@
+# codecov.yml — at repo root, NOT under server/
+coverage:
+  status:
+    project:
+      default:
+        target: 75%
+        threshold: 1%
+    patch:
+      default:
+        target: 80%
+ignore:
+  - "**/mocks/**"
+  - "**/*_mock.go"
+  - "**/internal/deps/**"
+  - "**/cmd/**"

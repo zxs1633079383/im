@@ -1,0 +1,22 @@
+# server/.mockery.yaml
+# Mock generation config for mockery v2.
+# Phase 5 registers all 8 repo interfaces; Phase 6+ tests consume them.
+
+with-expecter: true
+quiet: false
+disable-version-string: true
+mockname: "{{.InterfaceName}}Mock"
+filename: "{{.InterfaceName | snakecase}}_mock.go"
+dir: "{{.InterfaceDir}}/mocks"
+outpkg: mocks
+packages:
+  im-server/internal/repo:
+    interfaces:
+      UserRepo:
+      UserSettingsRepo:
+      ChannelRepo:
+      MessageRepo:
+      FriendshipRepo:
+      SearchRepo:
+      FileRepo:
+      FavoriteRepo:

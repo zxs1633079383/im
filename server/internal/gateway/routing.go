@@ -1,10 +1,10 @@
 package gateway
 
-import "im-server/internal/store"
+import "im-server/internal/repo"
 
-// Routing is re-exported from store.Routing for use within the gateway package.
+// Routing is re-exported from repo.Routing for use within the gateway package.
 // It manages the Redis user-connection routing table.
-type Routing = store.Routing
+type Routing = repo.Routing
 
-// NewRouting creates a new Routing. See store.NewRouting for details.
-var NewRouting = store.NewRouting
+// NewRouting creates a new Routing. See repo.NewRouting for details.
+var NewRouting = repo.NewRouting
