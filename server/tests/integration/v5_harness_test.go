@@ -106,8 +106,13 @@ func newV5Env(t *testing.T) *v5env {
 	imhttp.RegisterProfileRoutes(authed, service.NewProfileService(users))
 	imhttp.RegisterChannelRoutes(authed,
 		service.NewChannelService(channels, users), channelPush)
-	imhttp.RegisterChannelGovernanceRoutes(authed,
-		service.NewChannelGovernanceService(channels, governance, users), channelPush)
+	governanceSvc := service.NewChannelGovernanceService(channels, governance, users)
+	imhttp.RegisterChannelGovernanceRoutes(authed, governanceSvc, channelPush)
+	announcements := repo.NewAnnouncementRepo(db)
+	imhttp.RegisterAnnouncementRoutes(authed,
+		service.NewAnnouncementService(announcements, channels, governanceSvc),
+		broadcasts,
+	)
 	imhttp.RegisterMessageRoutes(authed,
 		service.NewMessageService(messages, channels, files),
 		imhttp.MessageRouteOpts{
