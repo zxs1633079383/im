@@ -1,0 +1,28 @@
+# Non-sensitive gateway configuration. Mounted into each pod at
+# /etc/im/config.yaml; the gateway reads IM_CONFIG from env.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: im-gateway-config
+  namespace: __NAMESPACE__
+  labels:
+    app: im-gateway
+    app.kubernetes.io/part-of: im
+data:
+  config.yaml: |
+    gateway:
+      http_addr: ":8080"
+      upload_dir: "/data/uploads"
+      # jwt_secret is injected via env IM_GATEWAY_JWT_SECRET from the Secret;
+      # leaving it blank here lets the env override win.
+      jwt_secret: ""
+    env: pre
+    pg:
+      dsn: "__PG_DSN__"
+      max_conns: 20
+    redis:
+      addr: "__REDIS_ADDR__"
+      password: ""
+      db: 0
+    pulsar:
+      url: "__PULSAR_URL__"
