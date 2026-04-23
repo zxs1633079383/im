@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 
 	"im-server/internal/auth"
 )
@@ -36,4 +37,17 @@ func writeError(w http.ResponseWriter, status int, msg string) {
 func claimsFromCtx(r *http.Request) (*auth.Claims, bool) {
 	c, ok := r.Context().Value(ClaimsKey).(*auth.Claims)
 	return c, ok && c != nil
+}
+
+// pathID extracts a named path segment as int64. For Go 1.22 pattern routes
+// like /api/channels/{id}, use r.PathValue("id"). Promoted from the legacy
+// channel.go before the Phase 7.3 cut-over removed that file — favorite,
+// file, and message handlers still reference it.
+func pathID(r *http.Request, key string) (int64, bool) {
+	s := r.PathValue(key)
+	if s == "" {
+		return 0, false
+	}
+	id, err := strconv.ParseInt(s, 10, 64)
+	return id, err == nil
 }

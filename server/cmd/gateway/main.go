@@ -94,7 +94,6 @@ func run() int {
 
 	jwtMiddleware := middleware.JWTAuth(cfg.Gateway.JWTSecret)
 
-	channelHandler := handler.NewChannelHandler(channelRepo, userRepo, log)
 	messageHandler := handler.NewMessageHandler(messageRepo, channelRepo, log)
 	favoriteHandler := handler.NewFavoriteHandler(favoriteRepo, log)
 	fileHandler := handler.NewFileHandler(fileRepo, cfg.Gateway.UploadDir, log)
@@ -114,7 +113,6 @@ func run() int {
 	messageHandler.WithReadSyncer(&hubReadSyncer{hub: hub})
 	messageHandler.WithAttachments(fileRepo)
 	messageHandler.WithPusher(channelRepo, &hubMessagePusher{hub: hub})
-	channelHandler.WithEventPusher(&hubChannelEventPusher{hub: hub})
 	routing := gateway.NewRouting(rdb, gatewayID)
 
 	// Pulsar client.
@@ -139,17 +137,7 @@ func run() int {
 
 	// Profile + Settings routes are served by Gin in Phase 7.1 (see below).
 	// Friend + user-search routes are served by Gin in Phase 7.2 (see below).
-
-	// Channel routes (JWT protected)
-	mux.Handle("POST /api/channels", jwtMiddleware(http.HandlerFunc(channelHandler.CreateGroup)))
-	mux.Handle("POST /api/channels/dm", jwtMiddleware(http.HandlerFunc(channelHandler.CreateOrGetDM)))
-	mux.Handle("GET /api/channels", jwtMiddleware(http.HandlerFunc(channelHandler.ListChannels)))
-	mux.Handle("GET /api/channels/{id}", jwtMiddleware(http.HandlerFunc(channelHandler.GetChannel)))
-	mux.Handle("PUT /api/channels/{id}", jwtMiddleware(http.HandlerFunc(channelHandler.UpdateChannel)))
-	mux.Handle("POST /api/channels/{id}/members", jwtMiddleware(http.HandlerFunc(channelHandler.AddMember)))
-	mux.Handle("DELETE /api/channels/{id}/members/{user_id}", jwtMiddleware(http.HandlerFunc(channelHandler.RemoveMember)))
-	mux.Handle("GET /api/channels/{id}/members", jwtMiddleware(http.HandlerFunc(channelHandler.ListMembers)))
-	mux.Handle("POST /api/channels/{id}/leave", jwtMiddleware(http.HandlerFunc(channelHandler.LeaveChannel)))
+	// Channel routes are served by Gin in Phase 7.3 (see below).
 
 	// Message routes (JWT protected)
 	mux.Handle("POST /api/channels/{id}/messages", jwtMiddleware(http.HandlerFunc(messageHandler.SendMessage)))
@@ -208,6 +196,12 @@ func run() int {
 	// real-time WebSocket notification on a new friend request.
 	friendSvc := service.NewFriendService(friendRepo, userRepo)
 	imhttp.RegisterFriendRoutes(authedAPI, friendSvc, &hubFriendEventPusher{hub: hub})
+
+	// Phase 7.3 cut-over: channel endpoints. The pusher hook is preserved
+	// (legacy WithEventPusher) so newly added members still receive a
+	// real-time WebSocket "added" event.
+	channelSvc := service.NewChannelService(channelRepo, userRepo)
+	imhttp.RegisterChannelRoutes(authedAPI, channelSvc, &hubChannelEventPusher{hub: hub})
 
 	srv := &http.Server{
 		Addr:         cfg.Gateway.HTTPAddr,
@@ -297,7 +291,7 @@ func (p *hubFriendEventPusher) PushFriendEvent(targetUserID int64, eventType str
 	})
 }
 
-// hubChannelEventPusher adapts *gateway.Hub to handler.ChannelEventPusher.
+// hubChannelEventPusher adapts *gateway.Hub to imhttp.ChannelEventPusher.
 type hubChannelEventPusher struct {
 	hub *gateway.Hub
 }
