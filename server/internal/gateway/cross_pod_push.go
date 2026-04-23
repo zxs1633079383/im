@@ -4,6 +4,10 @@ import (
 	"context"
 	"log/slog"
 	"strconv"
+
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // routingLookup is the narrow interface CrossPodPush needs from *Routing.
@@ -100,9 +104,22 @@ func (h *Hub) crossPodPushImpl(
 				"gw", gwID, "topic", topic, "error", err)
 			continue
 		}
-		if err := producer.Send(ctx, key, payload); err != nil {
+		sendCtx, span := tracer.Start(ctx, "CrossPodPush.Send",
+			trace.WithAttributes(
+				attribute.String("target.gateway", gwID),
+				attribute.String("push.topic", topic),
+				attribute.String("push.type", string(msgType)),
+				attribute.Int64("target.user_id", userID),
+			))
+		sendErr := producer.Send(sendCtx, key, payload)
+		if sendErr != nil {
+			span.SetStatus(codes.Error, sendErr.Error())
+			span.RecordError(sendErr)
+		}
+		span.End()
+		if sendErr != nil {
 			log.Warn("cross pod push: send failed",
-				"gw", gwID, "topic", topic, "error", err)
+				"gw", gwID, "topic", topic, "error", sendErr)
 			continue
 		}
 		delivered++
