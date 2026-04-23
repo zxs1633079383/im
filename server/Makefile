@@ -37,3 +37,10 @@ test-cover:
 lint:
 	@which golangci-lint > /dev/null || (echo "install: brew install golangci-lint" && exit 1)
 	golangci-lint run ./...
+
+.PHONY: vuln check
+vuln:
+	@which govulncheck > /dev/null || go install golang.org/x/vuln/cmd/govulncheck@latest
+	govulncheck ./...
+
+check: lint vuln test-unit
