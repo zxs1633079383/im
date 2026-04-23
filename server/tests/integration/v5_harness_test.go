@@ -63,6 +63,10 @@ type v5env struct {
 	friendPush  *FriendRecorder
 	channelPush *ChannelRecorder
 	userPush    *UserPushRecorder
+
+	// Services kept on the env for tests that need to bypass HTTP (e.g. the
+	// scheduled-delivery test calls scheduledSvc.Deliver directly).
+	scheduledSvc *service.ScheduledService
 }
 
 // newV5Env builds a fresh V5 environment. Every test gets its own DB (one
@@ -131,6 +135,9 @@ func newV5Env(t *testing.T) *v5env {
 		service.NewNotificationService(notificationRepo, users),
 		userPush,
 	)
+	scheduledRepo := repo.NewScheduledRepo(db)
+	scheduledSvc := service.NewScheduledService(scheduledRepo, channels, msgSvc)
+	imhttp.RegisterScheduledRoutes(authed, scheduledSvc)
 	imhttp.RegisterMessageRoutes(authed, msgSvc,
 		imhttp.MessageRouteOpts{
 			Pusher:      pushes,
@@ -164,6 +171,8 @@ func newV5Env(t *testing.T) *v5env {
 		friendPush:  friendPush,
 		channelPush: channelPush,
 		userPush:    userPush,
+
+		scheduledSvc: scheduledSvc,
 	}
 }
 
