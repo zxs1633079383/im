@@ -43,13 +43,24 @@ func TestV5_1_RegisterLoginMe(t *testing.T) {
 }
 
 // TestV5_2_CreateChannelAddMemberSend: alice creates a group with bob, sends
-// a message, and bob's pusher fires with the right payload.
+// a message, and bob's pusher fires with the right payload. The group-create
+// path also fires one "added" channel_event to bob (the non-creator member).
 func TestV5_2_CreateChannelAddMemberSend(t *testing.T) {
 	env := newV5Env(t)
 	aliceID, aliceTok := env.CreateUserAndToken("alice2", "a2@x.com")
 	bobID, _ := env.CreateUserAndToken("bob2", "b2@x.com")
 
 	chID := env.CreateGroup(aliceTok, "team", bobID)
+
+	// Channel create fires "added" to bob (not the creator). Alice shouldn't
+	// receive an added event for her own channel.
+	if n := CountChannelEvents(env.channelPush.Snapshot(), bobID, chID, "added"); n != 1 {
+		t.Fatalf("channel added event for bob: got %d, want 1; events=%+v",
+			n, env.channelPush.Snapshot())
+	}
+	if n := CountChannelEvents(env.channelPush.Snapshot(), aliceID, chID, "added"); n != 0 {
+		t.Fatalf("creator alice must not receive her own added event; got %d", n)
+	}
 
 	_ = env.SendMessage(aliceTok, chID, "hello bob", "uuid-v5-2-1")
 
