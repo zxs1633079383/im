@@ -141,7 +141,10 @@ func dialWS(wsURL, token string) (*websocket.Conn, error) {
 	u.RawQuery = q.Encode()
 
 	d := websocket.Dialer{HandshakeTimeout: 10 * time.Second}
-	c, _, err := d.Dial(u.String(), nil)
+	c, resp, err := d.Dial(u.String(), nil)
+	if resp != nil && resp.Body != nil {
+		_ = resp.Body.Close()
+	}
 	return c, err
 }
 

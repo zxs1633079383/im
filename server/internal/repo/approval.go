@@ -91,7 +91,7 @@ func (r *gormApprovalRepo) GetByID(ctx context.Context, id int64) (*Approval, er
 // Decide transitions a pending approval to approved/rejected and records the
 // decision metadata. The WHERE status = pending guard prevents double-decision
 // races — RowsAffected = 0 means someone else won the transition; callers map
-// that to ErrNotFound (the row may exist but isn't transitionable).
+// that to ErrNotFound (the row may exist but isn't in a transitional state).
 func (r *gormApprovalRepo) Decide(ctx context.Context, id int64, status int16, note string, decidedAt time.Time) error {
 	res := r.db.WithContext(ctx).Model(&Approval{}).
 		Where("id = ? AND status = ?", id, ApprovalStatusPending).
