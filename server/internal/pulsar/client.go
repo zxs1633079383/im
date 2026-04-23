@@ -7,7 +7,14 @@ import (
 	"log/slog"
 
 	pulsarclient "github.com/apache/pulsar-client-go/pulsar"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/trace"
 )
+
+// pulsarTracer is the OpenTelemetry tracer for Pulsar producer/consumer spans.
+var pulsarTracer = otel.Tracer("im-pulsar")
 
 // ---------- Client ----------
 
@@ -37,6 +44,7 @@ func (c *Client) Close() {
 // Producer sends JSON-encoded messages to a single Pulsar topic.
 type Producer struct {
 	inner pulsarclient.Producer
+	topic string
 	log   *slog.Logger
 }
 
@@ -49,25 +57,48 @@ func (c *Client) NewProducer(topic string) (*Producer, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create producer for %s: %w", topic, err)
 	}
-	return &Producer{inner: p, log: c.log}, nil
+	return &Producer{inner: p, topic: topic, log: c.log}, nil
 }
 
 // Send JSON-encodes payload and publishes it to the topic.
 // key is used as the partition routing key (e.g. channel_id as string ensures
 // per-channel ordering).
+//
+// Send opens an OTel producer span and injects the resulting trace context
+// into msg.Properties via the global TextMapPropagator. The matching consumer
+// extracts the context from the same Properties map to continue the trace.
 func (p *Producer) Send(ctx context.Context, key string, payload any) error {
 	data, err := json.Marshal(payload)
 	if err != nil {
 		return fmt.Errorf("marshal payload: %w", err)
 	}
+
+	ctx, span := pulsarTracer.Start(ctx, "pulsar.produce."+p.topic,
+		trace.WithSpanKind(trace.SpanKindProducer),
+		trace.WithAttributes(
+			attribute.String("messaging.system", "pulsar"),
+			attribute.String("messaging.destination.name", p.topic),
+			attribute.String("messaging.operation", "publish"),
+		))
+	defer span.End()
+
+	// Inject AFTER starting the span so the producer span context (not the
+	// caller's parent) is what consumers extract.
+	props := map[string]string{}
+	otel.GetTextMapPropagator().Inject(ctx, propagation.MapCarrier(props))
+
 	msg := &pulsarclient.ProducerMessage{
-		Payload: data,
+		Payload:    data,
+		Properties: props,
 	}
 	if key != "" {
 		msg.Key = key
 	}
-	_, err = p.inner.Send(ctx, msg)
-	return err
+	if _, err = p.inner.Send(ctx, msg); err != nil {
+		span.RecordError(err)
+		return err
+	}
+	return nil
 }
 
 // Close releases the producer.
