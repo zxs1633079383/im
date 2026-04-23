@@ -6,11 +6,16 @@ A full-featured instant messaging system with reliable message delivery, support
 
 | Layer | Technology |
 |---|---|
-| Backend | Go 1.22+, net/http |
+| Backend | Go 1.26+ |
+| Web framework | Gin v1.10 (otelgin) |
+| ORM | GORM v2 + `gorm.io/plugin/opentelemetry/tracing` |
+| Tests | testify + mockery + testcontainers-go + httpexpect + gotestsum |
+| Quality | golangci-lint + govulncheck (GitHub Actions CI) |
+| Observability | OpenTelemetry — Jaeger trace + Prometheus metrics |
 | Frontend | Tauri v2, Angular 17+, TypeScript |
-| Database | PostgreSQL 16 |
-| Cache / Routing | Redis 7 |
-| Message Queue | Apache Pulsar 3 |
+| Database | PostgreSQL 16 (via GORM) |
+| Cache / Routing | Redis 7 (`go-redis`) |
+| Message Queue | Apache Pulsar 3 (`apache/pulsar-client-go`) |
 | Client Storage | SQLite (via Tauri plugin) |
 
 ## Architecture
@@ -60,13 +65,17 @@ im/
 │   ├── internal/
 │   │   ├── auth/                    # bcrypt + JWT
 │   │   ├── config/                  # YAML + env config
+│   │   ├── deps/                    # Composition root (DI wiring)
 │   │   ├── gateway/                 # WebSocket hub, conn, heartbeat, push consumer
-│   │   ├── handler/                 # HTTP handlers (auth, channel, message, friend, sync, search, file, favorite, profile, settings)
-│   │   ├── middleware/              # JWT middleware
-│   │   ├── model/                   # Domain models
-│   │   ├── pulsar/                  # Pulsar client wrapper
-│   │   ├── store/                   # PG data access layer
-│   │   └── testutil/                # Test helpers
+│   │   ├── http/                    # Gin engine, route registration, slice handlers
+│   │   ├── middleware/              # JWT, request-id, otelgin
+│   │   ├── observability/           # OTel SDK setup (trace + metrics)
+│   │   ├── pulsar/                  # Pulsar client wrapper (with OTel propagation)
+│   │   ├── repo/                    # GORM repositories (and mockery mocks)
+│   │   ├── service/                 # Application services (slice business logic)
+│   │   ├── testutil/                # Unit-test helpers
+│   │   │   └── containers/          # testcontainers-go helpers (PG/Redis/Pulsar)
+│   │   └── ...
 │   ├── migrations/                  # PG schema migrations
 │   ├── config.example.yaml
 │   ├── Makefile
@@ -90,9 +99,10 @@ im/
 
 ## Prerequisites
 
-- **Go** 1.22+
+- **Go** 1.26+
 - **Node.js** 18+ and npm
 - **Rust** (for Tauri build)
+- **Docker** (for `make test-integration` via testcontainers-go and the local compose stack)
 - **PostgreSQL** 16
 - **Redis** 7
 - **Apache Pulsar** 3
@@ -165,16 +175,31 @@ npx tauri build
 ## Running Tests
 
 ```bash
-# Server unit tests (no database required)
-cd server && make test-unit
-
-# Server integration tests (requires PG)
 cd server
-IM_TEST_PG_DSN="postgres://your_user@localhost:5432/im_test?sslmode=disable" make test
+
+make test-unit          # fast unit tests (no docker)
+make test-integration   # full integration tests (requires Docker — testcontainers boots PG/Redis/Pulsar)
+make lint               # golangci-lint
+make vuln               # govulncheck
+make check              # lint + vuln + test-unit
+make check-full         # all of the above + integration
+make mocks              # regenerate mockery mocks
 
 # Client build verification
 cd client && npx ng build
 ```
+
+## Observability
+
+The repo ships a docker-compose stack for the full observability pipeline:
+
+```bash
+docker compose up -d   # postgres + redis + pulsar + otel-collector + jaeger
+```
+
+- **Jaeger UI** — http://localhost:16686 (HTTP requests, GORM queries, WebSocket frames, and Pulsar produce/consume spans, with cross-service trace context propagation)
+- **Prometheus scrape** — http://localhost:8889/metrics (process metrics, Gin RED, GORM stats, WebSocket gauges)
+- Set `OTEL_DISABLED=true` to disable OTel exporters (handy for local dev without the collector running)
 
 ## API Overview
 
