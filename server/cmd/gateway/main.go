@@ -218,6 +218,11 @@ func run() int {
 	announcementSvc := service.NewAnnouncementService(announcementRepo, channelRepo, governanceSvc)
 	imhttp.RegisterAnnouncementRoutes(authedAPI, announcementSvc, msgBroadcaster)
 
+	// M2-C: urgent messages (send/confirm/cancel + list confirmations).
+	urgentRepo := repo.NewUrgentRepo(gormDB)
+	urgentSvc := service.NewUrgentService(urgentRepo, messageRepo, channelRepo, messageSvc, governanceSvc)
+	imhttp.RegisterUrgentRoutes(authedAPI, urgentSvc, msgBroadcaster)
+
 	// Phase 7.5 cut-over: batch incremental sync. No real-time hooks — sync is
 	// pure pull, the algorithm + response shape are preserved verbatim from
 	// the legacy SyncHandler.
