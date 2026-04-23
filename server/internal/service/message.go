@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/lib/pq"
 
@@ -239,6 +240,42 @@ func (s *MessageService) ForwardMessages(ctx context.Context, callerID int64, p 
 // the transport always calls SendMessage first (which does the check).
 func (s *MessageService) ListMembers(ctx context.Context, channelID int64) ([]repo.ChannelMember, error) {
 	return s.channels.ListMembers(ctx, channelID)
+}
+
+// FetchAroundTimestamp returns a window of messages for channelID centered on
+// timestamp ts (unix millis). The window holds up to limit messages — half
+// older (<=ts) and half newer (>ts) — ordered by seq ASC. hasOlder/hasNewer
+// indicate whether more messages exist beyond the window bounds, so the
+// client can decide whether to enable further pagination.
+//
+// Errors:
+//   - ErrNotMember → 403 (caller not in channel)
+func (s *MessageService) FetchAroundTimestamp(
+	ctx context.Context,
+	channelID, callerID int64,
+	ts time.Time,
+	limit int,
+) ([]repo.Message, bool, bool, error) {
+	if err := s.requireMember(ctx, channelID, callerID); err != nil {
+		return nil, false, false, err
+	}
+	older, newer, err := s.messages.FetchAroundTimestamp(ctx, channelID, callerID, ts, limit)
+	if err != nil {
+		return nil, false, false, err
+	}
+
+	// hasOlder: did we fill the older half completely?
+	halfLimit := limit / 2
+	if halfLimit == 0 {
+		halfLimit = 1
+	}
+	hasOlder := len(older) == halfLimit
+	hasNewer := len(newer) == halfLimit
+
+	combined := make([]repo.Message, 0, len(older)+len(newer))
+	combined = append(combined, older...)
+	combined = append(combined, newer...)
+	return combined, hasOlder, hasNewer, nil
 }
 
 // GetReaders returns the user_ids of channel members who have read up to at

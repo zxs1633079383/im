@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -237,6 +238,49 @@ func RegisterMessageRoutes(authed *gin.RouterGroup, svc *service.MessageService,
 			opts.ReadSyncer.PushReadSync(uid, channelID, seq)
 		}
 		c.JSON(200, gin.H{"seq": seq})
+	})
+
+	// GET /api/channels/:id/messages/around?timestamp=<ms>&limit=<N>
+	// Fetch a chronological window centered on a wall-clock timestamp.
+	// Half the limit is returned before the timestamp, half after.
+	authed.GET("/channels/:id/messages/around", func(c *gin.Context) {
+		uid, ok := userIDFromCtx(c)
+		if !ok {
+			return
+		}
+		channelID, ok := pathInt64(c, "id")
+		if !ok {
+			return
+		}
+		tsMs := parseInt64(c.Query("timestamp"), 0)
+		if tsMs <= 0 {
+			c.JSON(400, gin.H{"error": "timestamp (unix ms) is required"})
+			return
+		}
+		limit := parseLimit(c.Query("limit"))
+		ts := time.UnixMilli(tsMs).UTC()
+
+		msgs, hasOlder, hasNewer, err := svc.FetchAroundTimestamp(
+			c.Request.Context(), channelID, uid, ts, limit,
+		)
+		switch {
+		case errors.Is(err, service.ErrNotMember):
+			c.JSON(403, gin.H{"error": "not a member of this channel"})
+			return
+		case err != nil:
+			log.Error("fetch around timestamp",
+				"error", err, "channel_id", channelID, "user_id", uid)
+			c.JSON(500, gin.H{"error": "internal error"})
+			return
+		}
+		if msgs == nil {
+			msgs = []repo.Message{}
+		}
+		c.JSON(200, gin.H{
+			"messages":   msgs,
+			"has_older":  hasOlder,
+			"has_newer":  hasNewer,
+		})
 	})
 
 	// GET /api/messages/:id/readers — list user IDs who have read up to (or
