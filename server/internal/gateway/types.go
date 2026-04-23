@@ -46,6 +46,10 @@ const (
 	TypeAnnouncementPosted WSMessageType = "announcement_posted"
 	// TypeUrgentPosted is pushed server→client when an urgent message is sent (M2 feature).
 	TypeUrgentPosted WSMessageType = "urgent_posted"
+	// TypeApprovalUpdated is pushed server→client on create/approve/reject/cancel (M2 feature).
+	TypeApprovalUpdated WSMessageType = "approval_updated"
+	// TypeNotificationReceived is pushed server→client when a new notification lands (M2 feature).
+	TypeNotificationReceived WSMessageType = "notification_received"
 )
 
 // WSFrame is the top-level envelope for every WebSocket message.

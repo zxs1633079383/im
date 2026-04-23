@@ -223,6 +223,15 @@ func run() int {
 	urgentSvc := service.NewUrgentService(urgentRepo, messageRepo, channelRepo, messageSvc, governanceSvc)
 	imhttp.RegisterUrgentRoutes(authedAPI, urgentSvc, msgBroadcaster)
 
+	// M2-D: approvals (request / approve / reject / cancel + list).
+	// The user-push adapter delivers approval_updated events to the
+	// requester + approver via the same cross-pod dispatch path used by
+	// friend / channel events.
+	approvalRepo := repo.NewApprovalRepo(gormDB)
+	approvalSvc := service.NewApprovalService(approvalRepo, channelRepo, governanceSvc)
+	userPusher := &hubUserEventPusher{xpod: xpod}
+	imhttp.RegisterApprovalRoutes(authedAPI, approvalSvc, userPusher)
+
 	// Phase 7.5 cut-over: batch incremental sync. No real-time hooks — sync is
 	// pure pull, the algorithm + response shape are preserved verbatim from
 	// the legacy SyncHandler.
@@ -367,6 +376,18 @@ func (p *hubChannelEventPusher) PushChannelEvent(targetUserID int64, eventType s
 		ChannelID: channelID,
 		Name:      name,
 	})
+}
+
+// hubUserEventPusher implements imhttp.UserEventPusher by dispatching a WS
+// event to a single user via the shared cross-pod hub. Used by M2-D (approval)
+// and M2-E (notification) where audiences are explicit user IDs rather than
+// channel members.
+type hubUserEventPusher struct {
+	xpod crossPodDeps
+}
+
+func (p *hubUserEventPusher) PushToUser(userID int64, eventType imhttp.MessageEventType, payload any) {
+	p.xpod.dispatch(userID, gateway.WSMessageType(eventType), payload)
 }
 
 // hubEventBroadcaster implements imhttp.MessageEventBroadcaster. It fans
