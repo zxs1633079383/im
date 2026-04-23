@@ -45,13 +45,14 @@ import (
 // newV5Env; it owns the DB, the Gin engine, recorders, and the HTTP client
 // factory.
 type v5env struct {
-	t        *testing.T
-	db       any // *gorm.DB, kept opaque — tests only interact via repos
-	users    repo.UserRepo
-	channels repo.ChannelRepo
-	messages repo.MessageRepo
-	files    repo.FileRepo
-	friends  repo.FriendshipRepo
+	t          *testing.T
+	db         any // *gorm.DB, kept opaque — tests only interact via repos
+	users      repo.UserRepo
+	channels   repo.ChannelRepo
+	messages   repo.MessageRepo
+	files      repo.FileRepo
+	friends    repo.FriendshipRepo
+	governance repo.ChannelGovernanceRepo
 
 	// HTTP + recorders.
 	engine      *gin.Engine
@@ -82,6 +83,7 @@ func newV5Env(t *testing.T) *v5env {
 	messages := repo.NewMessageRepo(db, channels)
 	files := repo.NewFileRepo(db)
 	friends := repo.NewFriendshipRepo(db)
+	governance := repo.NewChannelGovernanceRepo(db)
 
 	pushes := &PushRecorder{}
 	readSyncs := &ReadSyncRecorder{}
@@ -104,6 +106,8 @@ func newV5Env(t *testing.T) *v5env {
 	imhttp.RegisterProfileRoutes(authed, service.NewProfileService(users))
 	imhttp.RegisterChannelRoutes(authed,
 		service.NewChannelService(channels, users), channelPush)
+	imhttp.RegisterChannelGovernanceRoutes(authed,
+		service.NewChannelGovernanceService(channels, governance, users), channelPush)
 	imhttp.RegisterMessageRoutes(authed,
 		service.NewMessageService(messages, channels, files),
 		imhttp.MessageRouteOpts{
@@ -129,6 +133,7 @@ func newV5Env(t *testing.T) *v5env {
 		messages:    messages,
 		files:       files,
 		friends:     friends,
+		governance:  governance,
 		engine:      r,
 		httpExpect:  testutil.NewExpect(t, r),
 		pushes:      pushes,
