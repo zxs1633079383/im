@@ -263,15 +263,21 @@ func TestV5_G7_FriendFullFlow(t *testing.T) {
 		WithJSON(map[string]int64{"addressee_id": bobID}).
 		Expect().Status(201)
 
-	// Friend pusher fired with the request event targeting bob.
-	found := false
+	// Friend pusher fires exactly one "request" event targeting bob.
+	if n := CountFriendEvents(env.friendPush.Snapshot(), bobID, "request"); n != 1 {
+		t.Fatalf("friend request event for bob: got %d, want 1; events=%+v",
+			n, env.friendPush.Snapshot())
+	}
+	// From-user field carries the sender's id on the recorded event.
+	fromUserCorrect := false
 	for _, ev := range env.friendPush.Snapshot() {
 		if ev.TargetUserID == bobID && ev.EventType == "request" && ev.FromUserID == aliceID {
-			found = true
+			fromUserCorrect = true
 		}
 	}
-	if !found {
-		t.Fatal("friend request event not fired for bob")
+	if !fromUserCorrect {
+		t.Fatalf("friend request event missing from_user=%d; events=%+v",
+			aliceID, env.friendPush.Snapshot())
 	}
 
 	// Bob lists pending → sees one request with friendship_id.
@@ -284,11 +290,24 @@ func TestV5_G7_FriendFullFlow(t *testing.T) {
 		t.Fatal("pending request missing friendship_id")
 	}
 
+	// Snapshot friend events before accept so we can assert no push is
+	// emitted on accept (handler today only pushes on request). If the
+	// handler ever starts pushing on accept this assertion will start
+	// failing — the test stays honest about current behaviour.
+	// BLOCKER: accept/reject paths do not push friend_event today; if
+	// product adds them, replace the "no new events" assertion with a
+	// positive count check per audience (accepter + requester).
+	beforeAccept := len(env.friendPush.Snapshot())
+
 	// Bob accepts.
 	env.httpExpect.POST("/api/friends/accept").
 		WithHeader("Authorization", bearer(bobTok)).
 		WithJSON(map[string]int64{"friendship_id": fid}).
 		Expect().Status(200)
+
+	if after := len(env.friendPush.Snapshot()); after != beforeAccept {
+		t.Fatalf("accept unexpectedly emitted %d additional friend events", after-beforeAccept)
+	}
 
 	// Both now see each other in /friends.
 	env.httpExpect.GET("/api/friends").
