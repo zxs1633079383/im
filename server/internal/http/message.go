@@ -239,6 +239,36 @@ func RegisterMessageRoutes(authed *gin.RouterGroup, svc *service.MessageService,
 		c.JSON(200, gin.H{"seq": seq})
 	})
 
+	// GET /api/messages/:id/replies — list every non-deleted reply to the
+	// given root message. Caller must be a member of the channel.
+	authed.GET("/messages/:id/replies", func(c *gin.Context) {
+		uid, ok := userIDFromCtx(c)
+		if !ok {
+			return
+		}
+		rootID, ok := pathInt64(c, "id")
+		if !ok {
+			return
+		}
+		msgs, err := svc.GetReplies(c.Request.Context(), rootID, uid)
+		switch {
+		case errors.Is(err, repo.ErrNotFound):
+			c.JSON(404, gin.H{"error": "message not found"})
+			return
+		case errors.Is(err, service.ErrNotMember):
+			c.JSON(403, gin.H{"error": "not a member of this channel"})
+			return
+		case err != nil:
+			log.Error("fetch replies", "error", err, "root_id", rootID, "user_id", uid)
+			c.JSON(500, gin.H{"error": "internal error"})
+			return
+		}
+		if msgs == nil {
+			msgs = []repo.Message{}
+		}
+		c.JSON(200, fetchMessagesResp{Messages: msgs})
+	})
+
 	// PATCH /api/messages/:id — edit the content of a message.
 	// Caller must be the original sender and the message must not already be
 	// soft-deleted. Returns the refreshed message snapshot.

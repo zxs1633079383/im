@@ -241,6 +241,23 @@ func (s *MessageService) ListMembers(ctx context.Context, channelID int64) ([]re
 	return s.channels.ListMembers(ctx, channelID)
 }
 
+// GetReplies returns every non-deleted reply to rootMsgID for a caller who is
+// a member of the root message's channel. Results are ordered by seq ASC.
+//
+// Errors:
+//   - repo.ErrNotFound → 404 (root message does not exist)
+//   - ErrNotMember     → 403 (caller not in the root message's channel)
+func (s *MessageService) GetReplies(ctx context.Context, rootMsgID, callerID int64) ([]repo.Message, error) {
+	root, err := s.messages.GetByID(ctx, rootMsgID)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.requireMember(ctx, root.ChannelID, callerID); err != nil {
+		return nil, err
+	}
+	return s.messages.FetchReplies(ctx, rootMsgID, callerID)
+}
+
 // EditMessage updates the content of msgID on behalf of callerID. The caller
 // MUST be the original sender and the message must not be soft-deleted.
 // Returns the refreshed message so the transport can fan out a msg_updated
