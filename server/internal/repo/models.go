@@ -90,6 +90,7 @@ type Message struct {
 	UpdatedAt     *time.Time    `gorm:"column:updated_at"                                       json:"updated_at,omitempty"`
 	Deleted       bool          `gorm:"column:deleted;not null;default:false"                   json:"deleted,omitempty"`
 	DeletedAt     *time.Time    `gorm:"column:deleted_at"                                       json:"deleted_at,omitempty"`
+	IsUrgent      bool          `gorm:"column:is_urgent;not null;default:false"                 json:"is_urgent,omitempty"`
 }
 
 // TableName pins the GORM-derived table name to the migration.
