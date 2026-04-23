@@ -145,10 +145,7 @@ func run() int {
 	mux.Handle("GET /api/files/{id}", jwtMiddleware(http.HandlerFunc(fileHandler.Download)))
 	mux.Handle("GET /api/messages/{id}/attachments", jwtMiddleware(http.HandlerFunc(fileHandler.ListAttachments)))
 
-	// Search route (JWT protected). SearchRepo satisfies all three handler
-	// search interfaces; pass it three times.
-	searchHandler := handler.NewSearchHandler(searchRepo, searchRepo, searchRepo, log)
-	mux.Handle("GET /api/search", jwtMiddleware(http.HandlerFunc(searchHandler.Search)))
+	// Search route is served by Gin in Phase 7.6 (see below).
 
 	// CORS middleware for development
 	corsHandler := corsMiddleware(mux)
@@ -204,6 +201,12 @@ func run() int {
 	// the legacy SyncHandler.
 	syncSvc := service.NewSyncService(channelRepo, messageRepo)
 	imhttp.RegisterSyncRoutes(authedAPI, syncSvc, log)
+
+	// Phase 7.6 cut-over: multi-type search (messages/users/channels). No
+	// real-time hooks — search is pure read, the per-type fan-out + response
+	// shape are preserved verbatim from the legacy SearchHandler.
+	searchSvc := service.NewSearchService(searchRepo)
+	imhttp.RegisterSearchRoutes(authedAPI, searchSvc, log)
 
 	srv := &http.Server{
 		Addr:         cfg.Gateway.HTTPAddr,
