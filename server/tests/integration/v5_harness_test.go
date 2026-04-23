@@ -126,6 +126,11 @@ func newV5Env(t *testing.T) *v5env {
 		service.NewApprovalService(approvalRepo, channels, governanceSvc),
 		userPush,
 	)
+	notificationRepo := repo.NewNotificationRepo(db)
+	imhttp.RegisterNotificationRoutes(authed,
+		service.NewNotificationService(notificationRepo, users),
+		userPush,
+	)
 	imhttp.RegisterMessageRoutes(authed, msgSvc,
 		imhttp.MessageRouteOpts{
 			Pusher:      pushes,
