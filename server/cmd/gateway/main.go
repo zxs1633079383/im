@@ -12,7 +12,6 @@ import (
 
 	"im-server/internal/config"
 	"im-server/internal/gateway"
-	"im-server/internal/handler"
 	imhttp "im-server/internal/http"
 	"im-server/internal/middleware"
 	"im-server/internal/observability"
@@ -92,10 +91,6 @@ func run() int {
 	fileRepo := repo.NewFileRepo(gormDB)
 	searchRepo := repo.NewSearchRepo(gormDB)
 
-	jwtMiddleware := middleware.JWTAuth(cfg.Gateway.JWTSecret)
-
-	favoriteHandler := handler.NewFavoriteHandler(favoriteRepo, log)
-
 	// Redis connection for routing.
 	redisCtx, redisCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	rdb, err := repo.OpenRedis(redisCtx, cfg.Redis.Addr, cfg.Redis.Password, cfg.Redis.DB)
@@ -129,19 +124,11 @@ func run() int {
 	// WebSocket route.
 	mux.Handle("GET /ws", wsHandler)
 
-	// Profile + Settings routes are served by Gin in Phase 7.1 (see below).
-	// Friend + user-search routes are served by Gin in Phase 7.2 (see below).
-	// Channel routes are served by Gin in Phase 7.3 (see below).
-	// Message + forward routes are served by Gin in Phase 7.4 (see below).
-
-	// Favorite routes (JWT protected)
-	mux.Handle("POST /api/favorites/{message_id}", jwtMiddleware(http.HandlerFunc(favoriteHandler.AddFavorite)))
-	mux.Handle("DELETE /api/favorites/{message_id}", jwtMiddleware(http.HandlerFunc(favoriteHandler.RemoveFavorite)))
-	mux.Handle("GET /api/favorites", jwtMiddleware(http.HandlerFunc(favoriteHandler.ListFavorites)))
-
-	// File routes are served by Gin in Phase 7.7 (see below).
-
-	// Search route is served by Gin in Phase 7.6 (see below).
+	// All HTTP API endpoints are now served by Gin (Phase 6 + Phase 7.1–7.8).
+	// Profile + Settings: Phase 7.1. Friend + user-search: Phase 7.2.
+	// Channel: Phase 7.3. Message + forward: Phase 7.4. Sync: Phase 7.5.
+	// Search: Phase 7.6. File: Phase 7.7. Favorites: Phase 7.8.
+	// The legacy mux retains only the WebSocket route.
 
 	// CORS middleware for development
 	corsHandler := corsMiddleware(mux)
@@ -209,6 +196,12 @@ func run() int {
 	// inserts. No real-time hooks — file routes are pure CRUD over storage.
 	fileSvc := service.NewFileService(fileRepo, cfg.Gateway.UploadDir)
 	imhttp.RegisterFileRoutes(authedAPI, fileSvc, log)
+
+	// Phase 7.8 cut-over: favorites add/remove/list. With this slice the
+	// internal/handler package is fully retired — every HTTP API endpoint
+	// now runs on Gin.
+	favoriteSvc := service.NewFavoriteService(favoriteRepo)
+	imhttp.RegisterFavoriteRoutes(authedAPI, favoriteSvc)
 
 	srv := &http.Server{
 		Addr:         cfg.Gateway.HTTPAddr,
