@@ -18,7 +18,6 @@ import (
 	"im-server/internal/observability"
 	imPulsar "im-server/internal/pulsar"
 	"im-server/internal/repo"
-	"im-server/internal/store"
 
 	"github.com/gin-gonic/gin"
 )
@@ -104,10 +103,9 @@ func run() int {
 	fileHandler := handler.NewFileHandler(fileRepo, cfg.Gateway.UploadDir, log)
 	syncHandler := handler.NewSyncHandler(channelRepo, messageRepo, log)
 
-	// Redis connection for routing. Redis migration to repo is deferred to
-	// Task 5.13; keep using the existing store.NewRedisClient for now.
+	// Redis connection for routing.
 	redisCtx, redisCancel := context.WithTimeout(context.Background(), 5*time.Second)
-	rdb, err := store.NewRedisClient(redisCtx, cfg.Redis.Addr, cfg.Redis.Password, cfg.Redis.DB)
+	rdb, err := repo.OpenRedis(redisCtx, cfg.Redis.Addr, cfg.Redis.Password, cfg.Redis.DB)
 	redisCancel()
 	if err != nil {
 		log.Error("connect to redis", "error", err)

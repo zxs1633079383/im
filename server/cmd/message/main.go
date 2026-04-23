@@ -11,10 +11,11 @@ import (
 	"time"
 
 	"im-server/internal/config"
-	"im-server/internal/model"
 	"im-server/internal/observability"
 	imPulsar "im-server/internal/pulsar"
-	"im-server/internal/store"
+	"im-server/internal/repo"
+
+	"github.com/lib/pq"
 )
 
 func main() {
@@ -61,9 +62,9 @@ type pulsarPushEvent struct {
 // ---------- service ----------
 
 type messageService struct {
-	store        *store.MessageStore
-	channelStore *store.ChannelStore
-	routing      *store.Routing
+	messages     repo.MessageRepo
+	channels     repo.ChannelRepo
+	routing      *repo.Routing
 	producer     *imPulsar.Producer // publishes deliver ACK to msg.deliver.{gateway_id}
 	pushProducer *imPulsar.Producer // publishes push events to msg.push.{gateway_id}
 	log          *slog.Logger
@@ -75,23 +76,23 @@ func (svc *messageService) handle(ctx context.Context, data []byte) error {
 		return fmt.Errorf("unmarshal incoming: %w", err)
 	}
 
-	msgType := model.MsgType(in.MsgType)
+	msgType := in.MsgType
 	if msgType == 0 {
-		msgType = model.MsgTypeText
+		msgType = repo.MsgTypeText
 	}
 
-	msg := &model.Message{
+	msg := &repo.Message{
 		ChannelID:   in.ChannelID,
 		SenderID:    in.SenderID,
 		ClientMsgID: in.ClientMsgID,
 		MsgType:     msgType,
 		Content:     in.Content,
-		VisibleTo:   in.VisibleTo,
+		VisibleTo:   pq.Int64Array(in.VisibleTo),
 		ReplyTo:     in.ReplyTo,
 	}
 
-	if err := svc.store.Send(ctx, msg); err != nil {
-		return fmt.Errorf("store.Send: %w", err)
+	if err := svc.messages.Send(ctx, msg); err != nil {
+		return fmt.Errorf("messages.Send: %w", err)
 	}
 
 	svc.log.Info("message persisted",
@@ -124,12 +125,12 @@ func (svc *messageService) handle(ctx context.Context, data []byte) error {
 
 // pushToMembers publishes a PulsarPushEvent to msg.push.{gatewayID} for every
 // member of msg.ChannelID that currently has an active connection.
-func (svc *messageService) pushToMembers(ctx context.Context, msg *model.Message) {
-	if svc.pushProducer == nil || svc.channelStore == nil || svc.routing == nil {
+func (svc *messageService) pushToMembers(ctx context.Context, msg *repo.Message) {
+	if svc.pushProducer == nil || svc.channels == nil || svc.routing == nil {
 		return
 	}
 
-	members, err := svc.channelStore.ListMembers(ctx, msg.ChannelID)
+	members, err := svc.channels.ListMembers(ctx, msg.ChannelID)
 	if err != nil {
 		svc.log.Warn("pushToMembers: list members failed", "error", err)
 		return
@@ -145,7 +146,7 @@ func (svc *messageService) pushToMembers(ctx context.Context, msg *model.Message
 		isVisible := msg.VisibleTo == nil || containsID(msg.VisibleTo, member.UserID)
 		pushMsgType := int16(1) // normal
 		content := msg.Content
-		visibleTo := msg.VisibleTo
+		visibleTo := []int64(msg.VisibleTo)
 		if !isVisible {
 			pushMsgType = 2 // phantom: strip content so offline user sees a placeholder
 			content = ""
@@ -218,17 +219,21 @@ func run() int {
 		return 1
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	pool, err := store.NewPGPool(ctx, cfg.PG.DSN, cfg.PG.MaxConns)
-	cancel()
+	// Open the GORM-backed Postgres connection. The repo package owns the
+	// pool; we close the underlying *sql.DB on shutdown.
+	gormDB, err := repo.Open(repo.Config{DSN: cfg.PG.DSN, MaxOpen: cfg.PG.MaxConns})
 	if err != nil {
 		log.Error("connect to postgres", "error", err)
 		return 1
 	}
-	defer pool.Close()
+	defer func() {
+		if sqlDB, e := gormDB.DB(); e == nil {
+			_ = sqlDB.Close()
+		}
+	}()
 
-	msgStore := store.NewMessageStore(pool)
-	channelStore := store.NewChannelStore(pool)
+	channelRepo := repo.NewChannelRepo(gormDB)
+	messageRepo := repo.NewMessageRepo(gormDB, channelRepo)
 
 	// Connect to Pulsar
 	pulsarClient, err := imPulsar.New(cfg.Pulsar.URL, log)
@@ -258,21 +263,21 @@ func run() int {
 
 	// Redis client for routing lookups
 	redisCtx, redisCancel := context.WithTimeout(context.Background(), 5*time.Second)
-	rdb, redisErr := store.NewRedisClient(redisCtx, cfg.Redis.Addr, cfg.Redis.Password, cfg.Redis.DB)
+	rdb, redisErr := repo.OpenRedis(redisCtx, cfg.Redis.Addr, cfg.Redis.Password, cfg.Redis.DB)
 	redisCancel()
 	if redisErr != nil {
 		log.Warn("could not connect to redis — push fan-out disabled (non-fatal)", "error", redisErr)
 	}
 
-	var routing *store.Routing
+	var routing *repo.Routing
 	if redisErr == nil {
 		// gatewayID is empty string for routing lookup — GatewayIDsForUser does not use it.
-		routing = store.NewRouting(rdb, "")
+		routing = repo.NewRouting(rdb, "")
 	}
 
 	svc := &messageService{
-		store:        msgStore,
-		channelStore: channelStore,
+		messages:     messageRepo,
+		channels:     channelRepo,
 		routing:      routing,
 		producer:     deliverProducer,
 		pushProducer: pushProducer,

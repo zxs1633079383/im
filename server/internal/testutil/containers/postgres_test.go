@@ -6,7 +6,7 @@ import (
 	"database/sql"
 	"testing"
 
-	_ "github.com/jackc/pgx/v5/stdlib"
+	_ "github.com/lib/pq"
 	"github.com/stretchr/testify/require"
 )
 
@@ -15,7 +15,7 @@ func TestStartPostgres_Smoke(t *testing.T) {
 		t.Skip("requires docker")
 	}
 	dsn := StartPostgres(t)
-	db, err := sql.Open("pgx", dsn)
+	db, err := sql.Open("postgres", dsn)
 	require.NoError(t, err)
 	defer db.Close()
 
