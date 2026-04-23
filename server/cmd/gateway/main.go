@@ -15,9 +15,9 @@ import (
 	"im-server/internal/handler"
 	imhttp "im-server/internal/http"
 	"im-server/internal/middleware"
-	"im-server/internal/model"
 	"im-server/internal/observability"
 	imPulsar "im-server/internal/pulsar"
+	"im-server/internal/repo"
 	"im-server/internal/store"
 
 	"github.com/gin-gonic/gin"
@@ -68,42 +68,44 @@ func run() int {
 	gatewayID := config.ResolveGatewayID(cfg)
 	log.Info("gateway id resolved", "gateway_id", gatewayID)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	pool, err := store.NewPGPool(ctx, cfg.PG.DSN, cfg.PG.MaxConns)
+	// Open the GORM-backed Postgres connection. The repo package owns the
+	// pool; we close the underlying *sql.DB on shutdown.
+	gormDB, err := repo.Open(repo.Config{DSN: cfg.PG.DSN, MaxOpen: cfg.PG.MaxConns})
 	if err != nil {
 		log.Error("connect to postgres", "error", err)
 		return 1
 	}
-	defer pool.Close()
+	defer func() {
+		if sqlDB, e := gormDB.DB(); e == nil {
+			_ = sqlDB.Close()
+		}
+	}()
 
-	userStore := store.NewUserStore(pool)
-	authHandler := handler.NewAuthHandler(userStore, cfg.Gateway.JWTSecret, log)
-	profileHandler := handler.NewProfileHandler(userStore, log)
-	settingsHandler := handler.NewSettingsHandler(userStore, log)
+	// Construct repositories. UserSettingsRepo is split out from UserRepo
+	// in the new repo package (the legacy store.UserStore conflated both).
+	userRepo := repo.NewUserRepo(gormDB)
+	userSettingsRepo := repo.NewUserSettingsRepo(gormDB)
+	channelRepo := repo.NewChannelRepo(gormDB)
+	messageRepo := repo.NewMessageRepo(gormDB, channelRepo)
+	friendRepo := repo.NewFriendshipRepo(gormDB)
+	favoriteRepo := repo.NewFavoriteRepo(gormDB)
+	fileRepo := repo.NewFileRepo(gormDB)
+	searchRepo := repo.NewSearchRepo(gormDB)
+
+	authHandler := handler.NewAuthHandler(userRepo, cfg.Gateway.JWTSecret, log)
+	profileHandler := handler.NewProfileHandler(userRepo, log)
+	settingsHandler := handler.NewSettingsHandler(userSettingsRepo, log)
 	jwtMiddleware := middleware.JWTAuth(cfg.Gateway.JWTSecret)
 
-	friendStore := store.NewFriendshipStore(pool)
-	friendHandler := handler.NewFriendHandler(friendStore, userStore, log)
-	// Note: eventPusher wired below after hub creation.
+	friendHandler := handler.NewFriendHandler(friendRepo, userRepo, log)
+	channelHandler := handler.NewChannelHandler(channelRepo, userRepo, log)
+	messageHandler := handler.NewMessageHandler(messageRepo, channelRepo, log)
+	favoriteHandler := handler.NewFavoriteHandler(favoriteRepo, log)
+	fileHandler := handler.NewFileHandler(fileRepo, cfg.Gateway.UploadDir, log)
+	syncHandler := handler.NewSyncHandler(channelRepo, messageRepo, log)
 
-	channelStore := store.NewChannelStore(pool)
-	channelHandler := handler.NewChannelHandler(channelStore, userStore, log)
-	// Note: channelEventPusher wired below after hub creation.
-
-	messageStore := store.NewMessageStore(pool)
-	messageHandler := handler.NewMessageHandler(messageStore, channelStore, log)
-
-	favoriteStore := store.NewFavoriteStore(pool)
-	favoriteHandler := handler.NewFavoriteHandler(favoriteStore, log)
-
-	fileStore := store.NewFileStore(pool)
-	fileHandler := handler.NewFileHandler(fileStore, cfg.Gateway.UploadDir, log)
-
-	syncHandler := handler.NewSyncHandler(channelStore, messageStore, log)
-
-	// Redis connection for routing.
+	// Redis connection for routing. Redis migration to repo is deferred to
+	// Task 5.13; keep using the existing store.NewRedisClient for now.
 	redisCtx, redisCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	rdb, err := store.NewRedisClient(redisCtx, cfg.Redis.Addr, cfg.Redis.Password, cfg.Redis.DB)
 	redisCancel()
@@ -115,8 +117,8 @@ func run() int {
 	// Hub and routing.
 	hub := gateway.NewHub()
 	messageHandler.WithReadSyncer(&hubReadSyncer{hub: hub})
-	messageHandler.WithAttachments(fileStore)
-	messageHandler.WithPusher(channelStore, &hubMessagePusher{hub: hub})
+	messageHandler.WithAttachments(fileRepo)
+	messageHandler.WithPusher(channelRepo, &hubMessagePusher{hub: hub})
 	friendHandler.WithEventPusher(&hubFriendEventPusher{hub: hub})
 	channelHandler.WithEventPusher(&hubChannelEventPusher{hub: hub})
 	routing := gateway.NewRouting(rdb, gatewayID)
@@ -132,9 +134,9 @@ func run() int {
 	// Push consumer subscribes to msg.push.{gatewayID}.
 	pushConsumer := gateway.NewPushConsumer(hub, gatewayID, log)
 
-	// WsHandler wires hub, routing, channelStore, and JWT secret together.
-	wsHandler := gateway.NewWsHandler(hub, routing, cfg.Gateway.JWTSecret, gatewayID, channelStore, log)
-	wsHandler.WithSendSupport(messageStore, channelStore)
+	// WsHandler wires hub, routing, channelRepo, and JWT secret together.
+	wsHandler := gateway.NewWsHandler(hub, routing, cfg.Gateway.JWTSecret, gatewayID, channelRepo, log)
+	wsHandler.WithSendSupport(messageRepo, channelRepo)
 
 	mux := http.NewServeMux()
 
@@ -198,9 +200,9 @@ func run() int {
 	// Sync route (JWT protected)
 	mux.Handle("POST /api/sync", jwtMiddleware(http.HandlerFunc(syncHandler.Sync)))
 
-	// Search route (JWT protected)
-	searchStore := store.NewSearchStore(pool)
-	searchHandler := handler.NewSearchHandler(searchStore, searchStore, searchStore, log)
+	// Search route (JWT protected). SearchRepo satisfies all three handler
+	// search interfaces; pass it three times.
+	searchHandler := handler.NewSearchHandler(searchRepo, searchRepo, searchRepo, log)
 	mux.Handle("GET /api/search", jwtMiddleware(http.HandlerFunc(searchHandler.Search)))
 
 	// CORS middleware for development
@@ -264,7 +266,7 @@ type hubMessagePusher struct {
 	hub *gateway.Hub
 }
 
-func (p *hubMessagePusher) PushMessage(userID int64, msg *model.Message) { //nolint:unused
+func (p *hubMessagePusher) PushMessage(userID int64, msg *repo.Message) { //nolint:unused
 	payload := gateway.PushMsgPayload{
 		PushID:    fmt.Sprintf("http-%d-%d", msg.ChannelID, msg.Seq),
 		ChannelID: msg.ChannelID,
@@ -272,8 +274,8 @@ func (p *hubMessagePusher) PushMessage(userID int64, msg *model.Message) { //nol
 		ServerID:  msg.ID,
 		SenderID:  msg.SenderID,
 		Content:   msg.Content,
-		MsgType:   int16(msg.MsgType),
-		VisibleTo: msg.VisibleTo,
+		MsgType:   msg.MsgType,
+		VisibleTo: []int64(msg.VisibleTo),
 		CreatedAt: msg.CreatedAt,
 	}
 	p.hub.PushToUser(userID, gateway.TypePushMsg, payload)

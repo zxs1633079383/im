@@ -8,28 +8,27 @@ import (
 	"net/http"
 	"strconv"
 
-	"im-server/internal/model"
-	"im-server/internal/store"
+	"im-server/internal/repo"
 )
 
 // ---------- store interfaces ----------
 
-// ChannelStore is the subset of store.ChannelStore used by ChannelHandler.
+// ChannelStore is the subset of repo.ChannelRepo used by ChannelHandler.
 type ChannelStore interface {
-	Create(ctx context.Context, ch *model.Channel) error
-	GetByID(ctx context.Context, id int64) (*model.Channel, error)
+	Create(ctx context.Context, ch *repo.Channel) error
+	GetByID(ctx context.Context, id int64) (*repo.Channel, error)
 	Update(ctx context.Context, channelID int64, name, avatarURL string) error
-	AddMember(ctx context.Context, channelID, userID int64, role model.MemberRole) error
+	AddMember(ctx context.Context, channelID, userID int64, role int16) error
 	RemoveMember(ctx context.Context, channelID, userID int64) error
-	GetMember(ctx context.Context, channelID, userID int64) (*model.ChannelMember, error)
-	ListMembers(ctx context.Context, channelID int64) ([]model.ChannelMember, error)
-	ListByUserWithPreview(ctx context.Context, userID int64) ([]store.ChannelWithPreview, error)
-	FindDM(ctx context.Context, userA, userB int64) (*model.Channel, error)
+	GetMember(ctx context.Context, channelID, userID int64) (*repo.ChannelMember, error)
+	ListMembers(ctx context.Context, channelID int64) ([]repo.ChannelMember, error)
+	ListByUserWithPreview(ctx context.Context, userID int64) ([]repo.ChannelWithPreview, error)
+	FindDM(ctx context.Context, userA, userB int64) (*repo.Channel, error)
 }
 
 // ChannelUserStore is the minimal user lookup used by ChannelHandler.
 type ChannelUserStore interface {
-	GetByID(ctx context.Context, id int64) (*model.User, error)
+	GetByID(ctx context.Context, id int64) (*repo.User, error)
 }
 
 // ChannelEventPusher pushes channel events (e.g. "added") to online users.
@@ -42,10 +41,10 @@ type ChannelEventPusher interface {
 
 // ChannelHandler serves all channel-related HTTP endpoints.
 type ChannelHandler struct {
-	channels     ChannelStore
-	users        ChannelUserStore
-	eventPusher  ChannelEventPusher // nil = no real-time notifications (e.g. in tests)
-	log          *slog.Logger
+	channels    ChannelStore
+	users       ChannelUserStore
+	eventPusher ChannelEventPusher // nil = no real-time notifications (e.g. in tests)
+	log         *slog.Logger
 }
 
 func NewChannelHandler(channels ChannelStore, users ChannelUserStore, log *slog.Logger) *ChannelHandler {
@@ -80,7 +79,7 @@ type addMemberBody struct {
 
 // MemberWithUser enriches a ChannelMember with basic user profile fields.
 type MemberWithUser struct {
-	model.ChannelMember
+	repo.ChannelMember
 	Username    string `json:"username"`
 	DisplayName string `json:"display_name"`
 	AvatarURL   string `json:"avatar_url"`
@@ -101,7 +100,7 @@ func pathID(r *http.Request, key string) (int64, bool) {
 
 // requireMember checks that callerID is a member of channelID.
 // Returns (member, true) on success; writes error and returns (nil, false) on failure.
-func (h *ChannelHandler) requireMember(w http.ResponseWriter, r *http.Request, channelID, callerID int64) (*model.ChannelMember, bool) {
+func (h *ChannelHandler) requireMember(w http.ResponseWriter, r *http.Request, channelID, callerID int64) (*repo.ChannelMember, bool) {
 	m, err := h.channels.GetMember(r.Context(), channelID, callerID)
 	if err != nil {
 		writeError(w, http.StatusForbidden, "not a member of this channel")
@@ -117,7 +116,7 @@ func (h *ChannelHandler) requireAdminOrOwner(w http.ResponseWriter, r *http.Requ
 		writeError(w, http.StatusForbidden, "not a member of this channel")
 		return false
 	}
-	if m.Role < model.MemberRoleAdmin {
+	if m.Role < repo.MemberRoleAdmin {
 		writeError(w, http.StatusForbidden, "admin or owner required")
 		return false
 	}
@@ -146,8 +145,8 @@ func (h *ChannelHandler) CreateGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ch := &model.Channel{
-		Type:      model.ChannelTypeGroup,
+	ch := &repo.Channel{
+		Type:      repo.ChannelTypeGroup,
 		Name:      body.Name,
 		CreatorID: &claims.UserID,
 	}
@@ -158,7 +157,7 @@ func (h *ChannelHandler) CreateGroup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Add creator as owner
-	if err := h.channels.AddMember(r.Context(), ch.ID, claims.UserID, model.MemberRoleOwner); err != nil {
+	if err := h.channels.AddMember(r.Context(), ch.ID, claims.UserID, repo.MemberRoleOwner); err != nil {
 		h.log.Error("add owner", "error", err)
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
@@ -169,7 +168,7 @@ func (h *ChannelHandler) CreateGroup(w http.ResponseWriter, r *http.Request) {
 		if uid == claims.UserID {
 			continue // already added
 		}
-		if err := h.channels.AddMember(r.Context(), ch.ID, uid, model.MemberRoleMember); err != nil {
+		if err := h.channels.AddMember(r.Context(), ch.ID, uid, repo.MemberRoleMember); err != nil {
 			h.log.Warn("add member skipped", "user_id", uid, "error", err)
 			continue
 		}
@@ -213,26 +212,26 @@ func (h *ChannelHandler) CreateOrGetDM(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, existing)
 		return
 	}
-	if !errors.Is(err, store.ErrNotFound) {
+	if !errors.Is(err, repo.ErrNotFound) {
 		h.log.Error("find dm", "error", err)
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 
 	// Create new DM channel (no name for DMs)
-	ch := &model.Channel{Type: model.ChannelTypeDM}
+	ch := &repo.Channel{Type: repo.ChannelTypeDM}
 	if err := h.channels.Create(r.Context(), ch); err != nil {
 		h.log.Error("create dm", "error", err)
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 
-	if err := h.channels.AddMember(r.Context(), ch.ID, claims.UserID, model.MemberRoleMember); err != nil {
+	if err := h.channels.AddMember(r.Context(), ch.ID, claims.UserID, repo.MemberRoleMember); err != nil {
 		h.log.Error("add dm member self", "error", err)
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	if err := h.channels.AddMember(r.Context(), ch.ID, body.PeerID, model.MemberRoleMember); err != nil {
+	if err := h.channels.AddMember(r.Context(), ch.ID, body.PeerID, repo.MemberRoleMember); err != nil {
 		h.log.Error("add dm member peer", "error", err)
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
@@ -258,7 +257,7 @@ func (h *ChannelHandler) ListChannels(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if previews == nil {
-		previews = []store.ChannelWithPreview{}
+		previews = []repo.ChannelWithPreview{}
 	}
 	writeJSON(w, http.StatusOK, previews)
 }
@@ -364,7 +363,7 @@ func (h *ChannelHandler) AddMember(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.channels.AddMember(r.Context(), channelID, body.UserID, model.MemberRoleMember); err != nil {
+	if err := h.channels.AddMember(r.Context(), channelID, body.UserID, repo.MemberRoleMember); err != nil {
 		h.log.Error("add member", "error", err)
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
@@ -405,7 +404,7 @@ func (h *ChannelHandler) RemoveMember(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "member not found")
 		return
 	}
-	if target.Role == model.MemberRoleOwner {
+	if target.Role == repo.MemberRoleOwner {
 		writeError(w, http.StatusForbidden, "cannot remove the owner")
 		return
 	}
@@ -480,7 +479,7 @@ func (h *ChannelHandler) LeaveChannel(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if m.Role == model.MemberRoleOwner {
+	if m.Role == repo.MemberRoleOwner {
 		writeError(w, http.StatusForbidden, "owner cannot leave; transfer ownership first")
 		return
 	}

@@ -10,15 +10,15 @@ import (
 	"unicode"
 
 	"im-server/internal/auth"
-	"im-server/internal/model"
+	"im-server/internal/repo"
 )
 
-// UserStore is the subset of store.UserStore used by auth handlers.
+// UserStore is the subset of repo.UserRepo used by auth handlers.
 type UserStore interface {
-	Create(ctx context.Context, u *model.User) error
-	GetByUsername(ctx context.Context, username string) (*model.User, error)
-	GetByEmail(ctx context.Context, email string) (*model.User, error)
-	GetByID(ctx context.Context, id int64) (*model.User, error)
+	Create(ctx context.Context, u *repo.User) error
+	GetByUsername(ctx context.Context, username string) (*repo.User, error)
+	GetByEmail(ctx context.Context, email string) (*repo.User, error)
+	GetByID(ctx context.Context, id int64) (*repo.User, error)
 }
 
 // AuthHandler handles registration, login, and current-user requests.
@@ -53,8 +53,8 @@ type loginRequest struct {
 }
 
 type authResponse struct {
-	Token string      `json:"token"`
-	User  *model.User `json:"user"`
+	Token string     `json:"token"`
+	User  *repo.User `json:"user"`
 }
 
 // ---------- helpers ----------
@@ -112,7 +112,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user := &model.User{
+	user := &repo.User{
 		Username:     req.Username,
 		Email:        req.Email,
 		PasswordHash: hash,
@@ -153,7 +153,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var (
-		user *model.User
+		user *repo.User
 		err  error
 	)
 	if strings.Contains(req.Login, "@") {
@@ -172,7 +172,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if user.Status == model.UserStatusDisabled {
+	if user.Status == repo.UserStatusDisabled {
 		writeError(w, http.StatusForbidden, "account disabled")
 		return
 	}
@@ -206,4 +206,6 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 
 // ---------- error sentinel ----------
 
+// ErrNotFound is the local sentinel exposed for tests that build stubs
+// and need a stable not-found error. Aliased to repo.ErrNotFound.
 var ErrNotFound = errors.New("not found")

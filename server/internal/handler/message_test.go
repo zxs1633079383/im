@@ -11,19 +11,19 @@ import (
 	"time"
 
 	"im-server/internal/handler"
-	"im-server/internal/model"
+	"im-server/internal/repo"
 )
 
 // ---------- stub MsgStore ----------
 
 type stubMsgStore struct {
-	messages []model.Message
+	messages []repo.Message
 	nextSeq  int64
 }
 
 func newStubMsgStore() *stubMsgStore { return &stubMsgStore{nextSeq: 1} }
 
-func (s *stubMsgStore) Send(_ context.Context, msg *model.Message) error {
+func (s *stubMsgStore) Send(_ context.Context, msg *repo.Message) error {
 	// Idempotent: return existing if client_msg_id matches
 	if msg.ClientMsgID != "" {
 		for _, m := range s.messages {
@@ -42,7 +42,7 @@ func (s *stubMsgStore) Send(_ context.Context, msg *model.Message) error {
 	return nil
 }
 
-func (s *stubMsgStore) GetByID(_ context.Context, id int64) (*model.Message, error) {
+func (s *stubMsgStore) GetByID(_ context.Context, id int64) (*repo.Message, error) {
 	for i := range s.messages {
 		if s.messages[i].ID == id {
 			return &s.messages[i], nil
@@ -51,14 +51,14 @@ func (s *stubMsgStore) GetByID(_ context.Context, id int64) (*model.Message, err
 	return nil, handler.ErrNotFound
 }
 
-func (s *stubMsgStore) FetchForUser(_ context.Context, channelID, userID int64, afterSeq int64, limit int) ([]model.Message, error) {
-	var result []model.Message
+func (s *stubMsgStore) FetchForUser(_ context.Context, channelID, userID int64, afterSeq int64, limit int) ([]repo.Message, error) {
+	var result []repo.Message
 	for _, m := range s.messages {
 		if m.ChannelID == channelID && m.Seq > afterSeq {
 			if m.IsVisibleTo(userID) {
 				result = append(result, m)
 			} else {
-				result = append(result, model.Message{ChannelID: m.ChannelID, Seq: m.Seq, MsgType: model.MsgTypePhantom})
+				result = append(result, repo.Message{ChannelID: m.ChannelID, Seq: m.Seq, MsgType: repo.MsgTypePhantom})
 			}
 			if len(result) >= limit {
 				break
@@ -68,15 +68,15 @@ func (s *stubMsgStore) FetchForUser(_ context.Context, channelID, userID int64, 
 	return result, nil
 }
 
-func (s *stubMsgStore) FetchBefore(_ context.Context, channelID, userID int64, beforeSeq int64, limit int) ([]model.Message, error) {
-	var result []model.Message
+func (s *stubMsgStore) FetchBefore(_ context.Context, channelID, userID int64, beforeSeq int64, limit int) ([]repo.Message, error) {
+	var result []repo.Message
 	for i := len(s.messages) - 1; i >= 0; i-- {
 		m := s.messages[i]
 		if m.ChannelID == channelID && m.Seq < beforeSeq {
 			if m.IsVisibleTo(userID) {
 				result = append(result, m)
 			} else {
-				result = append(result, model.Message{ChannelID: m.ChannelID, Seq: m.Seq, MsgType: model.MsgTypePhantom})
+				result = append(result, repo.Message{ChannelID: m.ChannelID, Seq: m.Seq, MsgType: repo.MsgTypePhantom})
 			}
 			if len(result) >= limit {
 				break
@@ -86,36 +86,36 @@ func (s *stubMsgStore) FetchBefore(_ context.Context, channelID, userID int64, b
 	return result, nil
 }
 
-func (s *stubMsgStore) FetchAround(_ context.Context, channelID, userID int64, aroundSeq int64, limit int) ([]model.Message, error) {
+func (s *stubMsgStore) FetchAround(_ context.Context, channelID, userID int64, aroundSeq int64, limit int) ([]repo.Message, error) {
 	return s.FetchForUser(context.Background(), channelID, userID, 0, limit)
 }
 
 // ---------- stub MsgChannelStore ----------
 
 type stubMsgChannelStore struct {
-	members  map[int64]map[int64]*model.ChannelMember // channelID -> userID -> member
-	channels map[int64]*model.Channel
+	members  map[int64]map[int64]*repo.ChannelMember // channelID -> userID -> member
+	channels map[int64]*repo.Channel
 }
 
 func newStubMsgChannelStore() *stubMsgChannelStore {
 	return &stubMsgChannelStore{
-		members:  make(map[int64]map[int64]*model.ChannelMember),
-		channels: make(map[int64]*model.Channel),
+		members:  make(map[int64]map[int64]*repo.ChannelMember),
+		channels: make(map[int64]*repo.Channel),
 	}
 }
 
 func (s *stubMsgChannelStore) addMember(channelID, userID int64) {
 	if s.members[channelID] == nil {
-		s.members[channelID] = make(map[int64]*model.ChannelMember)
+		s.members[channelID] = make(map[int64]*repo.ChannelMember)
 	}
-	s.members[channelID][userID] = &model.ChannelMember{ChannelID: channelID, UserID: userID}
+	s.members[channelID][userID] = &repo.ChannelMember{ChannelID: channelID, UserID: userID}
 }
 
-func (s *stubMsgChannelStore) addChannel(ch *model.Channel) {
+func (s *stubMsgChannelStore) addChannel(ch *repo.Channel) {
 	s.channels[ch.ID] = ch
 }
 
-func (s *stubMsgChannelStore) GetMember(_ context.Context, channelID, userID int64) (*model.ChannelMember, error) {
+func (s *stubMsgChannelStore) GetMember(_ context.Context, channelID, userID int64) (*repo.ChannelMember, error) {
 	if cm := s.members[channelID][userID]; cm != nil {
 		return cm, nil
 	}
@@ -129,7 +129,7 @@ func (s *stubMsgChannelStore) MarkRead(_ context.Context, channelID, userID, seq
 	return nil
 }
 
-func (s *stubMsgChannelStore) GetByID(_ context.Context, id int64) (*model.Channel, error) {
+func (s *stubMsgChannelStore) GetByID(_ context.Context, id int64) (*repo.Channel, error) {
 	if ch, ok := s.channels[id]; ok {
 		return ch, nil
 	}
@@ -228,8 +228,8 @@ func TestMessageHandler_FetchMessages_AfterSeq(t *testing.T) {
 	h, ms, cs := newMessageHandler(t)
 	cs.addMember(1, 42)
 	// Pre-populate store with two messages
-	ms.Send(context.Background(), &model.Message{ChannelID: 1, SenderID: 42, Content: "a", MsgType: model.MsgTypeText})
-	ms.Send(context.Background(), &model.Message{ChannelID: 1, SenderID: 42, Content: "b", MsgType: model.MsgTypeText})
+	ms.Send(context.Background(), &repo.Message{ChannelID: 1, SenderID: 42, Content: "a", MsgType: repo.MsgTypeText})
+	ms.Send(context.Background(), &repo.Message{ChannelID: 1, SenderID: 42, Content: "b", MsgType: repo.MsgTypeText})
 
 	req := requestWithClaims("GET", "/api/channels/1/messages?after_seq=0", 42, nil)
 	req.SetPathValue("id", "1")
@@ -259,7 +259,7 @@ func TestMessageHandler_FetchMessages_NotMember(t *testing.T) {
 func TestMessageHandler_MarkRead_Success(t *testing.T) {
 	h, _, cs := newMessageHandler(t)
 	cs.addMember(10, 7)
-	cs.addChannel(&model.Channel{ID: 10, Seq: 5})
+	cs.addChannel(&repo.Channel{ID: 10, Seq: 5})
 
 	req := requestWithClaims("POST", "/api/channels/10/read", 7, nil)
 	req.SetPathValue("id", "10")

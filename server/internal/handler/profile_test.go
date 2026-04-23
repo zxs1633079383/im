@@ -10,20 +10,20 @@ import (
 	"time"
 
 	"im-server/internal/handler"
-	"im-server/internal/model"
+	"im-server/internal/repo"
 )
 
 // ---------- stub ----------
 
 type stubProfileStore struct {
-	user *model.User
+	user *repo.User
 }
 
-func (s *stubProfileStore) GetByID(_ context.Context, _ int64) (*model.User, error) {
+func (s *stubProfileStore) GetByID(_ context.Context, _ int64) (*repo.User, error) {
 	return s.user, nil
 }
 
-func (s *stubProfileStore) UpdateProfile(_ context.Context, _ int64, displayName, avatarURL string) (*model.User, error) {
+func (s *stubProfileStore) UpdateProfile(_ context.Context, _ int64, displayName, avatarURL string) (*repo.User, error) {
 	cp := *s.user
 	if displayName != "" {
 		cp.DisplayName = displayName
@@ -49,7 +49,7 @@ func TestUpdateMe_RequiresAuth(t *testing.T) {
 }
 
 func TestUpdateMe_InvalidDisplayName(t *testing.T) {
-	user := &model.User{ID: 1, Username: "alice", DisplayName: "Alice", Status: model.UserStatusActive}
+	user := &repo.User{ID: 1, Username: "alice", DisplayName: "Alice", Status: repo.UserStatusActive}
 	h := handler.NewProfileHandler(&stubProfileStore{user: user}, testLogger())
 
 	// 65-character display name
@@ -69,7 +69,7 @@ func TestUpdateMe_InvalidDisplayName(t *testing.T) {
 }
 
 func TestUpdateMe_Success(t *testing.T) {
-	user := &model.User{ID: 1, Username: "alice", DisplayName: "Alice", Status: model.UserStatusActive}
+	user := &repo.User{ID: 1, Username: "alice", DisplayName: "Alice", Status: repo.UserStatusActive}
 	h := handler.NewProfileHandler(&stubProfileStore{user: user}, testLogger())
 
 	body, _ := json.Marshal(map[string]string{"display_name": "Alice Updated"})
@@ -82,7 +82,7 @@ func TestUpdateMe_Success(t *testing.T) {
 		t.Errorf("want 200, got %d: %s", w.Code, w.Body.String())
 	}
 
-	var resp model.User
+	var resp repo.User
 	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
@@ -92,7 +92,7 @@ func TestUpdateMe_Success(t *testing.T) {
 }
 
 func TestUpdateMe_InvalidAvatarURL(t *testing.T) {
-	user := &model.User{ID: 1, Username: "alice", Status: model.UserStatusActive}
+	user := &repo.User{ID: 1, Username: "alice", Status: repo.UserStatusActive}
 	h := handler.NewProfileHandler(&stubProfileStore{user: user}, testLogger())
 	body, _ := json.Marshal(map[string]string{"avatar_url": "not-a-url"})
 	req := httptest.NewRequest(http.MethodPut, "/api/users/me", bytes.NewBuffer(body))

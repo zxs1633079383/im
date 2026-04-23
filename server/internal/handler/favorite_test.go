@@ -10,18 +10,18 @@ import (
 	"testing"
 
 	"im-server/internal/handler"
-	"im-server/internal/store"
+	"im-server/internal/repo"
 )
 
 // ---------- stubs ----------
 
 type stubFavStore struct {
-	items []store.FavoriteWithMessage
+	items []repo.FavoriteWithMessage
 }
 
 func (s *stubFavStore) Add(_ context.Context, _, _ int64) error    { return nil }
 func (s *stubFavStore) Remove(_ context.Context, _, _ int64) error { return nil }
-func (s *stubFavStore) List(_ context.Context, _ int64) ([]store.FavoriteWithMessage, error) {
+func (s *stubFavStore) List(_ context.Context, _ int64) ([]repo.FavoriteWithMessage, error) {
 	return s.items, nil
 }
 

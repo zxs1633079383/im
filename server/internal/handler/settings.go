@@ -3,18 +3,19 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 
-	"im-server/internal/model"
+	"im-server/internal/repo"
 )
 
 // ---------- store interface ----------
 
-// SettingsStore is the subset of store.UserStore used by SettingsHandler.
+// SettingsStore is the subset of repo.UserSettingsRepo used by SettingsHandler.
 type SettingsStore interface {
-	GetSettings(ctx context.Context, userID int64) (*model.UserSettings, error)
-	UpsertSettings(ctx context.Context, settings *model.UserSettings) error
+	Get(ctx context.Context, userID int64) (*repo.UserSettings, error)
+	Upsert(ctx context.Context, settings *repo.UserSettings) error
 }
 
 // ---------- handler ----------
@@ -37,6 +38,20 @@ type updateSettingsBody struct {
 	Language            string `json:"language"`
 }
 
+// defaultSettings returns the default user_settings shape used when no row
+// exists yet for a user. Mirrors the legacy store.UserStore.GetSettings
+// fallback behavior so that GET /api/settings always returns 200 with
+// usable defaults rather than 404.
+func defaultSettings(userID int64) *repo.UserSettings {
+	return &repo.UserSettings{
+		UserID:              userID,
+		NotificationEnabled: true,
+		Theme:               "system",
+		Language:            "zh",
+		SettingsJSON:        "{}",
+	}
+}
+
 // ---------- GET /api/settings ----------
 
 // GetSettings handles GET /api/settings.
@@ -47,11 +62,15 @@ func (h *SettingsHandler) GetSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	settings, err := h.store.GetSettings(r.Context(), claims.UserID)
+	settings, err := h.store.Get(r.Context(), claims.UserID)
 	if err != nil {
-		h.log.Error("get settings", "error", err)
-		writeError(w, http.StatusInternalServerError, "internal error")
-		return
+		if errors.Is(err, repo.ErrNotFound) {
+			settings = defaultSettings(claims.UserID)
+		} else {
+			h.log.Error("get settings", "error", err)
+			writeError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
 	}
 
 	writeJSON(w, http.StatusOK, settings)
@@ -75,11 +94,15 @@ func (h *SettingsHandler) UpdateSettings(w http.ResponseWriter, r *http.Request)
 	}
 
 	// Load existing settings first to support partial updates
-	existing, err := h.store.GetSettings(r.Context(), claims.UserID)
+	existing, err := h.store.Get(r.Context(), claims.UserID)
 	if err != nil {
-		h.log.Error("get settings for update", "error", err)
-		writeError(w, http.StatusInternalServerError, "internal error")
-		return
+		if errors.Is(err, repo.ErrNotFound) {
+			existing = defaultSettings(claims.UserID)
+		} else {
+			h.log.Error("get settings for update", "error", err)
+			writeError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
 	}
 
 	// Apply partial update
@@ -93,7 +116,7 @@ func (h *SettingsHandler) UpdateSettings(w http.ResponseWriter, r *http.Request)
 		existing.Language = body.Language
 	}
 
-	if err := h.store.UpsertSettings(r.Context(), existing); err != nil {
+	if err := h.store.Upsert(r.Context(), existing); err != nil {
 		h.log.Error("upsert settings", "error", err)
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return

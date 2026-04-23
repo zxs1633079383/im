@@ -13,41 +13,41 @@ import (
 
 	"im-server/internal/auth"
 	"im-server/internal/handler"
-	"im-server/internal/model"
+	"im-server/internal/repo"
 )
 
 // ---------- in-memory stub store ----------
 
 type stubUserStore struct {
-	users   map[int64]*model.User
-	byName  map[string]*model.User
-	byEmail map[string]*model.User
+	users   map[int64]*repo.User
+	byName  map[string]*repo.User
+	byEmail map[string]*repo.User
 	nextID  int64
 }
 
 func newStubStore() *stubUserStore {
 	return &stubUserStore{
-		users:   make(map[int64]*model.User),
-		byName:  make(map[string]*model.User),
-		byEmail: make(map[string]*model.User),
+		users:   make(map[int64]*repo.User),
+		byName:  make(map[string]*repo.User),
+		byEmail: make(map[string]*repo.User),
 		nextID:  1,
 	}
 }
 
-func (s *stubUserStore) Create(_ context.Context, u *model.User) error {
+func (s *stubUserStore) Create(_ context.Context, u *repo.User) error {
 	if _, exists := s.byName[u.Username]; exists {
 		return fmt.Errorf("duplicate key: unique constraint")
 	}
 	u.ID = s.nextID
 	s.nextID++
-	u.Status = model.UserStatusActive
+	u.Status = repo.UserStatusActive
 	s.users[u.ID] = u
 	s.byName[u.Username] = u
 	s.byEmail[u.Email] = u
 	return nil
 }
 
-func (s *stubUserStore) GetByUsername(_ context.Context, username string) (*model.User, error) {
+func (s *stubUserStore) GetByUsername(_ context.Context, username string) (*repo.User, error) {
 	u, ok := s.byName[username]
 	if !ok {
 		return nil, handler.ErrNotFound
@@ -55,7 +55,7 @@ func (s *stubUserStore) GetByUsername(_ context.Context, username string) (*mode
 	return u, nil
 }
 
-func (s *stubUserStore) GetByEmail(_ context.Context, email string) (*model.User, error) {
+func (s *stubUserStore) GetByEmail(_ context.Context, email string) (*repo.User, error) {
 	u, ok := s.byEmail[email]
 	if !ok {
 		return nil, handler.ErrNotFound
@@ -63,7 +63,7 @@ func (s *stubUserStore) GetByEmail(_ context.Context, email string) (*model.User
 	return u, nil
 }
 
-func (s *stubUserStore) GetByID(_ context.Context, id int64) (*model.User, error) {
+func (s *stubUserStore) GetByID(_ context.Context, id int64) (*repo.User, error) {
 	u, ok := s.users[id]
 	if !ok {
 		return nil, handler.ErrNotFound

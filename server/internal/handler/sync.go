@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 
-	"im-server/internal/model"
+	"im-server/internal/repo"
 )
 
 const (
@@ -21,17 +21,17 @@ type SyncChannelStore interface {
 	GetMemberChannelSeqs(ctx context.Context, userID int64) (map[int64]int64, error)
 
 	// GetMember returns membership info (including last_read_seq, phantom counts).
-	GetMember(ctx context.Context, channelID, userID int64) (*model.ChannelMember, error)
+	GetMember(ctx context.Context, channelID, userID int64) (*repo.ChannelMember, error)
 
 	// GetByID returns channel metadata (for building the response).
-	GetByID(ctx context.Context, id int64) (*model.Channel, error)
+	GetByID(ctx context.Context, id int64) (*repo.Channel, error)
 }
 
 // SyncMsgStore is the store interface needed by SyncHandler.
 type SyncMsgStore interface {
 	// FetchForUser fetches messages seq > afterSeq for (channelID, userID),
 	// applying phantom visibility. Returns in ascending seq order.
-	FetchForUser(ctx context.Context, channelID, userID int64, afterSeq int64, limit int) ([]model.Message, error)
+	FetchForUser(ctx context.Context, channelID, userID int64, afterSeq int64, limit int) ([]repo.Message, error)
 }
 
 // ---------- wire types ----------
@@ -57,11 +57,11 @@ type SyncResponse struct {
 
 // SyncChannelResult is the sync state for one channel.
 type SyncChannelResult struct {
-	ID        int64           `json:"id"`
-	ServerSeq int64           `json:"server_seq"`
-	Unread    int64           `json:"unread"`
-	Messages  []model.Message `json:"messages,omitempty"` // nil / empty = no messages in response
-	HasMore   bool            `json:"has_more,omitempty"` // true when gap > syncGapThreshold
+	ID        int64          `json:"id"`
+	ServerSeq int64          `json:"server_seq"`
+	Unread    int64          `json:"unread"`
+	Messages  []repo.Message `json:"messages,omitempty"` // nil / empty = no messages in response
+	HasMore   bool           `json:"has_more,omitempty"` // true when gap > syncGapThreshold
 }
 
 // ---------- handler ----------
@@ -189,7 +189,7 @@ func (h *SyncHandler) Sync(w http.ResponseWriter, r *http.Request) {
 
 // fetchLatest returns the most recent `limit` messages for a channel (before serverSeq+1),
 // ordered ascending by seq (oldest first within the window).
-func (h *SyncHandler) fetchLatest(ctx context.Context, chID, userID, serverSeq int64, limit int) ([]model.Message, error) {
+func (h *SyncHandler) fetchLatest(ctx context.Context, chID, userID, serverSeq int64, limit int) ([]repo.Message, error) {
 	// FetchForUser fetches seq > afterSeq. To get the latest `limit` messages
 	// we compute afterSeq = serverSeq - limit (floored at 0).
 	afterSeq := serverSeq - int64(limit)

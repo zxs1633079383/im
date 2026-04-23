@@ -7,15 +7,15 @@ import (
 	"net/http"
 	"strings"
 
-	"im-server/internal/model"
+	"im-server/internal/repo"
 )
 
 // ---------- store interface ----------
 
-// ProfileStore is the subset of store.UserStore used by ProfileHandler.
+// ProfileStore is the subset of repo.UserRepo used by ProfileHandler.
 type ProfileStore interface {
-	GetByID(ctx context.Context, id int64) (*model.User, error)
-	UpdateProfile(ctx context.Context, userID int64, displayName, avatarURL string) (*model.User, error)
+	GetByID(ctx context.Context, id int64) (*repo.User, error)
+	UpdateProfile(ctx context.Context, userID int64, displayName, avatarURL string) (*repo.User, error)
 }
 
 // ---------- handler ----------

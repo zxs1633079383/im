@@ -5,16 +5,16 @@ import (
 	"log/slog"
 	"net/http"
 
-	"im-server/internal/store"
+	"im-server/internal/repo"
 )
 
 // ---------- store interface ----------
 
-// FavStore is the subset of store.FavoriteStore used by FavoriteHandler.
+// FavStore is the subset of repo.FavoriteRepo used by FavoriteHandler.
 type FavStore interface {
 	Add(ctx context.Context, userID, messageID int64) error
 	Remove(ctx context.Context, userID, messageID int64) error
-	List(ctx context.Context, userID int64) ([]store.FavoriteWithMessage, error)
+	List(ctx context.Context, userID int64) ([]repo.FavoriteWithMessage, error)
 }
 
 // ---------- handler ----------
@@ -96,7 +96,7 @@ func (h *FavoriteHandler) ListFavorites(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if favs == nil {
-		favs = []store.FavoriteWithMessage{}
+		favs = []repo.FavoriteWithMessage{}
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{"favorites": favs})

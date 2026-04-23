@@ -11,35 +11,35 @@ import (
 
 	"im-server/internal/auth"
 	"im-server/internal/handler"
-	"im-server/internal/model"
+	"im-server/internal/repo"
 )
 
 // ---------- stubs ----------
 
 type stubSearchMsgStore struct {
-	results []model.MessageSearchResult
+	results []repo.MessageSearchResult
 	err     error
 }
 
-func (s *stubSearchMsgStore) SearchMessages(_ context.Context, _ string, _ int64, _ int64, _ int) ([]model.MessageSearchResult, error) {
+func (s *stubSearchMsgStore) SearchMessages(_ context.Context, _ string, _ int64, _ int64, _ int) ([]repo.MessageSearchResult, error) {
 	return s.results, s.err
 }
 
 type stubSearchUserStore struct {
-	results []model.User
+	results []repo.User
 	err     error
 }
 
-func (s *stubSearchUserStore) SearchUsers(_ context.Context, _ string, _ int64, _ int) ([]model.User, error) {
+func (s *stubSearchUserStore) SearchUsers(_ context.Context, _ string, _ int64, _ int) ([]repo.User, error) {
 	return s.results, s.err
 }
 
 type stubSearchChannelStore struct {
-	results []model.Channel
+	results []repo.Channel
 	err     error
 }
 
-func (s *stubSearchChannelStore) SearchChannels(_ context.Context, _ string, _ int64, _ int) ([]model.Channel, error) {
+func (s *stubSearchChannelStore) SearchChannels(_ context.Context, _ string, _ int64, _ int) ([]repo.Channel, error) {
 	return s.results, s.err
 }
 
@@ -59,9 +59,9 @@ func withClaims(r *http.Request, userID int64, username string) *http.Request {
 
 func newSearchHandler() *handler.SearchHandler {
 	return handler.NewSearchHandler(
-		&stubSearchMsgStore{results: []model.MessageSearchResult{}},
-		&stubSearchUserStore{results: []model.User{}},
-		&stubSearchChannelStore{results: []model.Channel{}},
+		&stubSearchMsgStore{results: []repo.MessageSearchResult{}},
+		&stubSearchUserStore{results: []repo.User{}},
+		&stubSearchChannelStore{results: []repo.Channel{}},
 		searchTestLogger(),
 	)
 }

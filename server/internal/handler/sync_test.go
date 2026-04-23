@@ -11,7 +11,7 @@ import (
 	"testing"
 
 	"im-server/internal/auth"
-	"im-server/internal/model"
+	"im-server/internal/repo"
 )
 
 // ---------- test helpers ----------
@@ -32,7 +32,7 @@ func ctxWithClaims(ctx context.Context, userID int64) context.Context {
 
 type stubSyncChannelStore struct {
 	seqs   map[int64]int64
-	member *model.ChannelMember
+	member *repo.ChannelMember
 	getErr error
 }
 
@@ -40,23 +40,23 @@ func (s *stubSyncChannelStore) GetMemberChannelSeqs(_ context.Context, _ int64) 
 	return s.seqs, s.getErr
 }
 
-func (s *stubSyncChannelStore) GetMember(_ context.Context, _, _ int64) (*model.ChannelMember, error) {
+func (s *stubSyncChannelStore) GetMember(_ context.Context, _, _ int64) (*repo.ChannelMember, error) {
 	if s.member != nil {
 		return s.member, nil
 	}
-	return &model.ChannelMember{}, nil
+	return &repo.ChannelMember{}, nil
 }
 
-func (s *stubSyncChannelStore) GetByID(_ context.Context, _ int64) (*model.Channel, error) {
-	return &model.Channel{}, nil
+func (s *stubSyncChannelStore) GetByID(_ context.Context, _ int64) (*repo.Channel, error) {
+	return &repo.Channel{}, nil
 }
 
 type stubSyncMsgStore struct {
-	messages []model.Message
+	messages []repo.Message
 }
 
-func (s *stubSyncMsgStore) FetchForUser(_ context.Context, _, _ int64, afterSeq int64, limit int) ([]model.Message, error) {
-	var result []model.Message
+func (s *stubSyncMsgStore) FetchForUser(_ context.Context, _, _ int64, afterSeq int64, limit int) ([]repo.Message, error) {
+	var result []repo.Message
 	for _, m := range s.messages {
 		if m.Seq > afterSeq && len(result) < limit {
 			result = append(result, m)
@@ -109,12 +109,12 @@ func TestSyncHandler_NoChanges(t *testing.T) {
 func TestSyncHandler_SmallGap(t *testing.T) {
 	chStore := &stubSyncChannelStore{
 		seqs:   map[int64]int64{1: 105},
-		member: &model.ChannelMember{LastReadSeq: 100, PhantomCount: 0, PhantomAtRead: 0},
+		member: &repo.ChannelMember{LastReadSeq: 100, PhantomCount: 0, PhantomAtRead: 0},
 	}
 	// Pretend messages 101–105 exist.
-	var msgs []model.Message
+	var msgs []repo.Message
 	for i := int64(101); i <= 105; i++ {
-		msgs = append(msgs, model.Message{ChannelID: 1, Seq: i, Content: "msg"})
+		msgs = append(msgs, repo.Message{ChannelID: 1, Seq: i, Content: "msg"})
 	}
 	msgStore := &stubSyncMsgStore{messages: msgs}
 	h := NewSyncHandler(chStore, msgStore, testLogger())
@@ -151,9 +151,9 @@ func TestSyncHandler_LargeGap(t *testing.T) {
 		seqs: map[int64]int64{1: 300},
 	}
 	// Build 300 messages (seq 1–300).
-	var msgs []model.Message
+	var msgs []repo.Message
 	for i := int64(1); i <= 300; i++ {
-		msgs = append(msgs, model.Message{ChannelID: 1, Seq: i, Content: "msg"})
+		msgs = append(msgs, repo.Message{ChannelID: 1, Seq: i, Content: "msg"})
 	}
 	msgStore := &stubSyncMsgStore{messages: msgs}
 	h := NewSyncHandler(chStore, msgStore, testLogger())
@@ -188,9 +188,9 @@ func TestSyncHandler_NewChannel(t *testing.T) {
 	chStore := &stubSyncChannelStore{
 		seqs: map[int64]int64{99: 10},
 	}
-	var msgs []model.Message
+	var msgs []repo.Message
 	for i := int64(1); i <= 10; i++ {
-		msgs = append(msgs, model.Message{ChannelID: 99, Seq: i, Content: "welcome"})
+		msgs = append(msgs, repo.Message{ChannelID: 99, Seq: i, Content: "welcome"})
 	}
 	msgStore := &stubSyncMsgStore{messages: msgs}
 	h := NewSyncHandler(chStore, msgStore, testLogger())

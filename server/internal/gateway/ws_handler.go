@@ -9,8 +9,9 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/lib/pq"
 	"im-server/internal/auth"
-	"im-server/internal/model"
+	"im-server/internal/repo"
 )
 
 var upgrader = websocket.Upgrader{
@@ -25,15 +26,15 @@ const (
 	maxMessageBytes = 64 * 1024        // 64 KB max inbound message
 )
 
-// WsSendStore is the subset of store.MessageStore needed for WS send.
+// WsSendStore is the subset of repo.MessageRepo needed for WS send.
 type WsSendStore interface {
-	Send(ctx context.Context, msg *model.Message) error
+	Send(ctx context.Context, msg *repo.Message) error
 }
 
 // WsMemberLister lists channel members for push fan-out on WS send.
 type WsMemberLister interface {
-	ListMembers(ctx context.Context, channelID int64) ([]model.ChannelMember, error)
-	GetMember(ctx context.Context, channelID, userID int64) (*model.ChannelMember, error)
+	ListMembers(ctx context.Context, channelID int64) ([]repo.ChannelMember, error)
+	GetMember(ctx context.Context, channelID, userID int64) (*repo.ChannelMember, error)
 }
 
 // WsHandler handles WebSocket upgrade requests.
@@ -42,9 +43,9 @@ type WsHandler struct {
 	routing   *Routing
 	jwtSecret string
 	gatewayID string
-	channelSt ChannelSeqStore   // to compute pong diff
-	msgStore  WsSendStore       // for WS send path (nil = WS send disabled)
-	members   WsMemberLister    // for WS send push fan-out (nil = WS send disabled)
+	channelSt ChannelSeqStore // to compute pong diff
+	msgStore  WsSendStore     // for WS send path (nil = WS send disabled)
+	members   WsMemberLister  // for WS send push fan-out (nil = WS send disabled)
 	log       *slog.Logger
 }
 
@@ -201,18 +202,18 @@ func (h *WsHandler) handleSend(conn *Conn, payload json.RawMessage) {
 		return
 	}
 
-	msgType := model.MsgType(sp.MsgType)
+	msgType := sp.MsgType
 	if msgType == 0 {
-		msgType = model.MsgTypeText
+		msgType = repo.MsgTypeText
 	}
 
-	msg := &model.Message{
+	msg := &repo.Message{
 		ChannelID:   sp.ChannelID,
 		SenderID:    conn.UserID,
 		ClientMsgID: sp.ClientMsgID,
 		MsgType:     msgType,
 		Content:     sp.Content,
-		VisibleTo:   sp.VisibleTo,
+		VisibleTo:   pq.Int64Array(sp.VisibleTo),
 	}
 
 	if err := h.msgStore.Send(context.Background(), msg); err != nil {
@@ -240,10 +241,10 @@ func (h *WsHandler) handleSend(conn *Conn, payload json.RawMessage) {
 		for _, m := range members {
 			pushMsg := msg
 			if msg.VisibleTo != nil && !msg.IsVisibleTo(m.UserID) {
-				pushMsg = &model.Message{
+				pushMsg = &repo.Message{
 					ChannelID: msg.ChannelID,
 					Seq:       msg.Seq,
-					MsgType:   model.MsgTypePhantom,
+					MsgType:   repo.MsgTypePhantom,
 					CreatedAt: msg.CreatedAt,
 				}
 			}
@@ -254,7 +255,7 @@ func (h *WsHandler) handleSend(conn *Conn, payload json.RawMessage) {
 				ServerID:  pushMsg.ID,
 				SenderID:  pushMsg.SenderID,
 				Content:   pushMsg.Content,
-				MsgType:   int16(pushMsg.MsgType),
+				MsgType:   pushMsg.MsgType,
 				VisibleTo: pushMsg.VisibleTo,
 				CreatedAt: pushMsg.CreatedAt,
 			}

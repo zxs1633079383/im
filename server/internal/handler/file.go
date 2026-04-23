@@ -12,19 +12,19 @@ import (
 	"strings"
 	"time"
 
-	"im-server/internal/model"
+	"im-server/internal/repo"
 )
 
 const maxUploadSize = 50 << 20 // 50 MB
 
 // ---------- store interface ----------
 
-// FileStoreIface is the subset of store.FileStore used by FileHandler.
+// FileStoreIface is the subset of repo.FileRepo used by FileHandler.
 type FileStoreIface interface {
-	Create(ctx context.Context, f *model.File) error
-	GetByID(ctx context.Context, id int64) (*model.File, error)
+	Create(ctx context.Context, f *repo.File) error
+	GetByID(ctx context.Context, id int64) (*repo.File, error)
 	AttachToMessage(ctx context.Context, messageID, fileID int64) error
-	ListByMessage(ctx context.Context, messageID int64) ([]model.File, error)
+	ListByMessage(ctx context.Context, messageID int64) ([]repo.File, error)
 }
 
 // ---------- handler ----------
@@ -109,7 +109,7 @@ func (h *FileHandler) Upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	f := &model.File{
+	f := &repo.File{
 		UploaderID:  claims.UserID,
 		FileName:    header.Filename,
 		FileSize:    written,
@@ -123,7 +123,7 @@ func (h *FileHandler) Upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Never expose storage_path to the client (it's tagged json:"-" in the model)
+	// Never expose storage_path to the client (it's tagged json:"-" on repo.File)
 	writeJSON(w, http.StatusCreated, f)
 }
 
@@ -178,9 +178,9 @@ func (h *FileHandler) ListAttachments(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if files == nil {
-		files = []model.File{}
+		files = []repo.File{}
 	}
-	writeJSON(w, http.StatusOK, map[string][]model.File{"files": files})
+	writeJSON(w, http.StatusOK, map[string][]repo.File{"files": files})
 }
 
 // ---------- helpers ----------

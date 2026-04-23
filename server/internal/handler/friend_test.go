@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -13,14 +14,18 @@ import (
 
 	"im-server/internal/auth"
 	"im-server/internal/handler"
-	"im-server/internal/model"
-	"im-server/internal/store"
+	"im-server/internal/repo"
 )
+
+// errAlreadyExists matches the keyword the handler uses to detect a unique
+// violation. The legacy store had a typed sentinel; the repo path surfaces a
+// driver-style error string instead.
+var errAlreadyExists = errors.New("duplicate key value violates unique constraint")
 
 // ---------- in-memory stub FriendStore ----------
 
 type stubFriendStore struct {
-	friendships []model.Friendship
+	friendships []repo.Friendship
 	nextID      int64
 }
 
@@ -30,19 +35,19 @@ func newStubFriendStore() *stubFriendStore {
 
 func (s *stubFriendStore) SendRequest(_ context.Context, requesterID, addresseeID int64) error {
 	if requesterID == addresseeID {
-		return store.ErrAlreadyExists
+		return errAlreadyExists
 	}
 	for _, f := range s.friendships {
 		if (f.RequesterID == requesterID && f.AddresseeID == addresseeID) ||
 			(f.RequesterID == addresseeID && f.AddresseeID == requesterID) {
-			return store.ErrAlreadyExists
+			return errAlreadyExists
 		}
 	}
-	s.friendships = append(s.friendships, model.Friendship{
+	s.friendships = append(s.friendships, repo.Friendship{
 		ID:          s.nextID,
 		RequesterID: requesterID,
 		AddresseeID: addresseeID,
-		Status:      model.FriendshipPending,
+		Status:      repo.FriendshipPending,
 	})
 	s.nextID++
 	return nil
@@ -51,47 +56,47 @@ func (s *stubFriendStore) SendRequest(_ context.Context, requesterID, addresseeI
 func (s *stubFriendStore) AcceptRequest(_ context.Context, friendshipID, userID int64) error {
 	for i := range s.friendships {
 		f := &s.friendships[i]
-		if f.ID == friendshipID && f.AddresseeID == userID && f.Status == model.FriendshipPending {
-			f.Status = model.FriendshipAccepted
+		if f.ID == friendshipID && f.AddresseeID == userID && f.Status == repo.FriendshipPending {
+			f.Status = repo.FriendshipAccepted
 			return nil
 		}
 	}
-	return store.ErrNotFound
+	return repo.ErrNotFound
 }
 
 func (s *stubFriendStore) RejectRequest(_ context.Context, friendshipID, userID int64) error {
 	for i := range s.friendships {
 		f := &s.friendships[i]
-		if f.ID == friendshipID && f.AddresseeID == userID && f.Status == model.FriendshipPending {
-			f.Status = model.FriendshipRejected
+		if f.ID == friendshipID && f.AddresseeID == userID && f.Status == repo.FriendshipPending {
+			f.Status = repo.FriendshipRejected
 			return nil
 		}
 	}
-	return store.ErrNotFound
+	return repo.ErrNotFound
 }
 
-func (s *stubFriendStore) ListFriends(_ context.Context, userID int64) ([]model.User, error) {
-	var friends []model.User
+func (s *stubFriendStore) ListFriends(_ context.Context, userID int64) ([]repo.User, error) {
+	var friends []repo.User
 	for _, f := range s.friendships {
-		if f.Status != model.FriendshipAccepted {
+		if f.Status != repo.FriendshipAccepted {
 			continue
 		}
 		if f.RequesterID == userID {
-			friends = append(friends, model.User{ID: f.AddresseeID})
+			friends = append(friends, repo.User{ID: f.AddresseeID})
 		} else if f.AddresseeID == userID {
-			friends = append(friends, model.User{ID: f.RequesterID})
+			friends = append(friends, repo.User{ID: f.RequesterID})
 		}
 	}
 	return friends, nil
 }
 
-func (s *stubFriendStore) ListPendingRequests(_ context.Context, userID int64) ([]store.PendingRequest, error) {
-	var result []store.PendingRequest
+func (s *stubFriendStore) ListPendingRequests(_ context.Context, userID int64) ([]repo.PendingRequest, error) {
+	var result []repo.PendingRequest
 	for _, f := range s.friendships {
-		if f.AddresseeID == userID && f.Status == model.FriendshipPending {
-			result = append(result, store.PendingRequest{
+		if f.AddresseeID == userID && f.Status == repo.FriendshipPending {
+			result = append(result, repo.PendingRequest{
 				Friendship: f,
-				Requester:  model.User{ID: f.RequesterID, Username: "requester"},
+				Requester:  repo.User{ID: f.RequesterID, Username: "requester"},
 			})
 		}
 	}
@@ -103,17 +108,17 @@ func (s *stubFriendStore) BlockUser(_ context.Context, blockerID, blockedID int6
 		f := &s.friendships[i]
 		if (f.RequesterID == blockerID && f.AddresseeID == blockedID) ||
 			(f.RequesterID == blockedID && f.AddresseeID == blockerID) {
-			f.Status = model.FriendshipBlocked
+			f.Status = repo.FriendshipBlocked
 			f.RequesterID = blockerID
 			f.AddresseeID = blockedID
 			return nil
 		}
 	}
-	s.friendships = append(s.friendships, model.Friendship{
+	s.friendships = append(s.friendships, repo.Friendship{
 		ID:          s.nextID,
 		RequesterID: blockerID,
 		AddresseeID: blockedID,
-		Status:      model.FriendshipBlocked,
+		Status:      repo.FriendshipBlocked,
 	})
 	s.nextID++
 	return nil
@@ -122,17 +127,17 @@ func (s *stubFriendStore) BlockUser(_ context.Context, blockerID, blockedID int6
 // ---------- in-memory stub FriendUserStore ----------
 
 type stubFriendUserStore struct {
-	users map[int64]*model.User
+	users map[int64]*repo.User
 }
 
 func newStubFriendUserStore() *stubFriendUserStore {
-	return &stubFriendUserStore{users: map[int64]*model.User{
+	return &stubFriendUserStore{users: map[int64]*repo.User{
 		1: {ID: 1, Username: "alice", DisplayName: "Alice"},
 		2: {ID: 2, Username: "bob", DisplayName: "Bob"},
 	}}
 }
 
-func (s *stubFriendUserStore) GetByID(_ context.Context, id int64) (*model.User, error) {
+func (s *stubFriendUserStore) GetByID(_ context.Context, id int64) (*repo.User, error) {
 	u, ok := s.users[id]
 	if !ok {
 		return nil, handler.ErrNotFound
@@ -140,8 +145,8 @@ func (s *stubFriendUserStore) GetByID(_ context.Context, id int64) (*model.User,
 	return u, nil
 }
 
-func (s *stubFriendUserStore) Search(_ context.Context, q string, callerID int64) ([]model.User, error) {
-	var result []model.User
+func (s *stubFriendUserStore) Search(_ context.Context, q string, callerID int64) ([]repo.User, error) {
+	var result []repo.User
 	for _, u := range s.users {
 		if u.ID != callerID && (q == "" || strings.Contains(u.Username, q)) {
 			result = append(result, *u)

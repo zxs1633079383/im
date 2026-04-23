@@ -12,21 +12,21 @@ import (
 	"testing"
 
 	"im-server/internal/handler"
-	"im-server/internal/model"
+	"im-server/internal/repo"
 )
 
 // ---------- stubs ----------
 
 type stubFileStore struct {
-	files  map[int64]*model.File
+	files  map[int64]*repo.File
 	nextID int64
 }
 
 func newStubFileStore() *stubFileStore {
-	return &stubFileStore{files: make(map[int64]*model.File), nextID: 1}
+	return &stubFileStore{files: make(map[int64]*repo.File), nextID: 1}
 }
 
-func (s *stubFileStore) Create(_ context.Context, f *model.File) error {
+func (s *stubFileStore) Create(_ context.Context, f *repo.File) error {
 	f.ID = s.nextID
 	s.nextID++
 	cp := *f
@@ -34,7 +34,7 @@ func (s *stubFileStore) Create(_ context.Context, f *model.File) error {
 	return nil
 }
 
-func (s *stubFileStore) GetByID(_ context.Context, id int64) (*model.File, error) {
+func (s *stubFileStore) GetByID(_ context.Context, id int64) (*repo.File, error) {
 	f, ok := s.files[id]
 	if !ok {
 		return nil, handler.ErrNotFound
@@ -44,8 +44,8 @@ func (s *stubFileStore) GetByID(_ context.Context, id int64) (*model.File, error
 
 func (s *stubFileStore) AttachToMessage(_ context.Context, _, _ int64) error { return nil }
 
-func (s *stubFileStore) ListByMessage(_ context.Context, _ int64) ([]model.File, error) {
-	return []model.File{}, nil
+func (s *stubFileStore) ListByMessage(_ context.Context, _ int64) ([]repo.File, error) {
+	return []repo.File{}, nil
 }
 
 // ---------- helpers ----------

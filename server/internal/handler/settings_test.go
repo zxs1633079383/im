@@ -9,31 +9,32 @@ import (
 	"testing"
 
 	"im-server/internal/handler"
-	"im-server/internal/model"
+	"im-server/internal/repo"
 )
 
 // ---------- stub ----------
 
 type stubSettingsStore struct {
-	settings *model.UserSettings
+	settings *repo.UserSettings
 }
 
 func newStubSettingsStore() *stubSettingsStore {
 	return &stubSettingsStore{
-		settings: &model.UserSettings{
+		settings: &repo.UserSettings{
 			UserID:              1,
 			NotificationEnabled: true,
 			Theme:               "system",
 			Language:            "en",
+			SettingsJSON:        "{}",
 		},
 	}
 }
 
-func (s *stubSettingsStore) GetSettings(_ context.Context, _ int64) (*model.UserSettings, error) {
+func (s *stubSettingsStore) Get(_ context.Context, _ int64) (*repo.UserSettings, error) {
 	return s.settings, nil
 }
 
-func (s *stubSettingsStore) UpsertSettings(_ context.Context, settings *model.UserSettings) error {
+func (s *stubSettingsStore) Upsert(_ context.Context, settings *repo.UserSettings) error {
 	*s.settings = *settings
 	return nil
 }
@@ -59,7 +60,7 @@ func TestGetSettings_ReturnsDefaults(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("want 200, got %d", w.Code)
 	}
-	var s model.UserSettings
+	var s repo.UserSettings
 	if err := json.NewDecoder(w.Body).Decode(&s); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
@@ -82,7 +83,7 @@ func TestUpdateSettings_PartialUpdate(t *testing.T) {
 		t.Fatalf("want 200, got %d: %s", w.Code, w.Body.String())
 	}
 
-	var s model.UserSettings
+	var s repo.UserSettings
 	_ = json.NewDecoder(w.Body).Decode(&s)
 	if s.Theme != "dark" {
 		t.Errorf("want Theme 'dark', got %q", s.Theme)
@@ -107,7 +108,7 @@ func TestUpdateSettings_NotificationToggle(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("want 200, got %d", w.Code)
 	}
-	var s model.UserSettings
+	var s repo.UserSettings
 	_ = json.NewDecoder(w.Body).Decode(&s)
 	if s.NotificationEnabled {
 		t.Error("expected notification_enabled to be false")

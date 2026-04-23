@@ -7,25 +7,26 @@ import (
 	"net/http"
 	"strconv"
 
-	"im-server/internal/model"
+	"github.com/lib/pq"
+	"im-server/internal/repo"
 )
 
 // ---------- store interfaces ----------
 
-// MsgStore is the subset of store.MessageStore used by MessageHandler.
+// MsgStore is the subset of repo.MessageRepo used by MessageHandler.
 type MsgStore interface {
-	Send(ctx context.Context, msg *model.Message) error
-	GetByID(ctx context.Context, id int64) (*model.Message, error)
-	FetchForUser(ctx context.Context, channelID, userID int64, afterSeq int64, limit int) ([]model.Message, error)
-	FetchBefore(ctx context.Context, channelID, userID int64, beforeSeq int64, limit int) ([]model.Message, error)
-	FetchAround(ctx context.Context, channelID, userID int64, aroundSeq int64, limit int) ([]model.Message, error)
+	Send(ctx context.Context, msg *repo.Message) error
+	GetByID(ctx context.Context, id int64) (*repo.Message, error)
+	FetchForUser(ctx context.Context, channelID, userID int64, afterSeq int64, limit int) ([]repo.Message, error)
+	FetchBefore(ctx context.Context, channelID, userID int64, beforeSeq int64, limit int) ([]repo.Message, error)
+	FetchAround(ctx context.Context, channelID, userID int64, aroundSeq int64, limit int) ([]repo.Message, error)
 }
 
-// MsgChannelStore is the subset of store.ChannelStore used by MessageHandler.
+// MsgChannelStore is the subset of repo.ChannelRepo used by MessageHandler.
 type MsgChannelStore interface {
-	GetMember(ctx context.Context, channelID, userID int64) (*model.ChannelMember, error)
+	GetMember(ctx context.Context, channelID, userID int64) (*repo.ChannelMember, error)
 	MarkRead(ctx context.Context, channelID, userID, seq int64) error
-	GetByID(ctx context.Context, id int64) (*model.Channel, error)
+	GetByID(ctx context.Context, id int64) (*repo.Channel, error)
 }
 
 // ReadSyncPusher pushes read_sync events to other devices of the same user.
@@ -41,12 +42,12 @@ type MsgAttachStore interface {
 
 // MsgMemberLister lists channel members for push fan-out.
 type MsgMemberLister interface {
-	ListMembers(ctx context.Context, channelID int64) ([]model.ChannelMember, error)
+	ListMembers(ctx context.Context, channelID int64) ([]repo.ChannelMember, error)
 }
 
 // MessagePusher pushes a message to an online user via WebSocket.
 type MessagePusher interface {
-	PushMessage(userID int64, msg *model.Message)
+	PushMessage(userID int64, msg *repo.Message)
 }
 
 // ---------- handler ----------
@@ -97,7 +98,7 @@ type sendMessageBody struct {
 }
 
 type fetchMessagesResponse struct {
-	Messages []model.Message `json:"messages"`
+	Messages []repo.Message `json:"messages"`
 }
 
 // ---------- POST /api/channels/{id}/messages ----------
@@ -134,18 +135,18 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnprocessableEntity, "content is required")
 		return
 	}
-	msgType := model.MsgType(body.MsgType)
+	msgType := body.MsgType
 	if msgType == 0 {
-		msgType = model.MsgTypeText
+		msgType = repo.MsgTypeText
 	}
 
-	msg := &model.Message{
+	msg := &repo.Message{
 		ChannelID:   channelID,
 		SenderID:    claims.UserID,
 		ClientMsgID: body.ClientMsgID,
 		MsgType:     msgType,
 		Content:     body.Content,
-		VisibleTo:   body.VisibleTo,
+		VisibleTo:   pq.Int64Array(body.VisibleTo),
 		ReplyTo:     body.ReplyTo,
 	}
 
@@ -173,7 +174,7 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 }
 
 // pushToMembers fans out a push notification to all online channel members.
-func (h *MessageHandler) pushToMembers(ctx context.Context, msg *model.Message) {
+func (h *MessageHandler) pushToMembers(ctx context.Context, msg *repo.Message) {
 	members, err := h.members.ListMembers(ctx, msg.ChannelID)
 	if err != nil {
 		h.log.Error("list members for push", "channel_id", msg.ChannelID, "error", err)
@@ -183,10 +184,10 @@ func (h *MessageHandler) pushToMembers(ctx context.Context, msg *model.Message) 
 		// For directed messages, non-visible users get a phantom
 		pushMsg := msg
 		if msg.VisibleTo != nil && !msg.IsVisibleTo(m.UserID) {
-			phantom := &model.Message{
+			phantom := &repo.Message{
 				ChannelID: msg.ChannelID,
 				Seq:       msg.Seq,
-				MsgType:   model.MsgTypePhantom,
+				MsgType:   repo.MsgTypePhantom,
 				CreatedAt: msg.CreatedAt,
 			}
 			pushMsg = phantom
@@ -230,7 +231,7 @@ func (h *MessageHandler) FetchMessages(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var (
-		msgs []model.Message
+		msgs []repo.Message
 		err  error
 	)
 
@@ -255,7 +256,7 @@ func (h *MessageHandler) FetchMessages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if msgs == nil {
-		msgs = []model.Message{}
+		msgs = []repo.Message{}
 	}
 	writeJSON(w, http.StatusOK, fetchMessagesResponse{Messages: msgs})
 }
@@ -350,7 +351,7 @@ func (h *MessageHandler) ForwardMessages(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	forwarded := make([]*model.Message, 0, len(body.TargetChannelIDs))
+	forwarded := make([]*repo.Message, 0, len(body.TargetChannelIDs))
 	for _, targetID := range body.TargetChannelIDs {
 		// Verify caller is a member of the target channel
 		if _, err := h.channels.GetMember(r.Context(), targetID, claims.UserID); err != nil {
@@ -359,7 +360,7 @@ func (h *MessageHandler) ForwardMessages(w http.ResponseWriter, r *http.Request)
 			continue
 		}
 
-		fwd := &model.Message{
+		fwd := &repo.Message{
 			ChannelID:     targetID,
 			SenderID:      claims.UserID,
 			MsgType:       source.MsgType,
@@ -375,7 +376,7 @@ func (h *MessageHandler) ForwardMessages(w http.ResponseWriter, r *http.Request)
 		forwarded = append(forwarded, fwd)
 	}
 
-	writeJSON(w, http.StatusCreated, map[string][]*model.Message{"messages": forwarded})
+	writeJSON(w, http.StatusCreated, map[string][]*repo.Message{"messages": forwarded})
 }
 
 // ---------- helpers ----------

@@ -5,24 +5,24 @@ import (
 	"log/slog"
 	"net/http"
 
-	"im-server/internal/model"
+	"im-server/internal/repo"
 )
 
 // ---------- store interfaces ----------
 
-// SearchMsgStore is the subset of store.SearchStore used by SearchHandler.
+// SearchMsgStore is the subset of repo.SearchRepo used by SearchHandler.
 type SearchMsgStore interface {
-	SearchMessages(ctx context.Context, q string, userID int64, channelID int64, limit int) ([]model.MessageSearchResult, error)
+	SearchMessages(ctx context.Context, q string, userID int64, channelID int64, limit int) ([]repo.MessageSearchResult, error)
 }
 
 // SearchUserStoreIface is a minimal interface for user search.
 type SearchUserStoreIface interface {
-	SearchUsers(ctx context.Context, q string, callerID int64, limit int) ([]model.User, error)
+	SearchUsers(ctx context.Context, q string, callerID int64, limit int) ([]repo.User, error)
 }
 
 // SearchChannelStoreIface is the minimal interface for channel search.
 type SearchChannelStoreIface interface {
-	SearchChannels(ctx context.Context, q string, callerID int64, limit int) ([]model.Channel, error)
+	SearchChannels(ctx context.Context, q string, callerID int64, limit int) ([]repo.Channel, error)
 }
 
 // ---------- handler ----------
@@ -47,9 +47,9 @@ func NewSearchHandler(
 // ---------- response types ----------
 
 type searchResponse struct {
-	Messages *[]model.MessageSearchResult `json:"messages,omitempty"`
-	Users    *[]model.User                `json:"users,omitempty"`
-	Channels *[]model.Channel             `json:"channels,omitempty"`
+	Messages *[]repo.MessageSearchResult `json:"messages,omitempty"`
+	Users    *[]repo.User                `json:"users,omitempty"`
+	Channels *[]repo.Channel             `json:"channels,omitempty"`
 }
 
 // ---------- GET /api/search ----------
@@ -91,7 +91,7 @@ func (h *SearchHandler) Search(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if msgs == nil {
-			msgs = []model.MessageSearchResult{}
+			msgs = []repo.MessageSearchResult{}
 		}
 		resp.Messages = &msgs
 	}
@@ -104,7 +104,7 @@ func (h *SearchHandler) Search(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if users == nil {
-			users = []model.User{}
+			users = []repo.User{}
 		}
 		resp.Users = &users
 	}
@@ -117,7 +117,7 @@ func (h *SearchHandler) Search(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if channels == nil {
-			channels = []model.Channel{}
+			channels = []repo.Channel{}
 		}
 		resp.Channels = &channels
 	}

@@ -9,15 +9,14 @@ import (
 	"testing"
 
 	"im-server/internal/handler"
-	"im-server/internal/model"
-	"im-server/internal/store"
+	"im-server/internal/repo"
 )
 
 // ---------- in-memory stub ChannelStore ----------
 
 type stubChannelStore struct {
-	channels []model.Channel
-	members  []model.ChannelMember
+	channels []repo.Channel
+	members  []repo.ChannelMember
 	nextID   int64
 }
 
@@ -25,14 +24,14 @@ func newStubChannelStore() *stubChannelStore {
 	return &stubChannelStore{nextID: 1}
 }
 
-func (s *stubChannelStore) Create(_ context.Context, ch *model.Channel) error {
+func (s *stubChannelStore) Create(_ context.Context, ch *repo.Channel) error {
 	ch.ID = s.nextID
 	s.nextID++
 	s.channels = append(s.channels, *ch)
 	return nil
 }
 
-func (s *stubChannelStore) GetByID(_ context.Context, id int64) (*model.Channel, error) {
+func (s *stubChannelStore) GetByID(_ context.Context, id int64) (*repo.Channel, error) {
 	for i := range s.channels {
 		if s.channels[i].ID == id {
 			c := s.channels[i]
@@ -57,8 +56,8 @@ func (s *stubChannelStore) Update(_ context.Context, channelID int64, name, avat
 	return handler.ErrNotFound
 }
 
-func (s *stubChannelStore) AddMember(_ context.Context, channelID, userID int64, role model.MemberRole) error {
-	s.members = append(s.members, model.ChannelMember{
+func (s *stubChannelStore) AddMember(_ context.Context, channelID, userID int64, role int16) error {
+	s.members = append(s.members, repo.ChannelMember{
 		ChannelID: channelID,
 		UserID:    userID,
 		Role:      role,
@@ -67,7 +66,7 @@ func (s *stubChannelStore) AddMember(_ context.Context, channelID, userID int64,
 }
 
 func (s *stubChannelStore) RemoveMember(_ context.Context, channelID, userID int64) error {
-	var kept []model.ChannelMember
+	var kept []repo.ChannelMember
 	for _, m := range s.members {
 		if !(m.ChannelID == channelID && m.UserID == userID) {
 			kept = append(kept, m)
@@ -77,7 +76,7 @@ func (s *stubChannelStore) RemoveMember(_ context.Context, channelID, userID int
 	return nil
 }
 
-func (s *stubChannelStore) GetMember(_ context.Context, channelID, userID int64) (*model.ChannelMember, error) {
+func (s *stubChannelStore) GetMember(_ context.Context, channelID, userID int64) (*repo.ChannelMember, error) {
 	for i := range s.members {
 		if s.members[i].ChannelID == channelID && s.members[i].UserID == userID {
 			m := s.members[i]
@@ -87,8 +86,8 @@ func (s *stubChannelStore) GetMember(_ context.Context, channelID, userID int64)
 	return nil, handler.ErrNotFound
 }
 
-func (s *stubChannelStore) ListMembers(_ context.Context, channelID int64) ([]model.ChannelMember, error) {
-	var result []model.ChannelMember
+func (s *stubChannelStore) ListMembers(_ context.Context, channelID int64) ([]repo.ChannelMember, error) {
+	var result []repo.ChannelMember
 	for _, m := range s.members {
 		if m.ChannelID == channelID {
 			result = append(result, m)
@@ -97,13 +96,13 @@ func (s *stubChannelStore) ListMembers(_ context.Context, channelID int64) ([]mo
 	return result, nil
 }
 
-func (s *stubChannelStore) ListByUserWithPreview(_ context.Context, userID int64) ([]store.ChannelWithPreview, error) {
-	var result []store.ChannelWithPreview
+func (s *stubChannelStore) ListByUserWithPreview(_ context.Context, userID int64) ([]repo.ChannelWithPreview, error) {
+	var result []repo.ChannelWithPreview
 	for _, m := range s.members {
 		if m.UserID == userID {
 			for _, ch := range s.channels {
 				if ch.ID == m.ChannelID {
-					result = append(result, store.ChannelWithPreview{Channel: ch})
+					result = append(result, repo.ChannelWithPreview{Channel: ch})
 					break
 				}
 			}
@@ -112,7 +111,7 @@ func (s *stubChannelStore) ListByUserWithPreview(_ context.Context, userID int64
 	return result, nil
 }
 
-func (s *stubChannelStore) FindDM(_ context.Context, userA, userB int64) (*model.Channel, error) {
+func (s *stubChannelStore) FindDM(_ context.Context, userA, userB int64) (*repo.Channel, error) {
 	// Find channels where both userA and userB are members and type == DM
 	memberOf := func(uid, chID int64) bool {
 		for _, m := range s.members {
@@ -123,20 +122,20 @@ func (s *stubChannelStore) FindDM(_ context.Context, userA, userB int64) (*model
 		return false
 	}
 	for _, ch := range s.channels {
-		if ch.Type == model.ChannelTypeDM && memberOf(userA, ch.ID) && memberOf(userB, ch.ID) {
+		if ch.Type == repo.ChannelTypeDM && memberOf(userA, ch.ID) && memberOf(userB, ch.ID) {
 			c := ch
 			return &c, nil
 		}
 	}
-	return nil, store.ErrNotFound
+	return nil, repo.ErrNotFound
 }
 
 // ---------- stub ChannelUserStore ----------
 
 type stubChannelUserStore struct{}
 
-func (s *stubChannelUserStore) GetByID(_ context.Context, id int64) (*model.User, error) {
-	return &model.User{ID: id, Username: "user", DisplayName: "User"}, nil
+func (s *stubChannelUserStore) GetByID(_ context.Context, id int64) (*repo.User, error) {
+	return &repo.User{ID: id, Username: "user", DisplayName: "User"}, nil
 }
 
 // ---------- test helpers ----------
@@ -227,9 +226,9 @@ func TestChannelHandler_ListChannels_Empty(t *testing.T) {
 func TestChannelHandler_ListMembers_NonMemberForbidden(t *testing.T) {
 	h, cs := newChannelHandler(t)
 	// Create a group as user 1
-	ch := &model.Channel{Type: model.ChannelTypeGroup, Name: "g"}
+	ch := &repo.Channel{Type: repo.ChannelTypeGroup, Name: "g"}
 	cs.Create(context.Background(), ch)
-	cs.AddMember(context.Background(), ch.ID, 1, model.MemberRoleOwner)
+	cs.AddMember(context.Background(), ch.ID, 1, repo.MemberRoleOwner)
 
 	// User 2 (not a member) tries to list members
 	req := requestWithClaims("GET", "/api/channels/1/members", 2, nil)
@@ -243,9 +242,9 @@ func TestChannelHandler_ListMembers_NonMemberForbidden(t *testing.T) {
 
 func TestChannelHandler_LeaveChannel_OwnerBlocked(t *testing.T) {
 	h, cs := newChannelHandler(t)
-	ch := &model.Channel{Type: model.ChannelTypeGroup, Name: "g"}
+	ch := &repo.Channel{Type: repo.ChannelTypeGroup, Name: "g"}
 	cs.Create(context.Background(), ch)
-	cs.AddMember(context.Background(), ch.ID, 1, model.MemberRoleOwner)
+	cs.AddMember(context.Background(), ch.ID, 1, repo.MemberRoleOwner)
 
 	req := requestWithClaims("POST", "/api/channels/1/leave", 1, nil)
 	req.SetPathValue("id", "1")

@@ -3,30 +3,31 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"im-server/internal/auth"
-	"im-server/internal/model"
-	"im-server/internal/store"
+	"im-server/internal/repo"
 )
 
 // ---------- interfaces ----------
 
-// FriendStore is the subset of store.FriendshipStore used by FriendHandler.
+// FriendStore is the subset of repo.FriendshipRepo used by FriendHandler.
 type FriendStore interface {
 	SendRequest(ctx context.Context, requesterID, addresseeID int64) error
 	AcceptRequest(ctx context.Context, friendshipID, userID int64) error
 	RejectRequest(ctx context.Context, friendshipID, userID int64) error
-	ListFriends(ctx context.Context, userID int64) ([]model.User, error)
-	ListPendingRequests(ctx context.Context, userID int64) ([]store.PendingRequest, error)
+	ListFriends(ctx context.Context, userID int64) ([]repo.User, error)
+	ListPendingRequests(ctx context.Context, userID int64) ([]repo.PendingRequest, error)
 	BlockUser(ctx context.Context, blockerID, blockedID int64) error
 }
 
-// FriendUserStore is the subset of store.UserStore used by FriendHandler.
+// FriendUserStore is the subset of repo.UserRepo used by FriendHandler.
 type FriendUserStore interface {
-	GetByID(ctx context.Context, id int64) (*model.User, error)
-	Search(ctx context.Context, q string, callerID int64) ([]model.User, error)
+	GetByID(ctx context.Context, id int64) (*repo.User, error)
+	Search(ctx context.Context, q string, callerID int64) ([]repo.User, error)
 }
 
 // FriendEventPusher pushes friend events (request/accept/reject) to online users.
@@ -39,10 +40,10 @@ type FriendEventPusher interface {
 
 // FriendHandler serves all friend-related HTTP endpoints.
 type FriendHandler struct {
-	friends      FriendStore
-	users        FriendUserStore
-	eventPusher  FriendEventPusher // nil = no real-time notifications (e.g. in tests)
-	log          *slog.Logger
+	friends     FriendStore
+	users       FriendUserStore
+	eventPusher FriendEventPusher // nil = no real-time notifications (e.g. in tests)
+	log         *slog.Logger
 }
 
 func NewFriendHandler(friends FriendStore, users FriendUserStore, log *slog.Logger) *FriendHandler {
@@ -97,13 +98,14 @@ func (h *FriendHandler) SendRequest(w http.ResponseWriter, r *http.Request) {
 
 	err := h.friends.SendRequest(r.Context(), claims.UserID, body.AddresseeID)
 	if err != nil {
-		switch err {
-		case store.ErrAlreadyExists:
+		// Repo wraps the underlying GORM error; detect a unique-violation by
+		// keyword (the legacy store had a typed ErrAlreadyExists).
+		if isAlreadyExistsErr(err) {
 			writeError(w, http.StatusConflict, "friend request already exists")
-		default:
-			h.log.Error("send request", "error", err)
-			writeError(w, http.StatusInternalServerError, "internal error")
+			return
 		}
+		h.log.Error("send request", "error", err)
+		writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 
@@ -113,6 +115,18 @@ func (h *FriendHandler) SendRequest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusCreated, map[string]string{"status": "pending"})
+}
+
+// isAlreadyExistsErr matches Postgres unique-violation errors surfaced through
+// GORM, replacing the legacy typed store.ErrAlreadyExists check.
+func isAlreadyExistsErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "duplicate") ||
+		strings.Contains(msg, "unique") ||
+		strings.Contains(msg, "23505")
 }
 
 // ---------- POST /api/friends/accept ----------
@@ -137,7 +151,7 @@ func (h *FriendHandler) AcceptRequest(w http.ResponseWriter, r *http.Request) {
 
 	err := h.friends.AcceptRequest(r.Context(), body.FriendshipID, claims.UserID)
 	if err != nil {
-		if err == store.ErrNotFound {
+		if errors.Is(err, repo.ErrNotFound) {
 			writeError(w, http.StatusNotFound, "pending request not found")
 			return
 		}
@@ -171,7 +185,7 @@ func (h *FriendHandler) RejectRequest(w http.ResponseWriter, r *http.Request) {
 
 	err := h.friends.RejectRequest(r.Context(), body.FriendshipID, claims.UserID)
 	if err != nil {
-		if err == store.ErrNotFound {
+		if errors.Is(err, repo.ErrNotFound) {
 			writeError(w, http.StatusNotFound, "pending request not found")
 			return
 		}
@@ -200,7 +214,7 @@ func (h *FriendHandler) ListFriends(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if friends == nil {
-		friends = []model.User{}
+		friends = []repo.User{}
 	}
 	writeJSON(w, http.StatusOK, friends)
 }
@@ -222,7 +236,7 @@ func (h *FriendHandler) ListPending(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if pending == nil {
-		pending = []store.PendingRequest{}
+		pending = []repo.PendingRequest{}
 	}
 	writeJSON(w, http.StatusOK, pending)
 }
@@ -276,7 +290,7 @@ func (h *FriendHandler) SearchUsers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if users == nil {
-		users = []model.User{}
+		users = []repo.User{}
 	}
 	writeJSON(w, http.StatusOK, users)
 }
