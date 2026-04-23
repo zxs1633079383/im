@@ -194,6 +194,11 @@ func run() int {
 	channelSvc := service.NewChannelService(channelRepo, userRepo)
 	imhttp.RegisterChannelRoutes(authedAPI, channelSvc, &hubChannelEventPusher{xpod: xpod})
 
+	// M2-A: fine-grained channel governance (patch, managers, pins, role/notify).
+	governanceRepo := repo.NewChannelGovernanceRepo(gormDB)
+	governanceSvc := service.NewChannelGovernanceService(channelRepo, governanceRepo, userRepo)
+	imhttp.RegisterChannelGovernanceRoutes(authedAPI, governanceSvc, &hubChannelEventPusher{xpod: xpod})
+
 	// Phase 7.4 cut-over: message endpoints. All three legacy hooks are
 	// preserved — Pusher fans new messages out to online members, ReadSyncer
 	// echoes read receipts to other devices of the same user, and the file
