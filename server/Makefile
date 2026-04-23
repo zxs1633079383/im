@@ -27,3 +27,8 @@ test-short:
 	go test ./... -v -short -count=1
 
 .DEFAULT_GOAL := build-all
+
+.PHONY: lint
+lint:
+	@which golangci-lint > /dev/null || (echo "install: brew install golangci-lint" && exit 1)
+	golangci-lint run ./...

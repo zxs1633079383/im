@@ -1,0 +1,29 @@
+golangci-lint run ./...
+internal/store/message.go:25:19: Error return value of `tx.Rollback` is not checked (errcheck)
+	defer tx.Rollback(ctx)
+	                 ^
+internal/pulsar/client.go:122:15: Error return value of `cs.inner.Ack` is not checked (errcheck)
+		cs.inner.Ack(msg)
+		            ^
+internal/store/pg.go:17:23: G115: integer overflow conversion int -> int32 (gosec)
+		cfg.MaxConns = int32(maxConns)
+		                    ^
+internal/handler/message_test.go:89:80: unused-parameter: parameter 'aroundSeq' seems to be unused, consider removing or renaming it as _ (revive)
+func (s *stubMsgStore) FetchAround(_ context.Context, channelID, userID int64, aroundSeq int64, limit int) ([]model.Message, error) {
+                                                                               ^
+internal/gateway/hub_test.go:70:30: unused-parameter: parameter 't' seems to be unused, consider removing or renaming it as _ (revive)
+func TestHub_Deregister_NoOp(t *testing.T) {
+                             ^
+internal/gateway/hub_test.go:134:31: unused-parameter: parameter 't' seems to be unused, consider removing or renaming it as _ (revive)
+func TestHub_ConcurrentAccess(t *testing.T) {
+                              ^
+internal/gateway/ws_handler.go:20:20: unused-parameter: parameter 'r' seems to be unused, consider removing or renaming it as _ (revive)
+	CheckOrigin: func(r *http.Request) bool { return true },
+	                  ^
+internal/handler/sync.go:150:3: ifElseChain: rewrite if-else to switch statement (gocritic)
+		if !known {
+		^
+internal/store/message.go:59:24: appendAssign: append result not assigned to the same slice (gocritic)
+		visibleWithSender := append(msg.VisibleTo, msg.SenderID)
+		                     ^
+make: *** [lint] Error 1
