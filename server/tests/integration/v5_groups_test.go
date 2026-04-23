@@ -31,7 +31,7 @@ import (
 
 func TestV5_G1_MessageLifecycle(t *testing.T) {
 	env := newV5Env(t)
-	_, aliceTok := env.CreateUserAndToken("g1alice", "g1a@x.com")
+	aliceID, aliceTok := env.CreateUserAndToken("g1alice", "g1a@x.com")
 	bobID, bobTok := env.CreateUserAndToken("g1bob", "g1b@x.com")
 
 	chID := env.CreateOrGetDM(aliceTok, bobID)
@@ -39,8 +39,13 @@ func TestV5_G1_MessageLifecycle(t *testing.T) {
 	// Step 1: alice sends msg.
 	msgID := env.MustSendAndReturnMsgID(aliceTok, chID, "hi bob", "g1-1")
 
-	// Step 2: alice marks read → her unread goes to 0 on next /sync.
+	// Step 2: alice marks read → her unread goes to 0 on next /sync, and
+	// read_sync fires so her other devices catch up.
 	env.MarkRead(aliceTok, chID)
+	if n := CountReadSyncs(env.readSyncs.Snapshot(), aliceID, chID); n != 1 {
+		t.Fatalf("read_sync count for alice on chID=%d: got %d, want 1; events=%+v",
+			chID, n, env.readSyncs.Snapshot())
+	}
 
 	// Bob is still at seq=0 and hasn't read.
 	AssertSyncState(t, env, bobTok, chID, 0, 1, 1)
