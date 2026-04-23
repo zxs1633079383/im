@@ -92,8 +92,6 @@ func run() int {
 	fileRepo := repo.NewFileRepo(gormDB)
 	searchRepo := repo.NewSearchRepo(gormDB)
 
-	profileHandler := handler.NewProfileHandler(userRepo, log)
-	settingsHandler := handler.NewSettingsHandler(userSettingsRepo, log)
 	jwtMiddleware := middleware.JWTAuth(cfg.Gateway.JWTSecret)
 
 	friendHandler := handler.NewFriendHandler(friendRepo, userRepo, log)
@@ -141,12 +139,7 @@ func run() int {
 	// WebSocket route.
 	mux.Handle("GET /ws", wsHandler)
 
-	// Profile route (JWT protected)
-	mux.Handle("PUT /api/users/me", jwtMiddleware(http.HandlerFunc(profileHandler.UpdateMe)))
-
-	// Settings routes (JWT protected)
-	mux.Handle("GET /api/settings", jwtMiddleware(http.HandlerFunc(settingsHandler.GetSettings)))
-	mux.Handle("PUT /api/settings", jwtMiddleware(http.HandlerFunc(settingsHandler.UpdateSettings)))
+	// Profile + Settings routes are served by Gin in Phase 7.1 (see below).
 
 	// Friend routes (JWT protected)
 	mux.Handle("POST /api/friends/request", jwtMiddleware(http.HandlerFunc(friendHandler.SendRequest)))
@@ -212,6 +205,15 @@ func run() int {
 	// mux fallthrough. /api/auth/{register,login,me} are served by Gin.
 	authSvc := service.NewAuthService(userRepo, cfg.Gateway.JWTSecret)
 	imhttp.RegisterAuthRoutes(engine, authSvc, userRepo, cfg.Gateway.JWTSecret)
+
+	// Phase 7.1 cut-over: profile + settings endpoints. These share a single
+	// JWT-protected /api group so the middleware is constructed once.
+	profileSvc := service.NewProfileService(userRepo)
+	settingsSvc := service.NewSettingsService(userSettingsRepo)
+	authedAPI := engine.Group("/api")
+	authedAPI.Use(middleware.JWTGin(cfg.Gateway.JWTSecret))
+	imhttp.RegisterProfileRoutes(authedAPI, profileSvc)
+	imhttp.RegisterSettingsRoutes(authedAPI, settingsSvc)
 
 	srv := &http.Server{
 		Addr:         cfg.Gateway.HTTPAddr,
