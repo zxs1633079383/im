@@ -1,0 +1,30 @@
+# Keep build context small + reproducible.
+.git
+.github
+.claude
+.idea
+.vscode
+node_modules
+client
+docker
+docs
+*.md
+!server/README.md
+!server/**/README.md
+
+# Never ship local-only artifacts.
+**/*.log
+**/*.pid
+**/coverage.out
+**/.env
+**/.env.*
+*.pen
+
+# Test outputs, tmp dirs.
+server/tests/tmp
+server/tmp
+/tmp
+
+# Report/briefing files that aren't part of the runtime.
+V*_REPORT.md
+DAY0_*_REPORT.md
