@@ -86,6 +86,9 @@ func NewSearchService(store SearchStore) *SearchService {
 //  4. Per-type errors abort the whole call (legacy log-and-500 behaviour);
 //     the transport wraps the error in a 500.
 func (s *SearchService) Search(ctx context.Context, callerID int64, p SearchParams) (SearchResult, error) {
+	ctx, span := tracer.Start(ctx, "SearchService.Search")
+	defer span.End()
+
 	if p.Query == "" {
 		return SearchResult{}, fmt.Errorf("search: query is required")
 	}

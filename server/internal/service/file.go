@@ -72,6 +72,9 @@ type UploadInput struct {
 //   - ErrFileTooLarge when in.Size > MaxUploadSize
 //   - wrapped fs/repo errors otherwise (transport maps to 500)
 func (s *FileService) Upload(ctx context.Context, in UploadInput) (*repo.File, error) {
+	ctx, span := tracer.Start(ctx, "FileService.Upload")
+	defer span.End()
+
 	if in.Size > MaxUploadSize {
 		return nil, ErrFileTooLarge
 	}
@@ -125,6 +128,9 @@ func (s *FileService) Upload(ctx context.Context, in UploadInput) (*repo.File, e
 // repo.ErrNotFound when the metadata row is missing; wrapped fs errors when
 // the on-disk file is missing or unreadable.
 func (s *FileService) Download(ctx context.Context, fileID int64) (*repo.File, io.ReadCloser, error) {
+	ctx, span := tracer.Start(ctx, "FileService.Download")
+	defer span.End()
+
 	f, err := s.files.GetByID(ctx, fileID)
 	if err != nil {
 		return nil, nil, err
@@ -140,6 +146,9 @@ func (s *FileService) Download(ctx context.Context, fileID int64) (*repo.File, i
 // returned by the repo. A message with no attachments yields an empty slice
 // (never nil) so transport layers can safely range without checking.
 func (s *FileService) ListAttachments(ctx context.Context, messageID int64) ([]repo.File, error) {
+	ctx, span := tracer.Start(ctx, "FileService.ListAttachments")
+	defer span.End()
+
 	files, err := s.files.ListByMessage(ctx, messageID)
 	if err != nil {
 		return nil, err
