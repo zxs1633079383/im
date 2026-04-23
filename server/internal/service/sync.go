@@ -17,6 +17,10 @@ const (
 	// SyncMsgLimit caps the per-channel messages returned for new channels
 	// or large-gap fast-forward — bounds the response size.
 	SyncMsgLimit = 50
+	// MaxChannelsPerCall caps the number of cursors one /api/sync call may
+	// carry. Clients holding more channels must batch across multiple calls.
+	// Contract locked, 对齐 docs/BACKEND.md §3.3; 改动前先改文档并通知前端.
+	MaxChannelsPerCall = 500
 )
 
 // SyncChannelStore is the subset of repo.ChannelRepo SyncService needs.
@@ -33,6 +37,8 @@ type SyncMsgStore interface {
 }
 
 // SyncCursor is one channel cursor from the client.
+//
+// contract locked, 对齐 docs/BACKEND.md §3.3; 改动前先改文档并通知前端.
 type SyncCursor struct {
 	ID  int64
 	Seq int64 // client's local max seq for this channel
@@ -40,6 +46,8 @@ type SyncCursor struct {
 
 // SyncParams is the input to SyncService.Sync — the caller's per-channel
 // cursors. The transport layer constructs this from the JSON body.
+//
+// contract locked, 对齐 docs/BACKEND.md §3.3; 改动前先改文档并通知前端.
 type SyncParams struct {
 	Cursors []SyncCursor
 }
@@ -47,6 +55,8 @@ type SyncParams struct {
 // SyncChannelDelta is the per-channel sync result for one channel that has
 // changes. Field names mirror the legacy handler.SyncChannelResult exactly so
 // the JSON envelope is identical post-cut-over.
+//
+// contract locked, 对齐 docs/BACKEND.md §3.3; 改动前先改文档并通知前端.
 type SyncChannelDelta struct {
 	ID        int64
 	ServerSeq int64
@@ -57,6 +67,8 @@ type SyncChannelDelta struct {
 
 // SyncResult bundles the per-channel deltas. The transport layer wraps this
 // in {"channels": [...]} to match the legacy SyncResponse shape.
+//
+// contract locked, 对齐 docs/BACKEND.md §3.3; 改动前先改文档并通知前端.
 type SyncResult struct {
 	Channels []SyncChannelDelta
 }

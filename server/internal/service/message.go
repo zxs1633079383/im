@@ -119,6 +119,10 @@ func (s *MessageService) SendMessage(ctx context.Context, p SendParams) (*repo.M
 		ReplyTo:     p.ReplyTo,
 	}
 
+	// Send delegates UPDATE channels SET seq=seq+1 RETURNING + INSERT messages
+	// to repo.MessageRepo.AllocSeqAndInsert (the single primitive responsible
+	// for seq monotonicity — see docs/BACKEND.md §4.1). Service layer must
+	// NEVER run its own UPDATE channels SET seq = … statements.
 	if err := s.messages.Send(ctx, msg); err != nil {
 		return nil, fmt.Errorf("send message: %w", err)
 	}

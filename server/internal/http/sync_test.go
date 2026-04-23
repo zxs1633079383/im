@@ -130,3 +130,43 @@ func TestSyncHandler_BadJSON_400(t *testing.T) {
 		WithHeader("Content-Type", "application/json").
 		Expect().Status(400)
 }
+
+// TestSyncHandler_TooManyChannels_400 ensures the handler rejects a batch that
+// exceeds service.MaxChannelsPerCall with {"error": "too many channels"}. The
+// mocked stores must NOT be called — the guard runs before the service.
+func TestSyncHandler_TooManyChannels_400(t *testing.T) {
+	r, _, _ := setupSyncHandler(t)
+	tok := newSyncToken(t, 42, "alice")
+
+	oversized := make([]map[string]any, service.MaxChannelsPerCall+1)
+	for i := range oversized {
+		oversized[i] = map[string]any{"id": i + 1, "seq": 0}
+	}
+
+	testutil.NewExpect(t, r).POST("/api/sync").
+		WithHeader("Authorization", "Bearer "+tok).
+		WithJSON(map[string]any{"channels": oversized}).
+		Expect().Status(400).JSON().Object().
+		Value("error").String().IsEqual("too many channels")
+}
+
+// TestSyncHandler_AtLimitChannels_OK verifies the edge-case boundary: a batch
+// with exactly MaxChannelsPerCall cursors must pass through. The mock returns
+// no server channels so the response is just an empty array.
+func TestSyncHandler_AtLimitChannels_OK(t *testing.T) {
+	r, ch, _ := setupSyncHandler(t)
+	tok := newSyncToken(t, 42, "alice")
+	ch.EXPECT().GetMemberChannelSeqs(mock.Anything, int64(42)).
+		Return(map[int64]int64{}, nil)
+
+	atLimit := make([]map[string]any, service.MaxChannelsPerCall)
+	for i := range atLimit {
+		atLimit[i] = map[string]any{"id": i + 1, "seq": 0}
+	}
+
+	testutil.NewExpect(t, r).POST("/api/sync").
+		WithHeader("Authorization", "Bearer "+tok).
+		WithJSON(map[string]any{"channels": atLimit}).
+		Expect().Status(200).JSON().Object().
+		Value("channels").Array().Length().IsEqual(0)
+}
