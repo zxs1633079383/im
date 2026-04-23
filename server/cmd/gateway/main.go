@@ -18,6 +18,7 @@ import (
 	"im-server/internal/observability"
 	imPulsar "im-server/internal/pulsar"
 	"im-server/internal/repo"
+	"im-server/internal/service"
 
 	"github.com/gin-gonic/gin"
 )
@@ -91,7 +92,6 @@ func run() int {
 	fileRepo := repo.NewFileRepo(gormDB)
 	searchRepo := repo.NewSearchRepo(gormDB)
 
-	authHandler := handler.NewAuthHandler(userRepo, cfg.Gateway.JWTSecret, log)
 	profileHandler := handler.NewProfileHandler(userRepo, log)
 	settingsHandler := handler.NewSettingsHandler(userSettingsRepo, log)
 	jwtMiddleware := middleware.JWTAuth(cfg.Gateway.JWTSecret)
@@ -140,13 +140,6 @@ func run() int {
 
 	// WebSocket route.
 	mux.Handle("GET /ws", wsHandler)
-
-	// Public auth routes
-	mux.HandleFunc("POST /api/auth/register", authHandler.Register)
-	mux.HandleFunc("POST /api/auth/login", authHandler.Login)
-
-	// Protected routes
-	mux.Handle("GET /api/auth/me", jwtMiddleware(http.HandlerFunc(authHandler.Me)))
 
 	// Profile route (JWT protected)
 	mux.Handle("PUT /api/users/me", jwtMiddleware(http.HandlerFunc(profileHandler.UpdateMe)))
@@ -214,6 +207,11 @@ func run() int {
 		Legacy:      corsHandler,
 		Mode:        gin.ReleaseMode,
 	})
+
+	// Phase 6 cut-over: auth endpoints now run on Gin, in front of the legacy
+	// mux fallthrough. /api/auth/{register,login,me} are served by Gin.
+	authSvc := service.NewAuthService(userRepo, cfg.Gateway.JWTSecret)
+	imhttp.RegisterAuthRoutes(engine, authSvc, userRepo, cfg.Gateway.JWTSecret)
 
 	srv := &http.Server{
 		Addr:         cfg.Gateway.HTTPAddr,
