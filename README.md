@@ -166,7 +166,7 @@ npx tauri build
 
 ```bash
 # Server unit tests (no database required)
-cd server && make test-short
+cd server && make test-unit
 
 # Server integration tests (requires PG)
 cd server

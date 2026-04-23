@@ -20,11 +20,16 @@ migrate-down:
 migrate-create:
 	migrate create -ext sql -dir migrations -seq $(name)
 
-test:
-	go test ./... -v -count=1
+.PHONY: test test-unit test-cover
+test: test-unit
 
-test-short:
-	go test ./... -v -short -count=1
+test-unit:
+	gotestsum --format pkgname -- -race -short -timeout 60s ./...
+
+test-cover:
+	gotestsum --format pkgname -- -race -short -coverprofile=coverage.out -covermode=atomic ./...
+	go tool cover -html=coverage.out -o coverage.html
+	@echo "Coverage report: coverage.html"
 
 .DEFAULT_GOAL := build-all
 
