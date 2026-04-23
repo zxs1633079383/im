@@ -1,0 +1,12 @@
+# server/.mockery.yaml
+# Mock generation config for mockery v2.
+# Phase 5 will add a `packages:` block here registering repo interfaces;
+# Phase 6 onward consumes the generated mocks.
+
+with-expecter: true
+quiet: false
+disable-version-string: true
+mockname: "{{.InterfaceName}}Mock"
+filename: "{{.InterfaceName | snakecase}}_mock.go"
+dir: "{{.InterfaceDir}}/mocks"
+outpkg: mocks

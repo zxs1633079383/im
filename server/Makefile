@@ -44,3 +44,8 @@ vuln:
 	govulncheck ./...
 
 check: lint vuln test-unit
+
+.PHONY: mocks
+mocks:
+	@which mockery > /dev/null || GOTOOLCHAIN=go1.26.2 go install github.com/vektra/mockery/v2@v2.50.0
+	@grep -q "^packages:" .mockery.yaml 2>/dev/null && mockery || echo "no packages registered yet — skip"
