@@ -241,6 +241,7 @@ func run() int {
 	scheduledRepo := repo.NewScheduledRepo(gormDB)
 	scheduledSvc := service.NewScheduledService(scheduledRepo, channelRepo, messageSvc)
 	scheduledWorker := service.NewScheduledWorker(scheduledSvc, log, service.ScheduledWorkerConfig{})
+	imhttp.RegisterScheduledRoutes(authedAPI, scheduledSvc)
 
 	// Phase 7.5 cut-over: batch incremental sync. No real-time hooks — sync is
 	// pure pull, the algorithm + response shape are preserved verbatim from
