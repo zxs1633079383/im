@@ -243,6 +243,11 @@ func run() int {
 	scheduledWorker := service.NewScheduledWorker(scheduledSvc, log, service.ScheduledWorkerConfig{})
 	imhttp.RegisterScheduledRoutes(authedAPI, scheduledSvc)
 
+	// M2-G: quick replies — per-user preset CRUD.
+	quickReplyRepo := repo.NewQuickReplyRepo(gormDB)
+	quickReplySvc := service.NewQuickReplyService(quickReplyRepo)
+	imhttp.RegisterQuickReplyRoutes(authedAPI, quickReplySvc)
+
 	// Phase 7.5 cut-over: batch incremental sync. No real-time hooks — sync is
 	// pure pull, the algorithm + response shape are preserved verbatim from
 	// the legacy SyncHandler.
