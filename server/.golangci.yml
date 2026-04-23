@@ -25,11 +25,6 @@ issues:
       linters: [unused, gocritic, revive]
     - path: internal/deps/
       linters: [unused, gocritic, revive]
-    # TODO: remove these once Phase 5 (store→repo) and Phase 6/7 (handler→Gin) complete
-    - path: internal/store/
-      linters: [errcheck, gosec, gocritic]
-    - path: internal/handler/
-      linters: [errcheck, gocritic, revive]
     - path: internal/gateway/
       linters: [revive]
     - path: internal/pulsar/
