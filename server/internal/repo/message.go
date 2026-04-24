@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"gorm.io/gorm"
 )
@@ -18,13 +19,25 @@ import (
 //
 // Send is idempotent on (channel_id, client_msg_id): a second call with the
 // same client_msg_id no-ops and returns the original ID/Seq.
+//
+// AllocSeqAndInsert is the low-level primitive: it combines
+// UPDATE channels SET seq=seq+1 RETURNING seq with INSERT messages inside the
+// same transaction so seq monotonicity holds even under concurrent writers.
+// It exposes the optional external-tx hook so Service layer callers can
+// compose it inside a bigger transaction — see docs/BACKEND.md §4.1.
 type MessageRepo interface {
 	Send(ctx context.Context, msg *Message) error
+	AllocSeqAndInsert(ctx context.Context, tx *gorm.DB, msg *Message) (int64, error)
+	UpdateContent(ctx context.Context, msgID, callerID int64, content string) (*Message, error)
+	SoftDelete(ctx context.Context, msgID, callerID int64) (*Message, error)
 	GetByID(ctx context.Context, id int64) (*Message, error)
 	FetchAfter(ctx context.Context, channelID, afterSeq int64, limit int) ([]Message, error)
 	FetchForUser(ctx context.Context, channelID, userID, afterSeq int64, limit int) ([]Message, error)
 	FetchBefore(ctx context.Context, channelID, userID, beforeSeq int64, limit int) ([]Message, error)
 	FetchAround(ctx context.Context, channelID, userID, aroundSeq int64, limit int) ([]Message, error)
+	FetchAroundTimestamp(ctx context.Context, channelID, userID int64, ts time.Time, limit int) (older []Message, newer []Message, err error)
+	FetchReplies(ctx context.Context, rootID, userID int64) ([]Message, error)
+	GetReaders(ctx context.Context, channelID, seq int64, cursor int64, limit int) (readers []int64, nextCursor int64, err error)
 }
 
 type gormMessageRepo struct {
@@ -40,6 +53,9 @@ func NewMessageRepo(db *gorm.DB, channel ChannelRepo) MessageRepo {
 
 // Send runs idempotency check, seq allocation, insert, and phantom_count
 // bump in a single transaction. See MessageRepo.Send for semantics.
+//
+// Send delegates the UPDATE channels + INSERT messages atomic pair to
+// AllocSeqAndInsert so there is a single primitive owning seq monotonicity.
 func (r *gormMessageRepo) Send(ctx context.Context, msg *Message) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		// 1. Idempotency: short-circuit if (channel_id, client_msg_id)
@@ -59,23 +75,10 @@ func (r *gormMessageRepo) Send(ctx context.Context, msg *Message) error {
 			}
 		}
 
-		// 2. Allocate the next per-channel seq inside the same tx so seq
-		//    monotonicity holds even under concurrent Send.
-		seq, err := r.channel.IncrementSeq(ctx, tx, msg.ChannelID)
-		if err != nil {
+		// 2+3. AllocSeqAndInsert does UPDATE channels SET seq=seq+1 RETURNING +
+		//      INSERT messages inside the passed tx — see docs/BACKEND.md §4.1.
+		if _, err := r.AllocSeqAndInsert(ctx, tx, msg); err != nil {
 			return err
-		}
-		msg.Seq = seq
-
-		// 3. Insert. Empty client_msg_id must land as SQL NULL (the column
-		//    is nullable and the unique index treats NULLs as distinct);
-		//    Omit() skips the column so Postgres applies its default.
-		insert := tx
-		if msg.ClientMsgID == "" {
-			insert = insert.Omit("ClientMsgID")
-		}
-		if err := insert.Create(msg).Error; err != nil {
-			return fmt.Errorf("insert message: %w", err)
 		}
 
 		// 4. Directed message: bump phantom_count for every member NOT in
@@ -89,6 +92,232 @@ func (r *gormMessageRepo) Send(ctx context.Context, msg *Message) error {
 		}
 		return nil
 	})
+}
+
+// AllocSeqAndInsert is the unique entry point for allocating the next
+// per-channel seq and inserting the message. See docs/BACKEND.md §4.1.
+//
+// Transaction reuse:
+//   - tx != nil  → reuse the caller's tx (compose with other writes)
+//   - tx == nil  → open an internal transaction (standalone send path)
+//
+// Regardless of which path is taken, UPDATE channels SET seq = seq + 1 and
+// INSERT messages share the same transaction so a crash between them rolls
+// back cleanly and never produces a seq gap.
+//
+// Service/HTTP layers MUST NOT run their own UPDATE channels SET seq = …
+// statements — CI grep will enforce this as a follow-up.
+func (r *gormMessageRepo) AllocSeqAndInsert(ctx context.Context, tx *gorm.DB, msg *Message) (int64, error) {
+	run := func(db *gorm.DB) error {
+		// UPDATE ... RETURNING seq — atomic row-lock on channels(id).
+		seq, err := r.channel.IncrementSeq(ctx, db, msg.ChannelID)
+		if err != nil {
+			return fmt.Errorf("alloc seq: %w", err)
+		}
+		msg.Seq = seq
+
+		// Empty client_msg_id must land as SQL NULL (the column is nullable
+		// and the unique index treats NULLs as distinct); Omit() skips the
+		// column so Postgres applies its default.
+		insert := db
+		if msg.ClientMsgID == "" {
+			insert = insert.Omit("ClientMsgID")
+		}
+		if err := insert.Create(msg).Error; err != nil {
+			return fmt.Errorf("insert message: %w", err)
+		}
+		return nil
+	}
+
+	if tx != nil {
+		if err := run(tx.WithContext(ctx)); err != nil {
+			return 0, err
+		}
+		return msg.Seq, nil
+	}
+	err := r.db.WithContext(ctx).Transaction(func(newTx *gorm.DB) error { return run(newTx) })
+	if err != nil {
+		return 0, err
+	}
+	return msg.Seq, nil
+}
+
+// UpdateContent sets content + updated_at=now() for msgID when callerID is the
+// sender and the message is not already soft-deleted. Returns the refreshed
+// row. Errors:
+//   - ErrNotFound when the message does not exist.
+//   - ErrNotMember sentinel is NOT returned by the repo layer — callers who
+//     need a "caller is not sender" distinction should detect 0 rows updated
+//     as "forbidden" and surface their own error.
+//
+// The returned *Message reflects the post-update state (including the new
+// updated_at value) so callers can echo it in the WS msg_updated payload.
+func (r *gormMessageRepo) UpdateContent(ctx context.Context, msgID, callerID int64, content string) (*Message, error) {
+	existing, err := r.GetByID(ctx, msgID)
+	if err != nil {
+		return nil, err
+	}
+	if existing.SenderID != callerID {
+		return nil, ErrForbidden
+	}
+	if existing.Deleted {
+		return nil, ErrGone
+	}
+	now := time.Now().UTC()
+	res := r.db.WithContext(ctx).
+		Model(&Message{}).
+		Where("id = ? AND sender_id = ? AND deleted = FALSE", msgID, callerID).
+		Updates(map[string]any{"content": content, "updated_at": now})
+	if res.Error != nil {
+		return nil, fmt.Errorf("update content: %w", res.Error)
+	}
+	if res.RowsAffected == 0 {
+		return nil, ErrNotFound
+	}
+	existing.Content = content
+	existing.UpdatedAt = &now
+	return existing, nil
+}
+
+// SoftDelete sets deleted=true + deleted_at=now() for msgID when callerID is
+// the sender. Returns the refreshed row so the caller can fan out the
+// msg_deleted WS event. Errors:
+//   - ErrNotFound when the message does not exist.
+//   - ErrForbidden when the caller is not the sender.
+//   - ErrGone when the message is already soft-deleted (idempotent no-op).
+func (r *gormMessageRepo) SoftDelete(ctx context.Context, msgID, callerID int64) (*Message, error) {
+	existing, err := r.GetByID(ctx, msgID)
+	if err != nil {
+		return nil, err
+	}
+	if existing.SenderID != callerID {
+		return nil, ErrForbidden
+	}
+	if existing.Deleted {
+		// Idempotent: treat as success, but signal "already gone" so the
+		// transport layer can skip the push fan-out.
+		return existing, ErrGone
+	}
+	now := time.Now().UTC()
+	res := r.db.WithContext(ctx).
+		Model(&Message{}).
+		Where("id = ? AND sender_id = ? AND deleted = FALSE", msgID, callerID).
+		Updates(map[string]any{"deleted": true, "deleted_at": now})
+	if res.Error != nil {
+		return nil, fmt.Errorf("soft delete: %w", res.Error)
+	}
+	if res.RowsAffected == 0 {
+		// Concurrent delete lost the race — equivalent to ErrGone.
+		existing.Deleted = true
+		return existing, ErrGone
+	}
+	existing.Deleted = true
+	existing.DeletedAt = &now
+	return existing, nil
+}
+
+// FetchAroundTimestamp returns messages centered on ts for channelID filtered
+// by visible_to for userID. Half the limit is returned on each side (older +
+// newer). Soft-deleted messages are excluded.
+//
+// older is ordered by seq ASC (oldest first); newer is ordered by seq ASC.
+// Callers may concatenate older + newer for a chronologically ordered window.
+func (r *gormMessageRepo) FetchAroundTimestamp(ctx context.Context, channelID, userID int64, ts time.Time, limit int) ([]Message, []Message, error) {
+	if limit <= 0 {
+		limit = 2
+	}
+	half := limit / 2
+	if half == 0 {
+		half = 1
+	}
+
+	var older []Message
+	err := r.db.WithContext(ctx).Raw(
+		`SELECT * FROM (
+		    SELECT id, channel_id, seq, client_msg_id, sender_id, msg_type, content,
+		           visible_to, reply_to, forwarded_from, created_at, updated_at,
+		           deleted, deleted_at
+		    FROM messages
+		    WHERE channel_id = ? AND created_at <= ? AND deleted = FALSE
+		      AND (visible_to IS NULL OR ? = ANY(visible_to) OR sender_id = ?)
+		    ORDER BY created_at DESC, seq DESC
+		    LIMIT ?
+		 ) t ORDER BY seq`,
+		channelID, ts, userID, userID, half,
+	).Scan(&older).Error
+	if err != nil {
+		return nil, nil, fmt.Errorf("fetch around ts (older): %w", err)
+	}
+
+	var newer []Message
+	err = r.db.WithContext(ctx).Raw(
+		`SELECT id, channel_id, seq, client_msg_id, sender_id, msg_type, content,
+		        visible_to, reply_to, forwarded_from, created_at, updated_at,
+		        deleted, deleted_at
+		 FROM messages
+		 WHERE channel_id = ? AND created_at > ? AND deleted = FALSE
+		   AND (visible_to IS NULL OR ? = ANY(visible_to) OR sender_id = ?)
+		 ORDER BY created_at ASC, seq ASC
+		 LIMIT ?`,
+		channelID, ts, userID, userID, half,
+	).Scan(&newer).Error
+	if err != nil {
+		return nil, nil, fmt.Errorf("fetch around ts (newer): %w", err)
+	}
+	return older, newer, nil
+}
+
+// FetchReplies returns every non-deleted reply to rootID, ordered by seq ASC.
+// The caller is not membership-checked here — the service layer enforces it.
+func (r *gormMessageRepo) FetchReplies(ctx context.Context, rootID, userID int64) ([]Message, error) {
+	var out []Message
+	err := r.db.WithContext(ctx).Raw(
+		`SELECT id, channel_id, seq, client_msg_id, sender_id, msg_type, content,
+		        visible_to, reply_to, forwarded_from, created_at, updated_at,
+		        deleted, deleted_at
+		 FROM messages
+		 WHERE reply_to = ? AND deleted = FALSE
+		   AND (visible_to IS NULL OR ? = ANY(visible_to) OR sender_id = ?)
+		 ORDER BY seq ASC`,
+		rootID, userID, userID,
+	).Scan(&out).Error
+	if err != nil {
+		return nil, fmt.Errorf("fetch replies: %w", err)
+	}
+	return out, nil
+}
+
+// GetReaders returns the user_ids of channel members whose last_read_seq has
+// advanced past the given seq. cursor is a user_id pagination anchor (0 to
+// start). nextCursor is the last returned user_id (0 if the page is empty).
+func (r *gormMessageRepo) GetReaders(ctx context.Context, channelID, seq, cursor int64, limit int) ([]int64, int64, error) {
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	type row struct {
+		UserID int64 `gorm:"column:user_id"`
+	}
+	var rows []row
+	err := r.db.WithContext(ctx).Raw(
+		`SELECT user_id
+		 FROM channel_members
+		 WHERE channel_id = ? AND last_read_seq >= ? AND user_id > ?
+		 ORDER BY user_id ASC
+		 LIMIT ?`,
+		channelID, seq, cursor, limit,
+	).Scan(&rows).Error
+	if err != nil {
+		return nil, 0, fmt.Errorf("get readers: %w", err)
+	}
+	readers := make([]int64, len(rows))
+	for i, r := range rows {
+		readers[i] = r.UserID
+	}
+	var next int64
+	if len(readers) == limit && len(readers) > 0 {
+		next = readers[len(readers)-1]
+	}
+	return readers, next, nil
 }
 
 func (r *gormMessageRepo) GetByID(ctx context.Context, id int64) (*Message, error) {

@@ -1,0 +1,44 @@
+# Two Services:
+#  1) im-gateway: ClusterIP for the ingress / LB in front of the fleet.
+#  2) im-gateway-headless: Headless (clusterIP=None) so V4 test clients
+#     can resolve individual pod IPs via DNS and connect to a specific
+#     replica (basic cross-pod + pod-pause scenarios).
+apiVersion: v1
+kind: Service
+metadata:
+  name: im-gateway
+  namespace: __NAMESPACE__
+  labels:
+    app: im-gateway
+    app.kubernetes.io/part-of: im
+spec:
+  type: ClusterIP
+  selector:
+    app: im-gateway
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+      protocol: TCP
+  # Keep WS + HTTP traffic sticky-friendly; long-lived WebSockets work
+  # fine with plain ClusterIP + kube-proxy.
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: im-gateway-headless
+  namespace: __NAMESPACE__
+  labels:
+    app: im-gateway
+    app.kubernetes.io/part-of: im
+spec:
+  type: ClusterIP
+  clusterIP: None
+  publishNotReadyAddresses: false
+  selector:
+    app: im-gateway
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+      protocol: TCP

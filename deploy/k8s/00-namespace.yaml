@@ -1,0 +1,9 @@
+# Optional: create a dedicated namespace. Skip this file if the target
+# namespace already exists in the cluster (most production clusters do).
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: __NAMESPACE__
+  labels:
+    app.kubernetes.io/part-of: im
+    app.kubernetes.io/managed-by: kustomize

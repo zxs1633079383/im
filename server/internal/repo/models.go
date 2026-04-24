@@ -54,6 +54,8 @@ func (ChannelMember) TableName() string { return "channel_members" }
 
 // Message maps the messages table. ClientMsgID, ReplyTo, ForwardedFrom are
 // nullable; VisibleTo is a Postgres BIGINT[] handled by pq.Int64Array.
+//
+// Deleted/DeletedAt track soft-delete (M1 revoke); UpdatedAt tracks edit (M1 edit).
 type Message struct {
 	ID            int64         `gorm:"primaryKey;autoIncrement"                                json:"id"`
 	ChannelID     int64         `gorm:"column:channel_id;not null"                              json:"channel_id"`
@@ -66,6 +68,9 @@ type Message struct {
 	ReplyTo       *int64        `gorm:"column:reply_to"                                         json:"reply_to,omitempty"`
 	ForwardedFrom *int64        `gorm:"column:forwarded_from"                                   json:"forwarded_from,omitempty"`
 	CreatedAt     time.Time     `gorm:"column:created_at;not null;default:now()"                json:"created_at"`
+	UpdatedAt     *time.Time    `gorm:"column:updated_at"                                       json:"updated_at,omitempty"`
+	Deleted       bool          `gorm:"column:deleted;not null;default:false"                   json:"deleted,omitempty"`
+	DeletedAt     *time.Time    `gorm:"column:deleted_at"                                       json:"deleted_at,omitempty"`
 }
 
 // TableName pins the GORM-derived table name to the migration.

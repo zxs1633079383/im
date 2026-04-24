@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/lib/pq"
 
@@ -119,6 +120,10 @@ func (s *MessageService) SendMessage(ctx context.Context, p SendParams) (*repo.M
 		ReplyTo:     p.ReplyTo,
 	}
 
+	// Send delegates UPDATE channels SET seq=seq+1 RETURNING + INSERT messages
+	// to repo.MessageRepo.AllocSeqAndInsert (the single primitive responsible
+	// for seq monotonicity — see docs/BACKEND.md §4.1). Service layer must
+	// NEVER run its own UPDATE channels SET seq = … statements.
 	if err := s.messages.Send(ctx, msg); err != nil {
 		return nil, fmt.Errorf("send message: %w", err)
 	}
@@ -235,6 +240,111 @@ func (s *MessageService) ForwardMessages(ctx context.Context, callerID int64, p 
 // the transport always calls SendMessage first (which does the check).
 func (s *MessageService) ListMembers(ctx context.Context, channelID int64) ([]repo.ChannelMember, error) {
 	return s.channels.ListMembers(ctx, channelID)
+}
+
+// FetchAroundTimestamp returns a window of messages for channelID centered on
+// timestamp ts (unix millis). The window holds up to limit messages — half
+// older (<=ts) and half newer (>ts) — ordered by seq ASC. hasOlder/hasNewer
+// indicate whether more messages exist beyond the window bounds, so the
+// client can decide whether to enable further pagination.
+//
+// Errors:
+//   - ErrNotMember → 403 (caller not in channel)
+func (s *MessageService) FetchAroundTimestamp(
+	ctx context.Context,
+	channelID, callerID int64,
+	ts time.Time,
+	limit int,
+) ([]repo.Message, bool, bool, error) {
+	if err := s.requireMember(ctx, channelID, callerID); err != nil {
+		return nil, false, false, err
+	}
+	older, newer, err := s.messages.FetchAroundTimestamp(ctx, channelID, callerID, ts, limit)
+	if err != nil {
+		return nil, false, false, err
+	}
+
+	// hasOlder: did we fill the older half completely?
+	halfLimit := limit / 2
+	if halfLimit == 0 {
+		halfLimit = 1
+	}
+	hasOlder := len(older) == halfLimit
+	hasNewer := len(newer) == halfLimit
+
+	combined := make([]repo.Message, 0, len(older)+len(newer))
+	combined = append(combined, older...)
+	combined = append(combined, newer...)
+	return combined, hasOlder, hasNewer, nil
+}
+
+// GetReaders returns the user_ids of channel members who have read up to at
+// least the seq of msgID. Pagination uses a cursor on user_id (pass 0 to
+// start). Returns (readers, nextCursor, err).
+//
+// Errors:
+//   - repo.ErrNotFound → 404 (message does not exist)
+//   - ErrNotMember     → 403 (caller not in the message's channel)
+func (s *MessageService) GetReaders(ctx context.Context, msgID, callerID int64, limit int, cursor int64) ([]int64, int64, error) {
+	msg, err := s.messages.GetByID(ctx, msgID)
+	if err != nil {
+		return nil, 0, err
+	}
+	if err := s.requireMember(ctx, msg.ChannelID, callerID); err != nil {
+		return nil, 0, err
+	}
+	return s.messages.GetReaders(ctx, msg.ChannelID, msg.Seq, cursor, limit)
+}
+
+// GetReplies returns every non-deleted reply to rootMsgID for a caller who is
+// a member of the root message's channel. Results are ordered by seq ASC.
+//
+// Errors:
+//   - repo.ErrNotFound → 404 (root message does not exist)
+//   - ErrNotMember     → 403 (caller not in the root message's channel)
+func (s *MessageService) GetReplies(ctx context.Context, rootMsgID, callerID int64) ([]repo.Message, error) {
+	root, err := s.messages.GetByID(ctx, rootMsgID)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.requireMember(ctx, root.ChannelID, callerID); err != nil {
+		return nil, err
+	}
+	return s.messages.FetchReplies(ctx, rootMsgID, callerID)
+}
+
+// EditMessage updates the content of msgID on behalf of callerID. The caller
+// MUST be the original sender and the message must not be soft-deleted.
+// Returns the refreshed message so the transport can fan out a msg_updated
+// event carrying the post-edit snapshot.
+//
+// Errors bubble up directly:
+//   - repo.ErrNotFound  → 404
+//   - repo.ErrForbidden → 403 (not the sender)
+//   - repo.ErrGone      → 410 (already deleted — cannot edit a revoked msg)
+func (s *MessageService) EditMessage(ctx context.Context, msgID, callerID int64, content string) (*repo.Message, error) {
+	msg, err := s.messages.UpdateContent(ctx, msgID, callerID, content)
+	if err != nil {
+		return msg, err
+	}
+	return msg, nil
+}
+
+// DeleteMessage soft-deletes msgID on behalf of callerID. The caller MUST be
+// the original sender — any other user is refused with repo.ErrForbidden.
+// Returns the refreshed (soft-deleted) message so the transport can fan out
+// a msg_deleted event to every channel member.
+//
+// Errors bubble up directly:
+//   - repo.ErrNotFound  → 404
+//   - repo.ErrForbidden → 403
+//   - repo.ErrGone      → idempotent success (transport returns 200 but skips fan-out)
+func (s *MessageService) DeleteMessage(ctx context.Context, msgID, callerID int64) (*repo.Message, error) {
+	msg, err := s.messages.SoftDelete(ctx, msgID, callerID)
+	if err != nil {
+		return msg, err // pass raw sentinels through; HTTP layer maps status codes
+	}
+	return msg, nil
 }
 
 // requireMember returns ErrNotMember when callerID is not a member of

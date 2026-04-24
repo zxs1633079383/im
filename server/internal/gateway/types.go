@@ -38,6 +38,10 @@ const (
 	TypeFriendEvent WSMessageType = "friend_event"
 	// TypeChannelEvent is pushed server→client when a user is added to a channel.
 	TypeChannelEvent WSMessageType = "channel_event"
+	// TypeMsgUpdated is pushed server→client when a message is edited (M1 feature).
+	TypeMsgUpdated WSMessageType = "msg_updated"
+	// TypeMsgDeleted is pushed server→client when a message is revoked/soft-deleted (M1 feature).
+	TypeMsgDeleted WSMessageType = "msg_deleted"
 )
 
 // WSFrame is the top-level envelope for every WebSocket message.

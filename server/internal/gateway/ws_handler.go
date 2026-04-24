@@ -171,6 +171,21 @@ func (h *WsHandler) readPump(conn *Conn) {
 			}
 			// Treat ping as liveness proof — refresh lastPong.
 			conn.lastPong = time.Now()
+			// Refresh Redis presence TTL so a missed ping drops this conn from
+			// routing within RoutingTTL. Run in background so the read pump
+			// never blocks on Redis.
+			if h.routing != nil {
+				uid, devID := conn.UserID, conn.DeviceID
+				gwID := h.gatewayID
+				log := h.log
+				go func() {
+					refreshCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+					defer cancel()
+					if err := h.routing.Refresh(refreshCtx, uid, gwID, devID); err != nil {
+						log.Warn("routing refresh failed", "error", err, "user_id", uid)
+					}
+				}()
+			}
 		case TypePushACK:
 			h.handlePushACK(conn, frame.Payload)
 		case TypeSend:

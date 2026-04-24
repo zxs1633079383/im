@@ -1,0 +1,16 @@
+# PodDisruptionBudget: at least 2 of the 3 base replicas must stay up
+# during voluntary disruptions (node drain, rolling update). Prevents
+# a cluster operation from wiping the entire gateway fleet at once.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: im-gateway
+  namespace: __NAMESPACE__
+  labels:
+    app: im-gateway
+    app.kubernetes.io/part-of: im
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: im-gateway

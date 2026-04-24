@@ -1,0 +1,143 @@
+# 3-replica Gateway Deployment. See OVERALL.md §5.5 for V4 scenarios and
+# BACKEND.md §5.3.5 for graceful shutdown expectations.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: im-gateway
+  namespace: __NAMESPACE__
+  labels:
+    app: im-gateway
+    app.kubernetes.io/name: im-gateway
+    app.kubernetes.io/part-of: im
+    app.kubernetes.io/component: gateway
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: im-gateway
+  template:
+    metadata:
+      labels:
+        app: im-gateway
+        app.kubernetes.io/name: im-gateway
+        app.kubernetes.io/component: gateway
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
+    spec:
+      # Graceful shutdown: PreStop sleep lets ingress drain in-flight
+      # connections before we start tearing down; server itself waits up
+      # to terminationGracePeriodSeconds for WS clients to disconnect.
+      terminationGracePeriodSeconds: 30
+      # Spread replicas across nodes / zones for fault tolerance.
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: im-gateway
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: im-gateway
+      containers:
+        - name: gateway
+          image: im-gateway:__IMAGE_TAG__
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          env:
+            - name: IM_ENV
+              value: "pre"
+            - name: IM_CONFIG
+              value: "/etc/im/config.yaml"
+            - name: GATEWAY_HTTP_ADDR
+              value: ":8080"
+            # HOSTNAME is injected by k8s automatically; the gateway uses
+            # it as gateway_id (see config.ResolveGatewayID).
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: IM_GATEWAY_JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: im-gateway-secret
+                  key: jwt-secret
+            # OTel collector endpoint; override per-env. Setting empty
+            # disables via OTEL_DISABLED=true.
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://otel-collector:4317"
+            - name: OTEL_SERVICE_NAME
+              value: "im-gateway"
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "512Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1Gi"
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 3
+            successThreshold: 1
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            timeoutSeconds: 3
+            failureThreshold: 3
+          # PreStop sleep: give the LB/Service a few seconds to remove
+          # this pod from rotation before SIGTERM lands.
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "sleep 10"]
+          volumeMounts:
+            - name: config
+              mountPath: /etc/im
+              readOnly: true
+            - name: uploads
+              mountPath: /data/uploads
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            capabilities:
+              drop:
+                - ALL
+      volumes:
+        - name: config
+          configMap:
+            name: im-gateway-config
+            items:
+              - key: config.yaml
+                path: config.yaml
+        - name: uploads
+          emptyDir: {}

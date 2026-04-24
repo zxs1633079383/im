@@ -60,6 +60,13 @@ func RegisterSyncRoutes(authed *gin.RouterGroup, svc *service.SyncService, log *
 			return
 		}
 
+		// Reject oversized batches; clients must split into multiple calls.
+		// Contract locked, 对齐 docs/BACKEND.md §3.3.
+		if len(in.Channels) > service.MaxChannelsPerCall {
+			c.JSON(400, gin.H{"error": "too many channels"})
+			return
+		}
+
 		cursors := make([]service.SyncCursor, 0, len(in.Channels))
 		for _, ch := range in.Channels {
 			cursors = append(cursors, service.SyncCursor{ID: ch.ID, Seq: ch.Seq})

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -25,6 +26,26 @@ type ReadSyncPusher interface {
 	PushReadSync(userID int64, channelID int64, readSeq int64)
 }
 
+// MessageEventType is a typed alias for WS event name strings. The http
+// package stays decoupled from the gateway package by using plain strings;
+// the broadcaster implementation in cmd/gateway/main.go converts back to
+// gateway.WSMessageType.
+type MessageEventType string
+
+const (
+	// EventMsgUpdated is fired when a message is edited.
+	EventMsgUpdated MessageEventType = "msg_updated"
+	// EventMsgDeleted is fired when a message is soft-deleted (revoke).
+	EventMsgDeleted MessageEventType = "msg_deleted"
+)
+
+// MessageEventBroadcaster fans arbitrary WS events out to every member of a
+// channel. Used by edit/delete endpoints where we push a full snapshot of the
+// mutated message rather than a PushMsgPayload.
+type MessageEventBroadcaster interface {
+	BroadcastToMembers(channelID int64, eventType MessageEventType, payload any)
+}
+
 // MessageRouteOpts bundles the optional dependency hooks. All hooks are
 // nil-safe — pass a zero MessageRouteOpts to disable every side-channel (the
 // integration test does this; production wires both).
@@ -36,6 +57,10 @@ type MessageRouteOpts struct {
 	// ReadSyncer pushes read_sync events to the caller's other devices on
 	// MarkRead. nil disables cross-device read sync.
 	ReadSyncer ReadSyncPusher
+	// Broadcaster fans msg_updated / msg_deleted events out to channel
+	// members. nil disables edit/revoke broadcasts (endpoints still return
+	// success; clients fall back to sync).
+	Broadcaster MessageEventBroadcaster
 	// Logger is used for non-fatal background errors (push fan-out failures,
 	// route-level 500 detail). nil falls back to slog.Default().
 	Logger *slog.Logger
@@ -56,6 +81,11 @@ type sendMessageReq struct {
 // the legacy handler's response shape.
 type fetchMessagesResp struct {
 	Messages []repo.Message `json:"messages"`
+}
+
+// editMessageReq is the PATCH /messages/:id body.
+type editMessageReq struct {
+	Content string `json:"content"`
 }
 
 // forwardMessageReq matches the legacy handler's body shape.
@@ -208,6 +238,200 @@ func RegisterMessageRoutes(authed *gin.RouterGroup, svc *service.MessageService,
 			opts.ReadSyncer.PushReadSync(uid, channelID, seq)
 		}
 		c.JSON(200, gin.H{"seq": seq})
+	})
+
+	// GET /api/channels/:id/messages/around?timestamp=<ms>&limit=<N>
+	// Fetch a chronological window centered on a wall-clock timestamp.
+	// Half the limit is returned before the timestamp, half after.
+	authed.GET("/channels/:id/messages/around", func(c *gin.Context) {
+		uid, ok := userIDFromCtx(c)
+		if !ok {
+			return
+		}
+		channelID, ok := pathInt64(c, "id")
+		if !ok {
+			return
+		}
+		tsMs := parseInt64(c.Query("timestamp"), 0)
+		if tsMs <= 0 {
+			c.JSON(400, gin.H{"error": "timestamp (unix ms) is required"})
+			return
+		}
+		limit := parseLimit(c.Query("limit"))
+		ts := time.UnixMilli(tsMs).UTC()
+
+		msgs, hasOlder, hasNewer, err := svc.FetchAroundTimestamp(
+			c.Request.Context(), channelID, uid, ts, limit,
+		)
+		switch {
+		case errors.Is(err, service.ErrNotMember):
+			c.JSON(403, gin.H{"error": "not a member of this channel"})
+			return
+		case err != nil:
+			log.Error("fetch around timestamp",
+				"error", err, "channel_id", channelID, "user_id", uid)
+			c.JSON(500, gin.H{"error": "internal error"})
+			return
+		}
+		if msgs == nil {
+			msgs = []repo.Message{}
+		}
+		c.JSON(200, gin.H{
+			"messages":   msgs,
+			"has_older":  hasOlder,
+			"has_newer":  hasNewer,
+		})
+	})
+
+	// GET /api/messages/:id/readers — list user IDs who have read up to (or
+	// past) this message. Cursor-paginated on user_id; default limit 50.
+	authed.GET("/messages/:id/readers", func(c *gin.Context) {
+		uid, ok := userIDFromCtx(c)
+		if !ok {
+			return
+		}
+		msgID, ok := pathInt64(c, "id")
+		if !ok {
+			return
+		}
+		limit := parseLimit(c.Query("limit"))
+		cursor := parseInt64(c.Query("cursor"), 0)
+
+		readers, next, err := svc.GetReaders(c.Request.Context(), msgID, uid, limit, cursor)
+		switch {
+		case errors.Is(err, repo.ErrNotFound):
+			c.JSON(404, gin.H{"error": "message not found"})
+			return
+		case errors.Is(err, service.ErrNotMember):
+			c.JSON(403, gin.H{"error": "not a member of this channel"})
+			return
+		case err != nil:
+			log.Error("get readers", "error", err, "msg_id", msgID, "user_id", uid)
+			c.JSON(500, gin.H{"error": "internal error"})
+			return
+		}
+		if readers == nil {
+			readers = []int64{}
+		}
+		c.JSON(200, gin.H{"readers": readers, "next_cursor": next})
+	})
+
+	// GET /api/messages/:id/replies — list every non-deleted reply to the
+	// given root message. Caller must be a member of the channel.
+	authed.GET("/messages/:id/replies", func(c *gin.Context) {
+		uid, ok := userIDFromCtx(c)
+		if !ok {
+			return
+		}
+		rootID, ok := pathInt64(c, "id")
+		if !ok {
+			return
+		}
+		msgs, err := svc.GetReplies(c.Request.Context(), rootID, uid)
+		switch {
+		case errors.Is(err, repo.ErrNotFound):
+			c.JSON(404, gin.H{"error": "message not found"})
+			return
+		case errors.Is(err, service.ErrNotMember):
+			c.JSON(403, gin.H{"error": "not a member of this channel"})
+			return
+		case err != nil:
+			log.Error("fetch replies", "error", err, "root_id", rootID, "user_id", uid)
+			c.JSON(500, gin.H{"error": "internal error"})
+			return
+		}
+		if msgs == nil {
+			msgs = []repo.Message{}
+		}
+		c.JSON(200, fetchMessagesResp{Messages: msgs})
+	})
+
+	// PATCH /api/messages/:id — edit the content of a message.
+	// Caller must be the original sender and the message must not already be
+	// soft-deleted. Returns the refreshed message snapshot.
+	authed.PATCH("/messages/:id", func(c *gin.Context) {
+		uid, ok := userIDFromCtx(c)
+		if !ok {
+			return
+		}
+		msgID, ok := pathInt64(c, "id")
+		if !ok {
+			return
+		}
+		var in editMessageReq
+		if err := c.ShouldBindJSON(&in); err != nil {
+			c.JSON(400, gin.H{"error": "invalid JSON"})
+			return
+		}
+		if in.Content == "" {
+			c.JSON(422, gin.H{"error": "content is required"})
+			return
+		}
+
+		msg, err := svc.EditMessage(c.Request.Context(), msgID, uid, in.Content)
+		switch {
+		case errors.Is(err, repo.ErrNotFound):
+			c.JSON(404, gin.H{"error": "message not found"})
+			return
+		case errors.Is(err, repo.ErrForbidden):
+			c.JSON(403, gin.H{"error": "not the message sender"})
+			return
+		case errors.Is(err, repo.ErrGone):
+			c.JSON(410, gin.H{"error": "message already deleted"})
+			return
+		case err != nil:
+			log.Error("edit message", "error", err, "msg_id", msgID, "user_id", uid)
+			c.JSON(500, gin.H{"error": "internal error"})
+			return
+		}
+
+		// Broadcast msg_updated carrying the full refreshed message.
+		if opts.Broadcaster != nil {
+			opts.Broadcaster.BroadcastToMembers(msg.ChannelID, EventMsgUpdated, msg)
+		}
+		c.JSON(200, msg)
+	})
+
+	// DELETE /api/messages/:id — soft-delete a message (revoke).
+	// Caller must be the original sender. Already-deleted messages are
+	// idempotent no-ops (200 OK, skip fan-out).
+	authed.DELETE("/messages/:id", func(c *gin.Context) {
+		uid, ok := userIDFromCtx(c)
+		if !ok {
+			return
+		}
+		msgID, ok := pathInt64(c, "id")
+		if !ok {
+			return
+		}
+
+		msg, err := svc.DeleteMessage(c.Request.Context(), msgID, uid)
+		switch {
+		case errors.Is(err, repo.ErrNotFound):
+			c.JSON(404, gin.H{"error": "message not found"})
+			return
+		case errors.Is(err, repo.ErrForbidden):
+			c.JSON(403, gin.H{"error": "not the message sender"})
+			return
+		case errors.Is(err, repo.ErrGone):
+			// Already deleted — idempotent success, no fan-out.
+			c.JSON(200, gin.H{"ok": true, "already_deleted": true})
+			return
+		case err != nil:
+			log.Error("delete message", "error", err, "msg_id", msgID, "user_id", uid)
+			c.JSON(500, gin.H{"error": "internal error"})
+			return
+		}
+
+		// Broadcast msg_deleted to every member of the channel.
+		if opts.Broadcaster != nil {
+			opts.Broadcaster.BroadcastToMembers(msg.ChannelID, EventMsgDeleted, gin.H{
+				"msg_id":     msg.ID,
+				"channel_id": msg.ChannelID,
+				"deleted_at": msg.DeletedAt,
+			})
+		}
+		c.JSON(200, gin.H{"ok": true})
 	})
 
 	// POST /api/messages/forward — copy a source message into N target channels.

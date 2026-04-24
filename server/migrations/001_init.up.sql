@@ -38,6 +38,7 @@ CREATE TABLE channel_members (
 );
 
 CREATE INDEX idx_channel_members_channel ON channel_members(channel_id);
+CREATE INDEX idx_channel_members_chid_lastreadseq ON channel_members(channel_id, last_read_seq);
 
 CREATE TABLE messages (
     id            BIGSERIAL   PRIMARY KEY,
@@ -51,12 +52,17 @@ CREATE TABLE messages (
     reply_to      BIGINT,
     forwarded_from BIGINT,
     created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at    TIMESTAMPTZ,
+    deleted       BOOLEAN     NOT NULL DEFAULT FALSE,
+    deleted_at    TIMESTAMPTZ,
     UNIQUE (channel_id, seq),
     UNIQUE (channel_id, client_msg_id)
 );
 
 CREATE INDEX idx_messages_channel_seq ON messages(channel_id, seq);
+CREATE INDEX idx_messages_channel_created ON messages(channel_id, created_at);
 CREATE INDEX idx_messages_sender ON messages(sender_id, created_at);
+CREATE INDEX idx_messages_reply_to ON messages(reply_to) WHERE reply_to IS NOT NULL;
 CREATE INDEX idx_messages_content_search ON messages USING gin(to_tsvector('simple', content));
 
 CREATE TABLE friendships (
