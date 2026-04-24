@@ -42,8 +42,8 @@ cd server && make verify-all   # ≈ 90 min
 |----|------|------|------|
 | M1 | 核心消息与同步 | auth / channel / message / sync / WS / 跨 pod 推送骨架 | ✅ 完成，tag `v0.1.0-m1-complete` |
 | M2 | 企业协作 | 公告 / 治理 / 紧急 / 审批 / 通知 / 定时 / 快捷回复 | ✅ 完成，tag `v0.2.0-m2-complete` |
-| M3 | cses-client 全面切换 | 前端 + Rust **抛弃 Mattermost 全部调用**，`apiFlavor` 默认 `im`；模板/组织/投票/搜索直连 Java | 🔜 待启动（inventory 未做） |
-| M4 | V4 集群韧性落 pre 环境 | HPA / PDB / 故障注入验证；k8s ns `im-v2`（未创建） | 🔜 待启动（脚本已就绪） |
+| M3 | cses-client 切换 + 后端稳定性调优 | Topic 子群聊 + Presence；Redis Cluster + 9 个 OTel metric；Conn.Push race fix + PG 池对齐 HikariCP + FindDM 反向索引；`ImApiAdapter` M1 完整覆盖（11 方法） | ✅ 后端全链路 100% 可靠基线已落（tag `v0.3.2-m3-dm-index`）；client `message.service.ts` 37 URI 切换进行中 |
+| M4 | V4 集群韧性落 pre 环境 | HPA / PDB / 故障注入验证；k8s ns `im-v2` + 3 pod `pre-6` image Running | ✅ HPA 快速扩缩容验证（3→17 pod）+ E2E 13/13 PASS；压测基线完整（5 批次报告） |
 | M5 | 历史数据 ETL | `migration_sort_key` 算法已冻结，迁移脚本待写 | 🗓 TODO（非短期） |
 | M6 | 下线 Mattermost / csesapi | 全量切换 + 监控观察期 | 🔜 待启动 |
 

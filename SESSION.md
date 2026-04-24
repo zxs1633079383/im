@@ -3,7 +3,7 @@
 > 这份文档是"会话快照"：每次会话结束前更新一次，下次会话开局只要先读它 + `docs/GOAL.md` + `CLAUDE.md` 就能无缝接着干。
 > **更新原则**：事实先写（分支/tag/commit），决策次之，待办最后。过时信息必须删除，不留历史沉积。
 
-Last updated: 2026-04-24（深夜：M3 主体 + pre 部署 + E2E 13/13 + Grafana dashboard 全闭环）
+Last updated: 2026-04-24（M3 全闭环 + 性能调优三轮压测 + cses-client M1 适配完成 + 本地 Pulsar 一键初始化）
 
 ---
 
@@ -11,25 +11,35 @@ Last updated: 2026-04-24（深夜：M3 主体 + pre 部署 + E2E 13/13 + Grafana
 
 | 分支 | 用途 | 最新 commit | 状态 |
 |------|------|-------------|------|
-| `main` | 稳定主干 — M1+M2+M3 部分 + pre 部署 | `6c21608` chore(deploy): pre-env 更新 ns 为 im-v2 | ✅ 已 push 到 origin/main |
-| `im-backend-switch` (cses-client) | 双端适配，`ImApiAdapter` 基座 | `85c2b3c34` | ✅ V6 smoke 7/7，独立客户端仓库 |
+| `main` | 稳定主干 — M1+M2+M3 主体 + pre 部署 + 性能调优 | `378e67e` chore(local): Pulsar 本地一键初始化脚本 | ✅ 已 push 到 origin/main |
+| `im-backend-switch` (cses-client) | `ImApiAdapter` M1 能力 100% 覆盖 | `c0b3985c9` feat(im-api): M1 补齐 5 stub | ✅ V6 smoke 7/7 + M1 完整覆盖 |
 
-### main 最近 9 个 commit（本轮 M3 loop 产出）
+### main 最近 commit（本轮全部产出，按时间顺序倒序）
 ```
-6c21608 chore(deploy): pre-env 更新 ns 为 im-v2
+378e67e chore(local): Pulsar 本地一键初始化脚本
+86ac2e5 docs(benchmark): pre-6 DM-index 基线 sync/markRead P95 减半
+64fb356 perf(dm): FindDM 反向 index + SQL 改走 EXISTS
+ecaacd0 docs(benchmark): pre-5 pool=300+racefix 压测基线全链路 100% 可靠
+5dc95e5 fix(gateway): Conn.Push 防 send on closed channel panic
+41e04bd fix(benchmark-loop): 去 -e + CPU_POD_CNT 空值兜底
+815df1f perf(pool): PG 池对齐 Java HikariCP 配置 50->300
+3d3e844 perf(pool): PG 连接池 20->50 + 压测脚本改共享 peer
+ ...
 9822ad1 feat(e2e): pre 集群全链路 harness 13/13 通过
 e0ecb32 fix(gateway): push_consumer 走 PushTopicFor 与发送侧对齐
-60d22be chore(deploy): v4-prepare 适配 pre 集群 + Redis Cluster 开关
 2607e65 feat(metrics): 埋 9 个 OTel metric 点亮 Grafana dashboard
 8cf1a3b feat(m3): 新增 Topic 子群聊 + Presence 端点
-5f3a33c chore(grafana): 新增 im v2 dashboard 设计稿
 5a9bef6 feat(redis): 支持 Cluster 模式 + im-new: key 前缀隔离
-0b72781 docs(project): M3 改为 cses-client 全面抛弃 Mattermost
 ```
 
-### Tags
+### Tags（演进链）
 - `v0.1.0-m1-verified` / `v0.1.0-m1-complete` / `v0.2.0-m2-complete` / `v1.0.0`
-- **`v0.3.0-m3-pre-deployed`** — M3 主体 + pre 部署 + E2E 13/13 + HPA 扩容验证锁定点
+- **`v0.3.0-m3-pre-deployed`** — M3 主体首次部署 + E2E 13/13
+- **`v0.3.1-m3-racefix-pool300`** — Conn.Push race 修复 + PG 池对齐 HikariCP，全链路 100% 可靠
+- **`v0.3.2-m3-dm-index`** — FindDM 反向索引 + EXISTS 重写，SLOW SQL 归零，**当前 HEAD 指向的生产候选**
+
+### 镜像演进
+`harbor.jinqidongli.com/x9-go/im/im-gateway:v1.0.0-pre-{2,3,4,5,6}` — 每轮性能调优一个 tag，pre-6 是最新。
 
 ---
 
@@ -57,11 +67,31 @@ e0ecb32 fix(gateway): push_consumer 走 PushTopicFor 与发送侧对齐
 - **E2E harness (`scripts/e2e-pre.mjs`)**：G1~G10 + setup 共 13/13 PASS（见 `docs/E2E_REPORT.md`）
 - **清脏脚本 (`scripts/e2e-teardown.sh`)**：动态 TRUNCATE im_pre + 清 Redis `im-new:*` + 删 Pulsar `im/push-pre` 下 topic
 - **HTTP↔WS 对应矩阵**：见 `docs/HTTP_WS_MAP.md`（17 条 HTTP 端点对应 WS 事件分布）
+- **Benchmark 索引**：`server/docs/benchmark/README.md`（跨批次 summary，记录 pre-2→pre-6 五轮性能演进）
 
-### Frontend（cses-client）
-- Angular `apiFlavor` 开关 + `ImApiAdapter`：6 个方法已接 + 5 个 F1 stub
+### 性能调优压测（3 轮，对齐 Java HikariCP 参考 + 修 race）
+| 版本 | 关键改动 | 代表指标 (VU=300) |
+|------|---------|------------------|
+| pre-2 | 基线 pool=20 | action_ok=85% send P95=12.75s http_failed=69% |
+| pre-5 | panic fix + pool=300 | **action_ok=100%** send P95=680ms http_failed=**0%** |
+| pre-6 | + FindDM EXISTS + 反向 index | action_ok=100% send P95=**375ms** SLOW SQL=**0** |
+
+HPA `minReplicas=3 → maxReplicas=20`，VU=800 时实际扩到 17 pod 触发 stop 保护 pre 集群。详细见 `server/docs/benchmark/2026-04-24-1343-summary.md` 和 `2026-04-24-1407-summary.md`。
+
+### Frontend（cses-client, `im-backend-switch` 分支）
+- Angular `apiFlavor` 开关 + `ImApiAdapter`：**M1 能力 100% 覆盖（11 方法全实现，0 stub）**：
+  - 认证：`loginIm`
+  - 频道：`listChannels`
+  - 消息：`sendMessage / fetchMessages / fetchAround / deleteMessage / editMessage / getReplies / getReaders`
+  - 已读：`markRead`
+  - 同步：`sync`
 - Tauri Rust：`im_client.rs` + `im_seq_data_source.rs` 骨架，`im_seq_sync` feature flag
-- **M3 inventory 结论**：Mattermost 只通过 `message.service.ts` 的 37 个 `imHttp.post(...)` 调用；`CsesHttpService` 走 Java（不切）
+- **message.service.ts 37 个 `imHttp.post('/...')` 切换**：still TODO（底层 adapter 已就绪，切换工作量 0 基础设施障碍）
+- **M3 inventory 结论**：Mattermost 只通过 `message.service.ts` 调用；`CsesHttpService` 走 Java（不切）
+
+### 本地开发工具
+- **`scripts/pulsar-local-init.sh`**：一键建 tenant `im` + namespace `im/push-local` + subscription-expiration 10min。docker-compose 起 Pulsar 后跑一次即可消除 `TopicNotFound` 启动错误。
+- 压测套件：`scripts/fullchain-load.js`（全链路 k6）+ `scripts/benchmark-loop.sh`（HPA 梯度 loop + 自动停）+ `scripts/single-pod-benchmark.sh`（scale 到 1 pod 测单机）+ `scripts/seed-users.sh`（预注册池）
 
 ### 决策冻结点
 1. 不切回流量，全量替换。
@@ -77,27 +107,30 @@ e0ecb32 fix(gateway): push_consumer 走 PushTopicFor 与发送侧对齐
 
 ## 3. 进行中 / 未决
 
-### 进行中
-- **cses-client 切换 37 处 Mattermost URI → `ImApiAdapter`**：message.service.ts F1 主线，未开工。
+### 进行中 / 下一步
+- **cses-client 切换 37 处 Mattermost URI → `ImApiAdapter`**：message.service.ts F1 主线。Adapter 已完整覆盖 M1，只剩 service 层 branching 工作。建议 demo 前只切核心 4 条（send/markRead/revoke/sync）即可跑全链路 demo。
+- **HPA `maxReplicas 20 → 30 / minReplicas 3 → 6`**：pre-6 VU=800 时 17 pod 触发 stop，想测 VU=1500+ 的天花板需先扩 max。
+- **其他含 `channel_members` JOIN 的热路径 EXPLAIN**：`ListByUser` / `ListByUserWithPreview` 看是否享受 DM 反向索引的收益。
 
-### k6 压测观测（2026-04-24 深夜，至 4 轮全链路）
-- k6 Job 在 `im-v2` ns 内部跑（走 ClusterIP `im-gateway:8080`），配置 `deploy/k8s/60-k6-loadtest.yaml` + orchestrator `scripts/benchmark-loop.sh`
-- **首轮 TARGET_VUS=500**（旧 v4-load.js）：k6 脚本并发 register 打爆 bcrypt，HPA 扩容 3→6 pod，耗时 ~20s — 验证快速扩缩容
-- **二轮 TARGET_VUS=300**：`v4-load.js` 改 login-only + 预种子，无 GoError，CPU 21%/70%
-- **三轮 4 档梯度全链路**（`fullchain-load.js` + `benchmark-loop.sh`，2026-04-24 12:34）：
-  - VU=100 action_ok=98.08% / http_send p95=1.46s / HPA 3 pod
-  - VU=300 action_ok=85.44% / p95=12.75s / HPA 4 pod
-  - VU=800 action_ok=85.46% / p95=13.5s / HPA 8 pod
-  - VU=1500 action_ok=73.47% / p95=27.67s / **HPA 11 pod**
-  - **应用层逻辑健康**（进入 handler 后动作成功率高），**瓶颈在 HTTP 连接建立**（PG 连接池 + 双 login bcrypt）
-  - 详细 5 份报告：`server/docs/benchmark/2026-04-24-1234-{VU100/300/800/1500}.md` + `summary.md`
+### k6 压测演进（共 3 个主要 batch，完整记录见 `server/docs/benchmark/README.md`）
 
-### 压测侧下轮改进清单
-- 修 `im_push_e2e_ms` 埋点（`scripts/fullchain-load.js`：VU 间 sendTs map 不共享，当前全 0）
-- seed 共享 peer 账号：`k6peer` → 所有 VU 只 login 自己 + 缓存 peer_id
-- `pg.max_conns` 每 pod 20 → 40 + 考虑 pgbouncer
-- deploy/k8s/40-hpa.yaml `minReplicas: 3 → 6` 避免 ramp 早期打爆
-- benchmark-loop.sh threshold 加 `action_ok < 0.95` 自动停
+| Batch Stamp | 镜像 | VU 梯度 | Stop-reason | action_ok @VU=300 |
+|-------------|------|---------|-------------|-----------------:|
+| 2026-04-24-1234 | pre-2 (pool=20, panic bug) | 100/300/800/1500 | 无（跑完）| **85.44%** + 69% http_failed |
+| 2026-04-24-1343 | **pre-5** (pool=300 + race fix) | 100/300/800/(1500/2500 skip) | HPA=17 保护停 | **100%** + 0% http_failed |
+| 2026-04-24-1407 | **pre-6** (+ FindDM 反向索引) | 100/300/800 | HPA=17 保护停 | **100%** SLOW SQL=0 |
+
+### 压测侧已解决（本轮）
+- ✅ `fullchain-load.js` shared peer（setup 一次建 `k6pre_shared_peer`）
+- ✅ PG pool 20→300 对齐 HikariCP
+- ✅ benchmark-loop threshold 容错（`CPU_POD_CNT` 空值兜底）
+- ✅ Conn.Push race 修复（不再 panic，RESTARTS=0）
+- ✅ FindDM 反向 index + EXISTS 重写（SLOW SQL=0）
+
+### 压测侧仍 backlog
+- `im_push_e2e_ms` 埋点：VU 间 sendTs map 不共享，当前全 0；改用 server `created_at` 字段
+- `minReplicas 3 → 6`：避免 ramp 早期打爆 / `maxReplicas 20 → 30`：测 1500+ 真实上限
+- benchmark-loop threshold 加 `action_ok < 0.95` 自动停
 
 ### HTTP↔WS 推送对应矩阵
 - 已固化到 `docs/HTTP_WS_MAP.md`（17 条 HTTP 端点对应 WS 事件分布 + 压测覆盖建议 + 非对称性说明）
@@ -105,15 +138,20 @@ e0ecb32 fix(gateway): push_consumer 走 PushTopicFor 与发送侧对齐
 ### 已知债务
 - `cross_pod_push.go` `markOffline(userID)` 仍是骨架位（Pulsar Send 失败后未从 routing 摘除用户）。
 - `im.fanout.e2e.duration` 当前 = HTTP handler 总耗时（近似）。语义升级方向：精确到"所有接收方的 conn.send 入队完成时刻 `t2`"（HTTP handler 结束时 goroutine 可能尚未 fanout 完），需 handler 与 fanout goroutine 用 channel 同步。
-- cses-client `ImApiAdapter` 还差 5 个 F1 stub：`fetchAround / deleteMessage / editMessage / getReplies / getReaders`。
+- ~~cses-client `ImApiAdapter` 差 5 个 F1 stub~~ → ✅ 已补齐（commit `c0b3985c9`），现 M1 完整覆盖 11 方法
+- cses-client `message.service.ts` 37 处 `imHttp.post(/mattermost-path)` 切换到 adapter 方法仍待做（Adapter 就绪，不阻塞）
 - V2 WS 候选事件未实现：`typing`（用户明确延后） / `presence_changed` / `reaction_updated`。Presence 当前走 HTTP GET 代替。
 - OTel traces export 到 `otel-collector:4317` 在 im-v2 ns 解析不到（name resolver error），metrics 正常，traces 未送到 Jaeger。需部署 OTel collector 或改指 `jaeger-cses` 的 OTLP endpoint。
+- `ListByUser` / `ListByUserWithPreview` 未 EXPLAIN 验证是否享受 DM 反向索引的收益。
 
 ### 待用户拍板
-- ~~打 tag~~ → ✅ 已打 `v0.3.0-m3-pre-deployed`（commit `1d1c195`）
-- k6 大规模压测（10k/50k/150k VU）何时落？当前 300 VU 稳态 CPU 21%，可安全爬；150k 需要 distributed runner
-- **cses-client F1 切 37 处 URI** → 🗓 **TODO**（用户明确：先把后端 loop 做完，再全面替换 cses-client 代码）
-- `im.fanout.e2e.duration` 语义升级（见 §3 已知债务）— 可作为后续精度提升任务
+- ~~打 tag~~ → ✅ `v0.3.0` / `v0.3.1` / `v0.3.2` 三枚 tag 覆盖 M3 演进
+- ~~性能调优~~ → ✅ pool=300 + race fix + DM 索引，VU=300 下 send P95 从 12.75s → 375ms（**34×**）
+- ~~ImApiAdapter M1 完整覆盖~~ → ✅ `c0b3985c9` 补齐 5 stub
+- **cses-client `message.service.ts` 切换时点**：什么时候开工？建议从 sendMessage / markRead / revokeMessage / queryIncrementTopics 四个最热的入手 demo
+- **HPA 扩容上限调整**：`maxReplicas 20→30 minReplicas 3→6`？（想测 VU=1500+ 真实 ceiling 前置）
+- **`im.fanout.e2e.duration` 语义升级**：当前等同 handler 耗时，想要真端到端需 handler 同步 fanout（见已知债务）
+- **M5 历史 ETL**：仍然 TODO，非本期
 
 ### pre 集群环境事实（2026-04-24）
 
@@ -128,6 +166,8 @@ e0ecb32 fix(gateway): push_consumer 走 PushTopicFor 与发送侧对齐
 | Pulsar | `pulsar://pulsar-cses-broker.pulsar-cses.svc:6650` | tenant `im`，ns `im/push-pre`，订阅 10min |
 | Grafana | `prometheus-stack-grafana.monitoring`，NodePort `30300` | admin / `one.2013` |
 | Prometheus | `prometheus-stack-kube-prom-prometheus.monitoring`，NodePort `30090` | datasource uid = `prometheus` |
+| 镜像当前在线 | `harbor.jinqidongli.com/x9-go/im/im-gateway:v1.0.0-pre-6` | 3/3 Running，HPA 缩到 minReplicas=3 |
+| Migration 已应用 | `001..011`（含 M3-A Topic + M3-C DM 反向索引）| `im_pre` 库 schema 最新 |
 
 ---
 
