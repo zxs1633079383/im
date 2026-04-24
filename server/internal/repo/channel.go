@@ -53,6 +53,11 @@ type ChannelRepo interface {
 	FindDM(ctx context.Context, userA, userB int64) (*Channel, error)
 	ListByUserWithPreview(ctx context.Context, userID int64) ([]ChannelWithPreview, error)
 	GetMemberChannelSeqs(ctx context.Context, userID int64) (map[int64]int64, error)
+
+	// M3-A Topic (子群聊) 能力。CreateTopic 原子地创建 topic channel + 批量
+	// 注册成员；ListTopics 返回 parentID 下所有 topic（按 id 排序）。
+	CreateTopic(ctx context.Context, params CreateTopicParams) (*Channel, error)
+	ListTopics(ctx context.Context, parentID int64) ([]Channel, error)
 }
 
 type gormChannelRepo struct{ db *gorm.DB }

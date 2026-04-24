@@ -277,6 +277,12 @@ func run() int {
 	favoriteSvc := service.NewFavoriteService(favoriteRepo)
 	imhttp.RegisterFavoriteRoutes(authedAPI, favoriteSvc)
 
+	// M3-B Presence: who is currently online in a given channel. Backed by
+	// the same Redis routing table the push fan-out uses, so no extra state
+	// store or migration is needed.
+	presenceSvc := service.NewPresenceService(channelRepo, routing)
+	imhttp.RegisterPresenceRoutes(authedAPI, presenceSvc)
+
 	srv := &http.Server{
 		Addr:         cfg.Gateway.HTTPAddr,
 		Handler:      engine,

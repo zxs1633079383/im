@@ -119,6 +119,65 @@ func (_c *ChannelRepoMock_Create_Call) RunAndReturn(run func(context.Context, *r
 	return _c
 }
 
+// CreateTopic provides a mock function with given fields: ctx, params
+func (_m *ChannelRepoMock) CreateTopic(ctx context.Context, params repo.CreateTopicParams) (*repo.Channel, error) {
+	ret := _m.Called(ctx, params)
+
+	if len(ret) == 0 {
+		panic("no return value specified for CreateTopic")
+	}
+
+	var r0 *repo.Channel
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, repo.CreateTopicParams) (*repo.Channel, error)); ok {
+		return rf(ctx, params)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, repo.CreateTopicParams) *repo.Channel); ok {
+		r0 = rf(ctx, params)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*repo.Channel)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, repo.CreateTopicParams) error); ok {
+		r1 = rf(ctx, params)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// ChannelRepoMock_CreateTopic_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CreateTopic'
+type ChannelRepoMock_CreateTopic_Call struct {
+	*mock.Call
+}
+
+// CreateTopic is a helper method to define mock.On call
+//   - ctx context.Context
+//   - params repo.CreateTopicParams
+func (_e *ChannelRepoMock_Expecter) CreateTopic(ctx interface{}, params interface{}) *ChannelRepoMock_CreateTopic_Call {
+	return &ChannelRepoMock_CreateTopic_Call{Call: _e.mock.On("CreateTopic", ctx, params)}
+}
+
+func (_c *ChannelRepoMock_CreateTopic_Call) Run(run func(ctx context.Context, params repo.CreateTopicParams)) *ChannelRepoMock_CreateTopic_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(repo.CreateTopicParams))
+	})
+	return _c
+}
+
+func (_c *ChannelRepoMock_CreateTopic_Call) Return(_a0 *repo.Channel, _a1 error) *ChannelRepoMock_CreateTopic_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *ChannelRepoMock_CreateTopic_Call) RunAndReturn(run func(context.Context, repo.CreateTopicParams) (*repo.Channel, error)) *ChannelRepoMock_CreateTopic_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // FindDM provides a mock function with given fields: ctx, userA, userB
 func (_m *ChannelRepoMock) FindDM(ctx context.Context, userA int64, userB int64) (*repo.Channel, error) {
 	ret := _m.Called(ctx, userA, userB)
@@ -637,6 +696,65 @@ func (_c *ChannelRepoMock_ListMembers_Call) Return(_a0 []repo.ChannelMember, _a1
 }
 
 func (_c *ChannelRepoMock_ListMembers_Call) RunAndReturn(run func(context.Context, int64) ([]repo.ChannelMember, error)) *ChannelRepoMock_ListMembers_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ListTopics provides a mock function with given fields: ctx, parentID
+func (_m *ChannelRepoMock) ListTopics(ctx context.Context, parentID int64) ([]repo.Channel, error) {
+	ret := _m.Called(ctx, parentID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListTopics")
+	}
+
+	var r0 []repo.Channel
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, int64) ([]repo.Channel, error)); ok {
+		return rf(ctx, parentID)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, int64) []repo.Channel); ok {
+		r0 = rf(ctx, parentID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]repo.Channel)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, int64) error); ok {
+		r1 = rf(ctx, parentID)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// ChannelRepoMock_ListTopics_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ListTopics'
+type ChannelRepoMock_ListTopics_Call struct {
+	*mock.Call
+}
+
+// ListTopics is a helper method to define mock.On call
+//   - ctx context.Context
+//   - parentID int64
+func (_e *ChannelRepoMock_Expecter) ListTopics(ctx interface{}, parentID interface{}) *ChannelRepoMock_ListTopics_Call {
+	return &ChannelRepoMock_ListTopics_Call{Call: _e.mock.On("ListTopics", ctx, parentID)}
+}
+
+func (_c *ChannelRepoMock_ListTopics_Call) Run(run func(ctx context.Context, parentID int64)) *ChannelRepoMock_ListTopics_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(int64))
+	})
+	return _c
+}
+
+func (_c *ChannelRepoMock_ListTopics_Call) Return(_a0 []repo.Channel, _a1 error) *ChannelRepoMock_ListTopics_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *ChannelRepoMock_ListTopics_Call) RunAndReturn(run func(context.Context, int64) ([]repo.Channel, error)) *ChannelRepoMock_ListTopics_Call {
 	_c.Call.Return(run)
 	return _c
 }

@@ -45,8 +45,13 @@ type Channel struct {
 	Orient     int16     `gorm:"column:orient;not null;default:0"                        json:"orient"`
 	Permission int16     `gorm:"column:permission;not null;default:0"                    json:"permission"`
 	IsTop      bool      `gorm:"column:is_top;not null;default:false"                    json:"is_top"`
-	CreatedAt  time.Time `gorm:"column:created_at;not null;default:now()"                json:"created_at"`
-	UpdatedAt  time.Time `gorm:"column:updated_at;not null;default:now()"                json:"updated_at"`
+	// M3-A Topic 支持。RootID 指向父 channel；非 nil 即 topic (子群聊)。
+	// RootMessageID 指向从哪条消息右击创建的 topic。消息与普通 channel 共用
+	// messages 表 + seq，成员共用 channel_members。
+	RootID        *int64    `gorm:"column:root_id"                                          json:"root_id,omitempty"`
+	RootMessageID *int64    `gorm:"column:root_message_id"                                  json:"root_message_id,omitempty"`
+	CreatedAt     time.Time `gorm:"column:created_at;not null;default:now()"                json:"created_at"`
+	UpdatedAt     time.Time `gorm:"column:updated_at;not null;default:now()"                json:"updated_at"`
 }
 
 // TableName pins the GORM-derived table name to the migration.

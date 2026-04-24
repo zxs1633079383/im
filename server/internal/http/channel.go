@@ -279,6 +279,8 @@ func RegisterChannelRoutes(authed *gin.RouterGroup, svc *service.ChannelService,
 		}
 	})
 
+	registerTopicRoutes(authed, svc)
+
 	// POST /api/channels/:id/leave — remove the caller (owners blocked).
 	authed.POST("/channels/:id/leave", func(c *gin.Context) {
 		uid, ok := userIDFromCtx(c)
