@@ -588,6 +588,68 @@ func (_c *MessageRepoMock_GetReaders_Call) RunAndReturn(run func(context.Context
 	return _c
 }
 
+// PostSystemMessage provides a mock function with given fields: ctx, tx, channelID, senderID, props
+func (_m *MessageRepoMock) PostSystemMessage(ctx context.Context, tx *gorm.DB, channelID int64, senderID int64, props map[string]interface{}) (*repo.Message, error) {
+	ret := _m.Called(ctx, tx, channelID, senderID, props)
+
+	if len(ret) == 0 {
+		panic("no return value specified for PostSystemMessage")
+	}
+
+	var r0 *repo.Message
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, *gorm.DB, int64, int64, map[string]interface{}) (*repo.Message, error)); ok {
+		return rf(ctx, tx, channelID, senderID, props)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, *gorm.DB, int64, int64, map[string]interface{}) *repo.Message); ok {
+		r0 = rf(ctx, tx, channelID, senderID, props)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*repo.Message)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, *gorm.DB, int64, int64, map[string]interface{}) error); ok {
+		r1 = rf(ctx, tx, channelID, senderID, props)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// MessageRepoMock_PostSystemMessage_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'PostSystemMessage'
+type MessageRepoMock_PostSystemMessage_Call struct {
+	*mock.Call
+}
+
+// PostSystemMessage is a helper method to define mock.On call
+//   - ctx context.Context
+//   - tx *gorm.DB
+//   - channelID int64
+//   - senderID int64
+//   - props map[string]interface{}
+func (_e *MessageRepoMock_Expecter) PostSystemMessage(ctx interface{}, tx interface{}, channelID interface{}, senderID interface{}, props interface{}) *MessageRepoMock_PostSystemMessage_Call {
+	return &MessageRepoMock_PostSystemMessage_Call{Call: _e.mock.On("PostSystemMessage", ctx, tx, channelID, senderID, props)}
+}
+
+func (_c *MessageRepoMock_PostSystemMessage_Call) Run(run func(ctx context.Context, tx *gorm.DB, channelID int64, senderID int64, props map[string]interface{})) *MessageRepoMock_PostSystemMessage_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(*gorm.DB), args[2].(int64), args[3].(int64), args[4].(map[string]interface{}))
+	})
+	return _c
+}
+
+func (_c *MessageRepoMock_PostSystemMessage_Call) Return(_a0 *repo.Message, _a1 error) *MessageRepoMock_PostSystemMessage_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *MessageRepoMock_PostSystemMessage_Call) RunAndReturn(run func(context.Context, *gorm.DB, int64, int64, map[string]interface{}) (*repo.Message, error)) *MessageRepoMock_PostSystemMessage_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Send provides a mock function with given fields: ctx, msg
 func (_m *MessageRepoMock) Send(ctx context.Context, msg *repo.Message) error {
 	ret := _m.Called(ctx, msg)

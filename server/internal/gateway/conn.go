@@ -119,6 +119,40 @@ func (c *Conn) Push(msgType WSMessageType, payload any) (ok bool) {
 	}
 }
 
+// PushRaw enqueues a pre-marshaled WS payload without re-marshaling. Used by
+// the cross-pod push consumer: a single Pulsar envelope carries one already-
+// JSON-encoded payload plus N target UIDs, and every recipient's conn should
+// see the same bytes. Saves N-1 json.Marshal calls per broadcast.
+//
+// Share the recover() semantics with Push — a concurrent Close() that lands
+// between closed.Load() and the send can race, but the deferred recover
+// turns it into a clean false return rather than a pod-wide panic.
+func (c *Conn) PushRaw(msgType WSMessageType, rawPayload json.RawMessage) (ok bool) {
+	defer func() {
+		if r := recover(); r != nil {
+			ok = false
+		}
+	}()
+
+	frame := struct {
+		Type    WSMessageType   `json:"type"`
+		Payload json.RawMessage `json:"payload"`
+	}{Type: msgType, Payload: rawPayload}
+	b, err := json.Marshal(frame)
+	if err != nil {
+		return false
+	}
+	if c.closed.Load() {
+		return false
+	}
+	select {
+	case c.send <- b:
+		return true
+	default:
+		return false
+	}
+}
+
 // Close closes the send channel, which causes writePump to exit. Safe to
 // call multiple times; subsequent Pushes after Close return false.
 func (c *Conn) Close() {

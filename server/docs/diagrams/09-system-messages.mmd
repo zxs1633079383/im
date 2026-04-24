@@ -1,0 +1,71 @@
+%%{init: {
+  'theme': 'base',
+  'themeVariables': {
+    'background': '#0b1220',
+    'primaryColor': '#111827',
+    'secondaryColor': '#1f2937',
+    'tertiaryColor': '#374151',
+    'primaryTextColor': '#e5e7eb',
+    'lineColor': '#9ca3af',
+    'noteBkgColor': '#111827',
+    'noteTextColor': '#e5e7eb'
+  }
+}}%%
+%% System Message 总览：一条 messages 行 + props JSONB, 走普通消息通道
+%% 等同 Mattermost post.type + post.props 机制
+flowchart TB
+    subgraph DB["messages 表 (schema)"]
+        direction TB
+        cols["id BIGSERIAL<br/>channel_id BIGINT<br/>seq BIGINT (单调自增)<br/>sender_id BIGINT (触发者)<br/>msg_type SMALLINT (=4 System)<br/>content TEXT (系统消息留空)<br/>props JSONB NULL ← 新增列"]
+    end
+
+    subgraph PROPS["props 的 JSON schema"]
+        direction TB
+        p1["必备: sys_type (channel_created | channel_updated |<br/>member_joined | member_removed | member_left)"]
+        p2["actor_id: 触发者 user_id (通常 == sender_id)"]
+        p3["target_id: 被作用者 user_id<br/>(member_joined/removed 专用)"]
+        p4["name / avatar_url: channel_updated 携带的新值"]
+    end
+
+    subgraph EMIT["触发源 (ChannelService 五个方法)"]
+        direction TB
+        e1["CreateGroup → channel_created + per-member member_joined"]
+        e2["Update → channel_updated"]
+        e3["AddMember → member_joined"]
+        e4["RemoveMember → member_removed<br/>(事务前置，保证被踢人收到)"]
+        e5["LeaveChannel → member_left<br/>(事务前置，让剩余成员看到退群)"]
+    end
+
+    subgraph FANOUT["扇出路径 (复用现有 push_msg)"]
+        direction TB
+        f1["AllocSeqAndInsert 分配 seq + INSERT"]
+        f2["pushToMembers 遍历 ListMembers"]
+        f3["Hub.CrossPodPush → 本 pod hit / routing / Pulsar"]
+        f4["客户端收到 {type:'push_msg', msg_type:4, props}"]
+        f1 --> f2 --> f3 --> f4
+    end
+
+    subgraph CLIENT["客户端处理 (伪代码)"]
+        direction TB
+        c1["if msg.msg_type == 4:<br/>  props = JSON.parse(msg.props)<br/>  switch props.sys_type:<br/>    channel_created → 初始化本地 channel<br/>    channel_updated → 覆盖本地 name/avatar<br/>    member_joined → 成员列表+1, 已读人数分母+1<br/>    member_removed → 成员列表-1, 若 target==self 退出频道<br/>    member_left → 成员列表-1"]
+        c2["未读 badge 处理：msg_type==4 **不计入** 未读红点<br/>但占 seq (sync 按 seq 对齐一致)"]
+    end
+
+    subgraph SYNC["离线补齐 (/api/sync)"]
+        direction TB
+        s1["客户端带 cursor {chID: last_seq}"]
+        s2["服务端 FetchForUser 返回 messages[] 含 system 消息<br/>客户端收到后同样按 props.sys_type 分派"]
+        s1 --> s2
+    end
+
+    EMIT --> FANOUT
+    FANOUT --> DB
+    FANOUT --> CLIENT
+    DB --> SYNC
+    SYNC --> CLIENT
+    PROPS -.承载于.-> DB
+
+    classDef highlight fill:#1e3a8a,stroke:#60a5fa,color:#e5e7eb
+    classDef table fill:#374151,stroke:#9ca3af,color:#e5e7eb
+    class DB,PROPS table
+    class EMIT,FANOUT,CLIENT,SYNC highlight

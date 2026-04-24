@@ -1,0 +1,122 @@
+%% 创建群聊 + 改名 + 加减成员 —— 全部通过 system message 落 seq 流
+%% msg_type=4 (MsgTypeSystem), content="", props=JSONB {sys_type, actor_id, target_id, ...}
+%%{init: {
+  'theme': 'base',
+  'themeVariables': {
+    'background': '#0b1220',
+    'primaryColor': '#111827',
+    'secondaryColor': '#1f2937',
+    'tertiaryColor': '#374151',
+    'primaryTextColor': '#e5e7eb',
+    'lineColor': '#9ca3af',
+    'noteBkgColor': '#111827',
+    'noteTextColor': '#e5e7eb'
+  }
+}}%%
+sequenceDiagram
+    autonumber
+
+    actor Creator as Creator (user-C)
+    participant H as HTTP handler
+    participant CS as ChannelService
+    participant CR as ChannelRepo
+    participant MR as MessageRepo
+    participant DB as PostgreSQL
+    participant XPod as CrossPodPush
+    actor M1 as Member 1
+    actor M2 as Member 2
+
+    rect rgb(30,41,59)
+        Note over Creator,M2: 阶段 A：创建群聊 POST /api/channels
+        Creator->>H: POST /api/channels\n{name:"dev-team", member_ids:[M1,M2]}
+        H->>CS: CreateGroup(C, "dev-team", [M1,M2])
+
+        CS->>CR: Create(type=Group, creator=C)
+        CR->>DB: INSERT channels RETURNING id=77
+
+        CS->>CR: AddMember(77, C, Owner)
+        CS->>CR: AddMember(77, M1, Member)
+        CS->>CR: AddMember(77, M2, Member)
+
+        Note over CS,DB: 每条 system message 各走一次 AllocSeqAndInsert\n消耗 channels.last_seq 自增, 落到 messages 表
+
+        CS->>MR: PostSystemMessage\nprops={sys_type:channel_created, actor_id:C, name:"dev-team"}
+        MR->>DB: UPDATE channels seq+=1 RETURNING seq=1\nINSERT messages msg_type=4 props=...
+
+        CS->>MR: PostSystemMessage\nprops={sys_type:member_joined, actor_id:C, target_id:M1}
+        MR->>DB: seq=2, INSERT msg_type=4
+
+        CS->>MR: PostSystemMessage\nprops={sys_type:member_joined, actor_id:C, target_id:M2}
+        MR->>DB: seq=3, INSERT msg_type=4
+
+        CS-->>H: (ch, added=[M1,M2])
+        H-->>Creator: 201 ch
+
+        Note over H,XPod: handler 层通过 channel_event "added" 立即通知成员
+        H->>XPod: PushChannelEvent(M1, added, 77)
+        H->>XPod: PushChannelEvent(M2, added, 77)
+
+        XPod->>M1: channel_event added
+        XPod->>M2: channel_event added
+
+        Note over M1,M2: 后续 /api/sync 拉取 system message 时间线
+    end
+
+    rect rgb(51,65,85)
+        Note over Creator,M2: 阶段 B：改群名/头像 PUT /api/channels/:id
+        Creator->>H: PUT /api/channels/77\n{name:"dev-team-v2", avatar_url:"..."}
+        H->>CS: Update(77, C, name, avatar)
+
+        CS->>CS: requireAdminOrOwner(77, C)
+        CS->>CR: Update(77, name, avatar)
+        CR->>DB: UPDATE channels SET name=?, avatar_url=?
+
+        CS->>MR: PostSystemMessage\nprops={sys_type:channel_updated, actor_id:C, name:"dev-team-v2", avatar_url:"..."}
+        MR->>DB: seq=4, INSERT msg_type=4
+
+        CS-->>H: ch refreshed
+        H-->>Creator: 200 ch
+
+        Note over XPod,M2: system msg push 到所有成员，本地直接覆盖 channel 元数据
+    end
+
+    rect rgb(30,64,55)
+        Note over Creator,M2: 阶段 C：添加新成员 POST /api/channels/:id/members
+        Creator->>H: POST /api/channels/77/members\n{user_id:M4}
+        H->>CS: AddMember(77, C, M4)
+
+        CS->>CS: requireAdminOrOwner(77, C)
+        CS->>CR: AddMember(77, M4, Member)
+        CR->>DB: INSERT channel_members
+
+        CS->>MR: PostSystemMessage\nprops={sys_type:member_joined, actor_id:C, target_id:M4}
+        MR->>DB: seq=5, INSERT msg_type=4
+
+        H->>XPod: PushChannelEvent(M4, added, 77, "dev-team-v2")
+
+        Note over XPod: 新成员首次加入需要 channel_event
+    end
+
+    rect rgb(64,30,30)
+        Note over Creator,M2: 阶段 D：移除成员 DELETE /api/channels/:id/members/:uid
+
+        Creator->>H: DELETE /api/channels/77/members/M1
+        H->>CS: RemoveMember(77, C, M1)
+
+        CS->>CS: requireAdminOrOwner + GetMember
+
+        CS->>CR: WithinTx(fn)
+        Note over CR,DB: BEGIN Tx
+
+        CR->>MR: PostSystemMessage(tx)\nprops={sys_type:member_removed, actor_id:C, target_id:M1}
+        MR->>DB: seq=6, INSERT msg_type=4
+
+        CR->>DB: DELETE FROM channel_members WHERE user_id=M1
+
+        Note over CR,DB: COMMIT Tx
+
+        CS-->>H: ok
+        H-->>Creator: 200
+
+        Note over H,M1: push_msg：M1 收到 member_removed system message
+    end

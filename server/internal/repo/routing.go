@@ -2,6 +2,7 @@ package repo
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -137,6 +138,62 @@ func (r *Routing) DevicesForUser(ctx context.Context, userID int64) (map[string]
 	out, err := r.rdb.HGetAll(ctx, connKey(userID)).Result()
 	recordRoutingOp(ctx, "devices", err)
 	return out, err
+}
+
+// LookupBatch pipelines N HGETALLs in one round-trip and returns a map of
+// userID → distinct gatewayIDs. Offline users are returned with nil/empty
+// slices so the caller sees every input UID in the result map (simplifies
+// bucket-by-gateway logic in CrossPodBroadcast).
+//
+// A single Redis error aborts — there is no partial result. Callers with
+// fallback needs should fan out to Lookup individually.
+func (r *Routing) LookupBatch(ctx context.Context, userIDs []int64) (map[int64][]string, error) {
+	out := make(map[int64][]string, len(userIDs))
+	if len(userIDs) == 0 {
+		return out, nil
+	}
+
+	pipe := r.rdb.Pipeline()
+	cmds := make(map[int64]*redis.MapStringStringCmd, len(userIDs))
+	for _, uid := range userIDs {
+		cmds[uid] = pipe.HGetAll(ctx, connKey(uid))
+	}
+	_, err := pipe.Exec(ctx)
+	recordRoutingOp(ctx, "lookup_batch", err)
+	// redis.Nil on missing key is expected — pipe.Exec returns it as a batch
+	// status error; individual cmd.Result() below already handles it per-key.
+	if err != nil && !errors.Is(err, redis.Nil) {
+		return nil, fmt.Errorf("routing lookup batch: %w", err)
+	}
+
+	for uid, cmd := range cmds {
+		m, cmdErr := cmd.Result()
+		if cmdErr != nil && !errors.Is(cmdErr, redis.Nil) {
+			// Individual key failed — skip that user but keep the rest so the
+			// fan-out to online users still proceeds.
+			continue
+		}
+		out[uid] = distinctGatewayIDs(m)
+	}
+	return out, nil
+}
+
+// distinctGatewayIDs flattens a deviceID → gatewayID hash into the set of
+// distinct gatewayIDs. Split out so LookupBatch stays focused on pipelining.
+func distinctGatewayIDs(hash map[string]string) []string {
+	if len(hash) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(hash))
+	out := make([]string, 0, len(hash))
+	for _, gw := range hash {
+		if _, dup := seen[gw]; dup {
+			continue
+		}
+		seen[gw] = struct{}{}
+		out = append(out, gw)
+	}
+	return out
 }
 
 // recordRoutingOp stamps im.routing.redis.ops with the op and status tags.

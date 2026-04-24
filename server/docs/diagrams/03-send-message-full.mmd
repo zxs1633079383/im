@@ -1,0 +1,55 @@
+%% POST /api/channels/:id/messages 全链路 —— seq 原子分配 + 跨 pod 扇出
+sequenceDiagram
+    autonumber
+    actor S as Sender
+    participant H as HTTP handler
+    participant MS as MessageService
+    participant MR as MessageRepo
+    participant CR as ChannelRepo
+    participant DB as PostgreSQL
+    participant Fan as pushToMembers<br/>(goroutine)
+    participant Pusher as hubMessagePusher
+    participant Hub as Hub (本 pod)
+    participant XPod as CrossPodPush
+
+    S->>H: POST /api/channels/42/messages<br/>{content, client_msg_id}
+    H->>MS: SendMessage(SendParams{...})
+    MS->>CR: GetMember(42, uid)  ← 鉴权
+    CR-->>MS: member
+    MS->>MR: Send(ctx, msg)
+
+    MR->>DB: BEGIN
+    alt client_msg_id 非空
+        MR->>DB: SELECT id, seq FROM messages<br/>WHERE channel_id=? AND client_msg_id=?
+        DB-->>MR: 命中 → return 原 id/seq (幂等短路)
+    end
+
+    Note over MR,DB: AllocSeqAndInsert (tx 复用):
+    MR->>DB: UPDATE channels SET last_seq=last_seq+1<br/>WHERE id=42 RETURNING last_seq
+    DB-->>MR: seq=131 (行锁保证原子)
+    MR->>DB: INSERT messages (channel_id=42, seq=131, ...)
+    DB-->>MR: msg.ID
+
+    alt VisibleTo 非空 (directed)
+        MR->>CR: IncrementPhantomCount(chID, visibleWithSender)
+        CR->>DB: UPDATE channel_members SET phantom_count+=1<br/>WHERE channel_id=42 AND user_id NOT IN (...)
+    end
+    MR->>DB: COMMIT
+
+    MR-->>MS: msg (with seq=131)
+    MS-->>H: msg
+    H-->>S: 201 msg
+    H->>Fan: go pushToMembers(msg) (异步 background ctx)
+
+    Fan->>MS: ListMembers(42)
+    MS-->>Fan: [m1, m2, m3, ...]
+    loop 对每个成员 m
+        Fan->>Pusher: PushMessage(m.UserID, msg or phantom)
+        Pusher->>XPod: dispatch(m.UserID, TypePushMsg, payload)
+        XPod->>Hub: hub.PushToUser(m.UserID)
+        alt 本 pod 命中
+            Hub-->>XPod: sent > 0 → return
+        else 本 pod miss
+            XPod->>XPod: Lookup routing → 远端 pod 列表<br/>投递 Pulsar (见 01-cross-pod-push.mmd)
+        end
+    end

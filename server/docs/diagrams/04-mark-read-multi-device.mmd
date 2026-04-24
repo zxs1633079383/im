@@ -1,0 +1,44 @@
+%% POST /api/channels/:id/read —— 已读 + 多端 read_sync 扇出
+sequenceDiagram
+    autonumber
+    actor A as user-X on 手机 (pod-1)
+    participant H1 as pod-1 HTTP
+    participant MS as MessageService
+    participant DB as PostgreSQL
+    participant RS as hubReadSyncer
+    participant R as Redis routing
+    participant Pul as Pulsar
+    participant P2 as pod-2
+    participant P3 as pod-3
+    actor B as user-X on PC (pod-2)
+    actor C as user-X on 平板 (pod-3)
+
+    Note over A,C: 前置：同一 user-X 三端登录<br/>routing:user:X = {手机→pod-1, PC→pod-2, 平板→pod-3}
+
+    A->>H1: POST /api/channels/42/read
+    H1->>MS: MarkRead(42, X)
+    MS->>DB: SELECT last_seq FROM channels WHERE id=42
+    DB-->>MS: last_seq=500
+    MS->>DB: UPDATE channel_members SET last_read_seq=500<br/>WHERE channel_id=42 AND user_id=X
+    MS-->>H1: seq=500
+    H1-->>A: 200 {seq:500}
+
+    H1->>RS: PushReadSync(X, 42, 500)
+    RS->>RS: dispatch(X, TypeReadSync, {ch:42, read_seq:500})<br/>= Hub.CrossPodPush(X, ...)
+
+    RS->>H1: hub.PushToUser(X) ← pod-1 命中手机 conn (自己)
+    H1->>A: {type:"read_sync", payload:{channel_id:42, read_seq:500}}
+    Note over A: 客户端识别出 deviceID==self → 忽略
+
+    RS->>R: Lookup(X) → ["pod-1","pod-2","pod-3"]
+    Note over RS: 跳过 pod-1（自己），剩 [pod-2, pod-3]
+    RS->>Pul: Send(msg.push.pod-2, event)
+    RS->>Pul: Send(msg.push.pod-3, event)
+
+    Pul->>P2: PushConsumer.Handle
+    P2->>B: {type:"read_sync", payload:{channel_id:42, read_seq:500}}
+    B->>B: 未读数归零 / 已读位置前移
+
+    Pul->>P3: PushConsumer.Handle
+    P3->>C: {type:"read_sync", payload:{channel_id:42, read_seq:500}}
+    C->>C: 未读数归零 / 已读位置前移

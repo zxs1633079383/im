@@ -51,7 +51,7 @@ func setupChannelHandler(t *testing.T, pusher imhttp.ChannelEventPusher) (*gin.E
 	gin.SetMode(gin.TestMode)
 	ch := mocks.NewChannelRepoMock(t)
 	us := mocks.NewUserRepoMock(t)
-	svc := service.NewChannelService(ch, us)
+	svc := service.NewChannelService(ch, us, nil)
 	r := gin.New()
 	authed := r.Group("/api")
 	authed.Use(middleware.JWTGin(testSecret))

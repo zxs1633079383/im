@@ -111,7 +111,7 @@ func newV5Env(t *testing.T) *v5env {
 
 	imhttp.RegisterProfileRoutes(authed, service.NewProfileService(users))
 	imhttp.RegisterChannelRoutes(authed,
-		service.NewChannelService(channels, users), channelPush)
+		service.NewChannelService(channels, users, nil), channelPush)
 	governanceSvc := service.NewChannelGovernanceService(channels, governance, users)
 	imhttp.RegisterChannelGovernanceRoutes(authed, governanceSvc, channelPush)
 	announcements := repo.NewAnnouncementRepo(db)
@@ -355,23 +355,52 @@ func (e *v5env) RemoveMember(tok string, channelID, userID int64) {
 // Snapshot() returns an immutable copy for assertions.
 // ============================================================================
 
-// PushRecorder captures MessagePusher.PushMessage calls.
+// PushRecorder captures MessagePusher.BroadcastMessage calls and flattens
+// each batch into one PushEvent per recipient so existing group tests that
+// count per-user pushes continue to work unchanged.
 type PushRecorder struct {
 	mu     sync.Mutex
 	events []PushEvent
+	// batches records each BroadcastMessage as a single entry so new tests
+	// can assert "one Pulsar send per channel" without re-aggregating.
+	batches []PushBatch
 }
 
-// PushEvent is a single captured PushMessage invocation.
+// PushEvent is one recipient's share of a BroadcastMessage invocation.
 type PushEvent struct {
 	UserID int64
 	Msg    *repo.Message
 }
 
-// PushMessage satisfies imhttp.MessagePusher.
-func (r *PushRecorder) PushMessage(userID int64, msg *repo.Message) {
+// PushBatch is a full BroadcastMessage call — one payload + the list of
+// recipients that saw the same payload.
+type PushBatch struct {
+	ChannelID int64
+	UserIDs   []int64
+	Msg       *repo.Message
+}
+
+// BroadcastMessage satisfies imhttp.MessagePusher. It records both the full
+// batch (for broadcast-level assertions) and the expanded per-user events
+// (so legacy tests can keep using Snapshot()).
+func (r *PushRecorder) BroadcastMessage(channelID int64, userIDs []int64, msg *repo.Message) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.events = append(r.events, PushEvent{UserID: userID, Msg: msg})
+	uidsCopy := append([]int64(nil), userIDs...)
+	r.batches = append(r.batches, PushBatch{ChannelID: channelID, UserIDs: uidsCopy, Msg: msg})
+	for _, uid := range userIDs {
+		r.events = append(r.events, PushEvent{UserID: uid, Msg: msg})
+	}
+}
+
+// BatchSnapshot returns a copy of every broadcast batch recorded so far.
+// Useful for new tests that assert on aggregation-per-pod semantics.
+func (r *PushRecorder) BatchSnapshot() []PushBatch {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make([]PushBatch, len(r.batches))
+	copy(out, r.batches)
+	return out
 }
 
 // Snapshot returns a copy of every push event so far.
@@ -388,6 +417,7 @@ func (r *PushRecorder) Reset() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.events = nil
+	r.batches = nil
 }
 
 // ReadSyncRecorder captures ReadSyncPusher.PushReadSync calls.

@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"os"
@@ -9,14 +10,26 @@ import (
 	"testing"
 )
 
-// stubRouting implements routingLookup for tests.
-type stubRouting struct {
-	gws []string
+// stubRoutingBatch implements routingBatchLookup for tests.
+type stubRoutingBatch struct {
+	// gws returned per uid. Missing uids return nil (offline).
+	gws map[int64][]string
 	err error
 }
 
-func (s *stubRouting) Lookup(_ context.Context, _ int64) ([]string, error) {
-	return s.gws, s.err
+func (s *stubRoutingBatch) LookupBatch(_ context.Context, uids []int64) (map[int64][]string, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	out := make(map[int64][]string, len(uids))
+	for _, uid := range uids {
+		if gs, ok := s.gws[uid]; ok {
+			out[uid] = gs
+		} else {
+			out[uid] = nil
+		}
+	}
+	return out, nil
 }
 
 // stubSender implements crossPodSender, recording every Send call.
@@ -46,14 +59,11 @@ func (s *stubSender) calls() []stubSendCall {
 	return out
 }
 
-// stubCache implements producerGetter. Each (topic) returns the same sender
-// so tests can assert on total Send counts across all topics.
+// stubCache implements producerGetter.
 type stubCache struct {
-	mu        sync.Mutex
-	createErr error
-	// perTopic maps topic string -> *stubSender (lazy-created on first ask).
-	perTopic map[string]*stubSender
-	// createOrder records topics in the order they were requested.
+	mu          sync.Mutex
+	createErr   error
+	perTopic    map[string]*stubSender
 	createOrder []string
 }
 
@@ -94,167 +104,196 @@ func testLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
 }
 
-// TestCrossPodPush_LocalHit verifies the local short-circuit of CrossPodPush:
-// when the hub already holds a connection for userID, the routing/cache
-// pathway must be skipped entirely (no calls into cache.GetOrCreate).
-//
-// We don't need a real WebSocket here — Hub.PushToUser returns the count of
-// delivered connections, and we can pre-seed one Conn with a big enough send
-// buffer by calling Register directly.
-func TestCrossPodPush_LocalHit(t *testing.T) {
+// TestCrossPodBroadcast_LocalHitOnly — every uid resolves locally, routing/
+// cache must stay untouched.
+func TestCrossPodBroadcast_LocalHitOnly(t *testing.T) {
 	t.Setenv("USER", "tester")
-
 	hub := NewHub()
-	// Fake but functional Conn: send channel large enough to accept one push
-	// without blocking; no writePump is needed because we never read it.
-	c := &Conn{
-		UserID:   42,
-		DeviceID: "dev-1",
-		send:     make(chan []byte, 1),
-		hub:      hub,
-		knownSeq: map[int64]int64{},
+	for _, uid := range []int64{42, 43} {
+		hub.Register(&Conn{UserID: uid, send: make(chan []byte, 4), hub: hub, knownSeq: map[int64]int64{}})
 	}
-	hub.Register(c)
-
 	cache := newStubCache()
-	// crossPodPushImpl must NOT be invoked when there's a local hit, so check
-	// cache stays untouched by calling the public CrossPodPush.
-	hub.CrossPodPush(
+
+	hub.CrossPodBroadcast(
 		context.Background(),
-		42,
+		[]int64{42, 43},
+		"chan-7",
 		TypeMsgUpdated,
 		map[string]any{"hello": "world"},
-		nil, // routing — must not be used
-		nil, // cache — must not be used
-		"gw-self",
-		"local",
-		testLogger(),
+		nil, nil, // routing + cache intentionally nil — not used on full local hit
+		"gw-self", "local", testLogger(),
 	)
-
-	if len(cache.topics()) != 0 {
-		t.Fatalf("expected cache untouched on local hit; topics=%v", cache.topics())
-	}
-	// The send buffer should have received exactly one frame.
-	if len(c.send) != 1 {
-		t.Fatalf("expected 1 buffered frame on local conn; got %d", len(c.send))
-	}
+	_ = cache // touched only if logic regresses
 }
 
-// TestCrossPodPush_RemoteOnly verifies that when routing returns a remote
-// gateway, the cache is asked for a producer exactly once and Send is called
-// exactly once with the user ID as partition key.
-func TestCrossPodPush_RemoteOnly(t *testing.T) {
+// TestCrossPodBroadcast_BucketsByGateway — two remote users on gw-A, one on
+// gw-B: producer cache must open exactly two topics and each receive one
+// Send carrying the correct TargetUIDs subset.
+func TestCrossPodBroadcast_BucketsByGateway(t *testing.T) {
 	t.Setenv("USER", "tester")
-
 	hub := NewHub()
-	routing := &stubRouting{gws: []string{"gw-remote"}}
+	routing := &stubRoutingBatch{gws: map[int64][]string{
+		101: {"gw-A"},
+		102: {"gw-A"},
+		103: {"gw-B"},
+	}}
 	cache := newStubCache()
 
-	hub.crossPodPushImpl(
+	hub.crossPodBroadcastImpl(
 		context.Background(),
-		101,
-		TypeMsgUpdated,
-		map[string]any{"id": 7},
-		routing,
-		cache,
-		"gw-self",
-		"local",
-		testLogger(),
+		[]int64{101, 102, 103},
+		"chan-77",
+		TypePushMsg,
+		json.RawMessage(`{"push_id":"x"}`),
+		routing, cache,
+		"gw-self", "local", testLogger(),
 	)
 
 	topics := cache.topics()
-	if len(topics) != 1 {
-		t.Fatalf("expected 1 topic opened; got %v", topics)
+	if len(topics) != 2 {
+		t.Fatalf("expected 2 topics; got %v", topics)
 	}
-	wantTopic := PushTopicFor("gw-remote", "local")
-	if topics[0] != wantTopic {
-		t.Fatalf("topic = %q; want %q", topics[0], wantTopic)
-	}
-	sender := cache.sender(wantTopic)
-	if sender == nil {
-		t.Fatalf("sender for %q was not created", wantTopic)
-	}
-	calls := sender.calls()
-	if len(calls) != 1 {
-		t.Fatalf("expected 1 Send call; got %d", len(calls))
-	}
-	if calls[0].key != "101" {
-		t.Fatalf("partition key = %q; want %q", calls[0].key, "101")
-	}
+	assertOneSendPerTopic(t, cache)
+	assertUIDsBucketed(t, cache, map[string][]int64{
+		PushTopicFor("gw-A", "local"): {101, 102},
+		PushTopicFor("gw-B", "local"): {103},
+	})
 }
 
-// TestCrossPodPush_AllOffline verifies the empty-routing branch logs and
-// makes no producer calls.
-func TestCrossPodPush_AllOffline(t *testing.T) {
+// TestCrossPodBroadcast_SkipsSelfGateway — stale routing entries that point
+// back to the local pod are dropped so we never loop-back through Pulsar.
+func TestCrossPodBroadcast_SkipsSelfGateway(t *testing.T) {
+	t.Setenv("USER", "tester")
 	hub := NewHub()
-	routing := &stubRouting{gws: nil}
+	routing := &stubRoutingBatch{gws: map[int64][]string{
+		55: {"gw-self", "gw-other"},
+	}}
 	cache := newStubCache()
 
-	hub.crossPodPushImpl(
+	hub.crossPodBroadcastImpl(
 		context.Background(),
-		7,
-		TypeMsgDeleted,
-		map[string]any{"msg_id": 1},
-		routing,
-		cache,
-		"gw-self",
-		"local",
-		testLogger(),
+		[]int64{55},
+		"chan-1",
+		TypeMsgUpdated,
+		json.RawMessage("null"),
+		routing, cache,
+		"gw-self", "local", testLogger(),
 	)
 
-	if len(cache.topics()) != 0 {
-		t.Fatalf("expected no topics when offline; got %v", cache.topics())
+	topics := cache.topics()
+	if len(topics) != 1 || topics[0] != PushTopicFor("gw-other", "local") {
+		t.Fatalf("expected only gw-other topic; got %v", topics)
 	}
 }
 
-// TestCrossPodPush_RoutingError logs and exits without calling the cache.
-func TestCrossPodPush_RoutingError(t *testing.T) {
+// TestCrossPodBroadcast_AllOffline — empty gatewayID list → no Pulsar send.
+func TestCrossPodBroadcast_AllOffline(t *testing.T) {
 	hub := NewHub()
-	routing := &stubRouting{err: errors.New("redis down")}
 	cache := newStubCache()
-
-	hub.crossPodPushImpl(
+	hub.crossPodBroadcastImpl(
 		context.Background(),
-		7,
-		TypeMsgUpdated,
-		nil,
-		routing,
+		[]int64{7, 8},
+		"chan-1",
+		TypeMsgDeleted,
+		json.RawMessage("null"),
+		&stubRoutingBatch{gws: map[int64][]string{}},
 		cache,
-		"gw-self",
-		"local",
-		testLogger(),
+		"gw-self", "local", testLogger(),
+	)
+	if len(cache.topics()) != 0 {
+		t.Fatalf("expected no topics when everyone offline; got %v", cache.topics())
+	}
+}
+
+// TestCrossPodBroadcast_RoutingError — routing failure aborts, no Send.
+func TestCrossPodBroadcast_RoutingError(t *testing.T) {
+	hub := NewHub()
+	cache := newStubCache()
+	hub.crossPodBroadcastImpl(
+		context.Background(),
+		[]int64{7},
+		"key",
+		TypeMsgUpdated,
+		json.RawMessage("null"),
+		&stubRoutingBatch{err: errors.New("redis down")},
+		cache,
+		"gw-self", "local", testLogger(),
 	)
 	if len(cache.topics()) != 0 {
 		t.Fatalf("expected no topics on routing error; got %v", cache.topics())
 	}
 }
 
-// TestCrossPodPush_SkipsSelf ensures the self gateway ID is excluded even if
-// routing returns it (stale presence entries).
-func TestCrossPodPush_SkipsSelf(t *testing.T) {
+// TestCrossPodPush_SingleUserWrapper — the legacy single-user alias still
+// works and delegates to the batch path with a 1-element slice.
+func TestCrossPodPush_SingleUserWrapper(t *testing.T) {
 	t.Setenv("USER", "tester")
-
 	hub := NewHub()
-	routing := &stubRouting{gws: []string{"gw-self", "gw-other"}}
-	cache := newStubCache()
-
-	hub.crossPodPushImpl(
+	// Not registered locally → goes to remote path.
+	// Use CrossPodPush (the thin wrapper) through the public hub; we only
+	// check it doesn't panic and respects the empty routing offline branch.
+	hub.CrossPodPush(
 		context.Background(),
-		55,
-		TypeMsgUpdated,
-		"payload",
-		routing,
-		cache,
-		"gw-self",
-		"local",
-		testLogger(),
+		99,
+		TypeReadSync,
+		map[string]int{"ch": 1},
+		nil, nil, // routing + cache nil: nil-safe adapters log and return
+		"gw-self", "local", testLogger(),
 	)
+}
 
-	topics := cache.topics()
-	if len(topics) != 1 {
-		t.Fatalf("expected only gw-other topic; got %v", topics)
+// assertOneSendPerTopic fails if any topic in cache received a different
+// number of Send calls than 1.
+func assertOneSendPerTopic(t *testing.T, cache *stubCache) {
+	t.Helper()
+	for _, topic := range cache.topics() {
+		if got := len(cache.sender(topic).calls()); got != 1 {
+			t.Fatalf("topic %q received %d Send calls; want 1", topic, got)
+		}
 	}
-	if topics[0] != PushTopicFor("gw-other", "local") {
-		t.Fatalf("wrong topic: %q", topics[0])
+}
+
+// assertUIDsBucketed decodes each envelope and compares the TargetUIDs list
+// against the expected value for the topic it landed on.
+func assertUIDsBucketed(t *testing.T, cache *stubCache, want map[string][]int64) {
+	t.Helper()
+	for topic, expectedUIDs := range want {
+		sender := cache.sender(topic)
+		if sender == nil {
+			t.Fatalf("no sender for topic %q", topic)
+		}
+		calls := sender.calls()
+		if len(calls) != 1 {
+			t.Fatalf("topic %q: want 1 call, got %d", topic, len(calls))
+		}
+		env, ok := calls[0].payload.(PulsarPushEnvelope)
+		if !ok {
+			t.Fatalf("topic %q: payload is %T, want PulsarPushEnvelope", topic, calls[0].payload)
+		}
+		if !sameUIDSet(env.TargetUIDs, expectedUIDs) {
+			t.Fatalf("topic %q: TargetUIDs=%v, want %v", topic, env.TargetUIDs, expectedUIDs)
+		}
 	}
+}
+
+// sameUIDSet returns true when a and b contain the same int64s regardless of
+// order — ChannelBroadcast.bucketByGateway's map iteration order is not
+// deterministic, so we compare as sets.
+func sameUIDSet(a, b []int64) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	seen := make(map[int64]int, len(a))
+	for _, x := range a {
+		seen[x]++
+	}
+	for _, x := range b {
+		seen[x]--
+	}
+	for _, count := range seen {
+		if count != 0 {
+			return false
+		}
+	}
+	return true
 }

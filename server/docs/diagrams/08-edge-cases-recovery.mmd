@@ -1,0 +1,49 @@
+%% 极端场景的补发与兜底路径汇总
+flowchart TD
+    start([任何消息相关操作]) --> case{异常场景}
+
+    case -->|A. Pulsar producer.Send 失败| A1[CrossPodPush log warn<br/>continue 到下个 gwID]
+    A1 --> A2[该次推送丢失<br/>但 routing 里该 gwID 没删<br/>#40;已知债务：markOffline 未实现#41;]
+    A2 --> R[等待客户端下次 ping]
+
+    case -->|B. 客户端 push_ack 超时 3s| B1[PushConsumer deliverWithRetry<br/>重发 1 次]
+    B1 --> B2{重试后 ACK?}
+    B2 -->|是| done1([正常])
+    B2 -->|否| B3[仍然 ACK Pulsar<br/>避免重投风暴]
+    B3 --> R
+
+    case -->|C. 本地 Hub 推成功<br/>但 WS send buffer 满| C1[Conn.Push 返 false]
+    C1 --> C2[runHeartbeat 下一轮<br/>触发 send buffer 检查]
+    C2 --> C3[buffer 仍满 → ws.Close#40;#41;<br/>触发断连]
+    C3 --> R
+
+    case -->|D. pod crash / 重启| D1[WS conn 全部失效<br/>所有 readPump 退出]
+    D1 --> D2[hub.Deregister +<br/>routing.Deregister 尽力执行<br/>#40;pod 硬 kill 可能执行不到#41;]
+    D2 --> D3[Redis key TTL 45s 自然过期<br/>→ 该 pod 从 routing 消失]
+    D3 --> R
+
+    case -->|E. Redis 临时失联| E1[Lookup err → log warn<br/>CrossPodPush 直接返回]
+    E1 --> E2[该次推送完全丢<br/>不走 Pulsar 兜底]
+    E2 --> R
+
+    case -->|F. /api/sync 接口超时| F1[客户端指数退避重试]
+    F1 --> F2[sync 本身是 stateless 幂等]
+    F2 --> done2([最终一致])
+
+    case -->|G. 消息跨 pod 但 routing stale<br/>#40;user 刚切换 pod#41;| G1[发到旧 gwID 的 topic]
+    G1 --> G2[旧 pod 消费<br/>ConnsForUser 找不到 conn]
+    G2 --> G3[PushConsumer.Handle 直接 return<br/>ACK Pulsar]
+    G3 --> R
+
+    R[客户端 15s 后<br/>下次 ping] --> R2[服务端 pong 带 channel_seqs diff]
+    R2 --> R3{diff 非空?}
+    R3 -->|是| R4[客户端 POST /api/sync<br/>从 PostgreSQL 拉真相]
+    R3 -->|否| R5[正常空闲]
+    R4 --> done3([补齐成功])
+
+    classDef normal fill:#e1f5e1,stroke:#4caf50
+    classDef bad fill:#ffebee,stroke:#f44336
+    classDef recovery fill:#fff9c4,stroke:#fbc02d
+    class done1,done2,done3 normal
+    class A1,A2,B3,C3,D3,E1,E2,G3 bad
+    class R,R2,R3,R4 recovery

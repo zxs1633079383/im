@@ -100,3 +100,17 @@ func (h *Hub) PushToUser(userID int64, msgType WSMessageType, payload any) int {
 	}
 	return sent
 }
+
+// PushRawToUser is the zero-marshal counterpart of PushToUser. Used by the
+// cross-pod broadcast path so the same JSON bytes are reused across every
+// recipient on this pod (N PushRaw calls share one json.Marshal).
+func (h *Hub) PushRawToUser(userID int64, msgType WSMessageType, rawPayload []byte) int {
+	conns := h.ConnsForUser(userID)
+	sent := 0
+	for _, c := range conns {
+		if c.PushRaw(msgType, rawPayload) {
+			sent++
+		}
+	}
+	return sent
+}

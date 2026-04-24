@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -202,7 +203,7 @@ func run() int {
 	// Phase 7.3 cut-over: channel endpoints. The pusher hook is preserved
 	// (legacy WithEventPusher) so newly added members still receive a
 	// real-time WebSocket "added" event.
-	channelSvc := service.NewChannelService(channelRepo, userRepo)
+	channelSvc := service.NewChannelService(channelRepo, userRepo, messageRepo)
 	imhttp.RegisterChannelRoutes(authedAPI, channelSvc, &hubChannelEventPusher{xpod: xpod})
 
 	// M2-A: fine-grained channel governance (patch, managers, pins, role/notify).
@@ -359,12 +360,31 @@ func (x crossPodDeps) dispatch(userID int64, msgType gateway.WSMessageType, payl
 		x.routing, x.cache, x.gatewayID, x.env, x.log)
 }
 
-// hubMessagePusher adapts crossPodDeps to imhttp.MessagePusher.
+// broadcast delivers (msgType, payload) to every user in userIDs using a
+// single pipelined routing lookup and one Pulsar send per destination pod.
+// partitionKey controls the Pulsar message key — pass the channel id for
+// channel-scoped events so same-channel ordering holds on each pod.
+func (x crossPodDeps) broadcast(userIDs []int64, partitionKey string,
+	msgType gateway.WSMessageType, payload any) {
+	if len(userIDs) == 0 {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	x.hub.CrossPodBroadcast(ctx, userIDs, partitionKey, msgType, payload,
+		x.routing, x.cache, x.gatewayID, x.env, x.log)
+}
+
+// hubMessagePusher adapts crossPodDeps to imhttp.MessagePusher. BroadcastMessage
+// is the batched primitive: one payload, N target users, aggregated per pod.
 type hubMessagePusher struct {
 	xpod crossPodDeps
 }
 
-func (p *hubMessagePusher) PushMessage(userID int64, msg *repo.Message) {
+func (p *hubMessagePusher) BroadcastMessage(channelID int64, userIDs []int64, msg *repo.Message) {
+	if len(userIDs) == 0 {
+		return
+	}
 	payload := gateway.PushMsgPayload{
 		PushID:    fmt.Sprintf("http-%d-%d", msg.ChannelID, msg.Seq),
 		ChannelID: msg.ChannelID,
@@ -376,7 +396,8 @@ func (p *hubMessagePusher) PushMessage(userID int64, msg *repo.Message) {
 		VisibleTo: []int64(msg.VisibleTo),
 		CreatedAt: msg.CreatedAt,
 	}
-	p.xpod.dispatch(userID, gateway.TypePushMsg, payload)
+	p.xpod.broadcast(userIDs, strconv.FormatInt(channelID, 10),
+		gateway.TypePushMsg, payload)
 }
 
 // hubReadSyncer adapts crossPodDeps to imhttp.ReadSyncPusher.
@@ -445,9 +466,12 @@ func (b *hubEventBroadcaster) BroadcastToMembers(channelID int64, eventType imht
 		b.xpod.log.Warn("broadcast: list members failed", "error", err, "channel_id", channelID)
 		return
 	}
+	uids := make([]int64, 0, len(members))
 	for _, m := range members {
-		b.xpod.dispatch(m.UserID, gateway.WSMessageType(eventType), payload)
+		uids = append(uids, m.UserID)
 	}
+	b.xpod.broadcast(uids, strconv.FormatInt(channelID, 10),
+		gateway.WSMessageType(eventType), payload)
 }
 
 // corsMiddleware adds permissive CORS headers for local Tauri development.

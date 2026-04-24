@@ -58,7 +58,7 @@ func TestSync_FullFlow(t *testing.T) {
 	r := gin.New()
 	authedAPI := r.Group("/api")
 	authedAPI.Use(middleware.JWTGin(integrationSecret))
-	imhttp.RegisterChannelRoutes(authedAPI, service.NewChannelService(channels, users), nil)
+	imhttp.RegisterChannelRoutes(authedAPI, service.NewChannelService(channels, users, nil), nil)
 	imhttp.RegisterMessageRoutes(authedAPI,
 		service.NewMessageService(messages, channels, files),
 		imhttp.MessageRouteOpts{},

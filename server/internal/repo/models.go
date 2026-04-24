@@ -96,6 +96,11 @@ type Message struct {
 	Deleted       bool          `gorm:"column:deleted;not null;default:false"                   json:"deleted,omitempty"`
 	DeletedAt     *time.Time    `gorm:"column:deleted_at"                                       json:"deleted_at,omitempty"`
 	IsUrgent      bool          `gorm:"column:is_urgent;not null;default:false"                 json:"is_urgent,omitempty"`
+	// Props is a nullable JSONB payload used by system messages (msg_type=4)
+	// to describe what happened — e.g. {"sys_type":"member_joined","actor_id":1,"target_id":9}.
+	// Stored as a string so GORM stays decoupled from any JSONB helper type;
+	// callers json.Unmarshal into their own struct shape.
+	Props         *string       `gorm:"column:props;type:jsonb"                                 json:"props,omitempty"`
 }
 
 // TableName pins the GORM-derived table name to the migration.

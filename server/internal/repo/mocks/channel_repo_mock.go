@@ -72,6 +72,56 @@ func (_c *ChannelRepoMock_AddMember_Call) RunAndReturn(run func(context.Context,
 	return _c
 }
 
+// AddMemberTx provides a mock function with given fields: ctx, tx, channelID, userID, role
+func (_m *ChannelRepoMock) AddMemberTx(ctx context.Context, tx *gorm.DB, channelID int64, userID int64, role int16) error {
+	ret := _m.Called(ctx, tx, channelID, userID, role)
+
+	if len(ret) == 0 {
+		panic("no return value specified for AddMemberTx")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, *gorm.DB, int64, int64, int16) error); ok {
+		r0 = rf(ctx, tx, channelID, userID, role)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// ChannelRepoMock_AddMemberTx_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'AddMemberTx'
+type ChannelRepoMock_AddMemberTx_Call struct {
+	*mock.Call
+}
+
+// AddMemberTx is a helper method to define mock.On call
+//   - ctx context.Context
+//   - tx *gorm.DB
+//   - channelID int64
+//   - userID int64
+//   - role int16
+func (_e *ChannelRepoMock_Expecter) AddMemberTx(ctx interface{}, tx interface{}, channelID interface{}, userID interface{}, role interface{}) *ChannelRepoMock_AddMemberTx_Call {
+	return &ChannelRepoMock_AddMemberTx_Call{Call: _e.mock.On("AddMemberTx", ctx, tx, channelID, userID, role)}
+}
+
+func (_c *ChannelRepoMock_AddMemberTx_Call) Run(run func(ctx context.Context, tx *gorm.DB, channelID int64, userID int64, role int16)) *ChannelRepoMock_AddMemberTx_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(*gorm.DB), args[2].(int64), args[3].(int64), args[4].(int16))
+	})
+	return _c
+}
+
+func (_c *ChannelRepoMock_AddMemberTx_Call) Return(_a0 error) *ChannelRepoMock_AddMemberTx_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *ChannelRepoMock_AddMemberTx_Call) RunAndReturn(run func(context.Context, *gorm.DB, int64, int64, int16) error) *ChannelRepoMock_AddMemberTx_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Create provides a mock function with given fields: ctx, ch
 func (_m *ChannelRepoMock) Create(ctx context.Context, ch *repo.Channel) error {
 	ret := _m.Called(ctx, ch)
@@ -856,6 +906,55 @@ func (_c *ChannelRepoMock_RemoveMember_Call) RunAndReturn(run func(context.Conte
 	return _c
 }
 
+// RemoveMemberTx provides a mock function with given fields: ctx, tx, channelID, userID
+func (_m *ChannelRepoMock) RemoveMemberTx(ctx context.Context, tx *gorm.DB, channelID int64, userID int64) error {
+	ret := _m.Called(ctx, tx, channelID, userID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for RemoveMemberTx")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, *gorm.DB, int64, int64) error); ok {
+		r0 = rf(ctx, tx, channelID, userID)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// ChannelRepoMock_RemoveMemberTx_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'RemoveMemberTx'
+type ChannelRepoMock_RemoveMemberTx_Call struct {
+	*mock.Call
+}
+
+// RemoveMemberTx is a helper method to define mock.On call
+//   - ctx context.Context
+//   - tx *gorm.DB
+//   - channelID int64
+//   - userID int64
+func (_e *ChannelRepoMock_Expecter) RemoveMemberTx(ctx interface{}, tx interface{}, channelID interface{}, userID interface{}) *ChannelRepoMock_RemoveMemberTx_Call {
+	return &ChannelRepoMock_RemoveMemberTx_Call{Call: _e.mock.On("RemoveMemberTx", ctx, tx, channelID, userID)}
+}
+
+func (_c *ChannelRepoMock_RemoveMemberTx_Call) Run(run func(ctx context.Context, tx *gorm.DB, channelID int64, userID int64)) *ChannelRepoMock_RemoveMemberTx_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(*gorm.DB), args[2].(int64), args[3].(int64))
+	})
+	return _c
+}
+
+func (_c *ChannelRepoMock_RemoveMemberTx_Call) Return(_a0 error) *ChannelRepoMock_RemoveMemberTx_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *ChannelRepoMock_RemoveMemberTx_Call) RunAndReturn(run func(context.Context, *gorm.DB, int64, int64) error) *ChannelRepoMock_RemoveMemberTx_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Update provides a mock function with given fields: ctx, channelID, name, avatarURL
 func (_m *ChannelRepoMock) Update(ctx context.Context, channelID int64, name string, avatarURL string) error {
 	ret := _m.Called(ctx, channelID, name, avatarURL)
@@ -901,6 +1000,53 @@ func (_c *ChannelRepoMock_Update_Call) Return(_a0 error) *ChannelRepoMock_Update
 }
 
 func (_c *ChannelRepoMock_Update_Call) RunAndReturn(run func(context.Context, int64, string, string) error) *ChannelRepoMock_Update_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// WithinTx provides a mock function with given fields: ctx, fn
+func (_m *ChannelRepoMock) WithinTx(ctx context.Context, fn func(*gorm.DB) error) error {
+	ret := _m.Called(ctx, fn)
+
+	if len(ret) == 0 {
+		panic("no return value specified for WithinTx")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, func(*gorm.DB) error) error); ok {
+		r0 = rf(ctx, fn)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// ChannelRepoMock_WithinTx_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'WithinTx'
+type ChannelRepoMock_WithinTx_Call struct {
+	*mock.Call
+}
+
+// WithinTx is a helper method to define mock.On call
+//   - ctx context.Context
+//   - fn func(*gorm.DB) error
+func (_e *ChannelRepoMock_Expecter) WithinTx(ctx interface{}, fn interface{}) *ChannelRepoMock_WithinTx_Call {
+	return &ChannelRepoMock_WithinTx_Call{Call: _e.mock.On("WithinTx", ctx, fn)}
+}
+
+func (_c *ChannelRepoMock_WithinTx_Call) Run(run func(ctx context.Context, fn func(*gorm.DB) error)) *ChannelRepoMock_WithinTx_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(func(*gorm.DB) error))
+	})
+	return _c
+}
+
+func (_c *ChannelRepoMock_WithinTx_Call) Return(_a0 error) *ChannelRepoMock_WithinTx_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *ChannelRepoMock_WithinTx_Call) RunAndReturn(run func(context.Context, func(*gorm.DB) error) error) *ChannelRepoMock_WithinTx_Call {
 	_c.Call.Return(run)
 	return _c
 }

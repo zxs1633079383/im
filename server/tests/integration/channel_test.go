@@ -63,7 +63,7 @@ func TestChannel_FullFlow(t *testing.T) {
 	authedAPI.Use(middleware.JWTGin(integrationSecret))
 	// recording pusher so we can assert the add-member fan-out fires.
 	channelPush := &ChannelRecorder{}
-	imhttp.RegisterChannelRoutes(authedAPI, service.NewChannelService(channels, users), channelPush)
+	imhttp.RegisterChannelRoutes(authedAPI, service.NewChannelService(channels, users, nil), channelPush)
 
 	e := testutil.NewExpect(t, r)
 

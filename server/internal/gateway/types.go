@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 )
 
@@ -138,17 +139,25 @@ type ChannelEventPayload struct {
 	Name      string `json:"name"`
 }
 
-// PulsarPushEvent is the message published by MessageService to msg.push.{gateway_id}.
-// Gateway consumes this and routes to the WebSocket connection.
-type PulsarPushEvent struct {
-	PushID    string  `json:"push_id"`    // unique per delivery attempt
-	TargetUID int64   `json:"target_uid"` // user to receive this push
-	ChannelID int64   `json:"channel_id"`
-	Seq       int64   `json:"seq"`
-	ServerID  int64   `json:"server_msg_id"`
-	SenderID  int64   `json:"sender_id"`
-	Content   string  `json:"content,omitempty"`
-	MsgType   int16   `json:"msg_type"`
-	VisibleTo []int64 `json:"visible_to,omitempty"`
-	CreatedAt string  `json:"created_at"` // RFC3339
+// PulsarPushEnvelope is the wire format for every cross-pod push event.
+//
+// Before the batch refactor the codebase had a push_msg-specific struct that
+// silently dropped cross-pod sends because the app-level payload never
+// included TargetUID. The envelope fixes both issues at once:
+//
+//   - `TargetUIDs` is carried at the envelope level so the receiving pod
+//     always knows who to deliver to regardless of the inner payload shape.
+//   - `MsgType` lets the consumer reconstruct the original WS frame type
+//     (push_msg, read_sync, friend_event, msg_updated, ...) without any
+//     hardcoded assumption.
+//   - `Payload` stays opaque — producers pass whatever struct matches MsgType
+//     and consumers hand the raw bytes back to the client's WS frame as-is.
+//
+// One Pulsar message can carry N UIDs so a broadcast to a group hosting many
+// users on the same pod costs exactly one producer.Send per destination pod,
+// not N.
+type PulsarPushEnvelope struct {
+	TargetUIDs []int64         `json:"target_uids"` // at least 1
+	MsgType    WSMessageType   `json:"msg_type"`    // e.g. "push_msg", "read_sync"
+	Payload    json.RawMessage `json:"payload"`     // app-level payload, opaque to the envelope
 }

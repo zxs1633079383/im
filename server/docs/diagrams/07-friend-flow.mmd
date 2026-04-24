@@ -1,0 +1,76 @@
+%% 好友搜索 + 申请 + 接受/拒绝 全流程
+
+sequenceDiagram
+    autonumber
+    actor A as Alice (发起)
+    participant HA as pod-X (Alice 连的)
+    participant FS as FriendService
+    participant UR as UserRepo
+    participant FR as FriendshipRepo
+    participant DB as PostgreSQL
+    participant Ev as hubFriendEventPusher
+    participant XPod as CrossPodPush
+    actor B as Bob (被搜索+接收)
+
+    rect rgb(240,248,255)
+        Note over A,B: 阶段 1：搜索用户 GET /api/users/search
+        A->>HA: GET /api/users/search?q=bob
+        HA->>FS: SearchUsers(q="bob")
+        FS->>UR: Search(q)
+        UR->>DB: SELECT ... FROM users<br/>WHERE username ILIKE '%bob%' OR display_name ILIKE '%bob%'<br/>LIMIT 20
+        DB-->>UR: [{id:B, username:"bob", ...}, ...]
+        UR-->>FS: users
+        FS-->>HA: users
+        HA-->>A: 200 {users:[...]}
+    end
+
+    rect rgb(255,248,240)
+        Note over A,B: 阶段 2：发送好友申请 POST /api/friends/request
+        A->>HA: POST /api/friends/request<br/>{addressee_id: B}
+        HA->>FS: SendRequest(A, B)
+        FS->>FR: SendRequest(A, B)
+        FR->>DB: INSERT friendships<br/>(requester=A, addressee=B, status=pending)
+        alt 已存在 (Postgres unique violation 23505)
+            DB-->>FR: error: 23505
+            FR-->>FS: error
+            FS-->>HA: ErrAlreadyExists
+            HA-->>A: 409 {"error":"already exists"}
+        else 成功
+            DB-->>FR: friendship{id:F1, status:pending}
+            FR-->>FS: nil
+            FS-->>HA: nil
+            HA-->>A: 201 {friendship_id:F1}
+            HA->>Ev: PushFriendEvent(B, "request", A)
+            Ev->>XPod: dispatch(B, TypeFriendEvent, {event_type:"request", from_user_id:A})
+            Note over XPod: hub.PushToUser(B) miss<br/>→ routing.Lookup(B) → Bob 所在 pod<br/>→ Pulsar msg.push.{bob-pod}
+            XPod->>B: {type:"friend_event", payload:{event_type:"request", from_user_id:A}}
+            B->>B: UI 弹出"Alice 想加你为好友"
+        end
+    end
+
+    rect rgb(240,255,240)
+        Note over A,B: 阶段 3：Bob 接受申请 POST /api/friends/accept
+        B->>HA: POST /api/friends/accept<br/>{friendship_id: F1}
+        HA->>FS: AcceptRequest(F1, B)
+        FS->>FR: AcceptRequest(F1, B)
+        FR->>DB: UPDATE friendships SET status='accepted'<br/>WHERE id=F1 AND addressee_id=B<br/>RETURNING requester_id
+        alt 不是 addressee (Bob 不是被申请方)
+            DB-->>FR: RowsAffected=0
+            FR-->>FS: repo.ErrNotFound
+            HA-->>B: 404
+        else 成功
+            DB-->>FR: requester_id=A
+            FR-->>FS: A
+            FS-->>HA: A
+            HA-->>B: 200
+            HA->>Ev: PushFriendEvent(A, "accepted", B)
+            Ev->>XPod: dispatch(A, TypeFriendEvent, {event_type:"accepted", from_user_id:B})
+            XPod->>A: {type:"friend_event", payload:{event_type:"accepted", from_user_id:B}}
+            A->>A: UI 显示"Bob 接受了你的申请"<br/>好友列表刷新
+        end
+    end
+
+    rect rgb(255,240,240)
+        Note over A,B: 阶段 4（反例）：Bob 拒绝 POST /api/friends/reject
+        Note right of B: 流程同阶段 3<br/>但 UPDATE 写 status='rejected'<br/>推 friend_event{event_type:"rejected"} 给 Alice
+    end

@@ -19,7 +19,7 @@ func newChannelSvc(t *testing.T) (*service.ChannelService, *mocks.ChannelRepoMoc
 	t.Helper()
 	ch := mocks.NewChannelRepoMock(t)
 	us := mocks.NewUserRepoMock(t)
-	return service.NewChannelService(ch, us), ch, us
+	return service.NewChannelService(ch, us, nil), ch, us
 }
 
 func TestChannel_CreateGroup_AddsCallerAsOwner(t *testing.T) {

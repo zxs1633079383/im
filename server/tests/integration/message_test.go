@@ -60,7 +60,7 @@ func TestMessage_FullFlow(t *testing.T) {
 	authedAPI := r.Group("/api")
 	authedAPI.Use(middleware.JWTGin(integrationSecret))
 	// Channel routes are needed to spin up the DM.
-	imhttp.RegisterChannelRoutes(authedAPI, service.NewChannelService(channels, users), nil)
+	imhttp.RegisterChannelRoutes(authedAPI, service.NewChannelService(channels, users, nil), nil)
 	// Message routes — pusher/syncer left nil; the gateway hub isn't wired here.
 	imhttp.RegisterMessageRoutes(authedAPI,
 		service.NewMessageService(messages, channels, files),

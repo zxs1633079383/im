@@ -2,12 +2,31 @@ package repo
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
 
 	"gorm.io/gorm"
 )
+
+// SysTypeKey is the mandatory discriminator key on every system-message props
+// payload. Callers use the constants below so sys_type strings never drift.
+const SysTypeKey = "sys_type"
+
+// System-message sys_type values. Kept as untyped string constants so callers
+// drop them straight into props maps without conversion.
+const (
+	SysTypeChannelCreated = "channel_created"
+	SysTypeChannelUpdated = "channel_updated"
+	SysTypeMemberJoined   = "member_joined"
+	SysTypeMemberRemoved  = "member_removed"
+	SysTypeMemberLeft     = "member_left"
+)
+
+// ErrInvalidSystemProps is returned by PostSystemMessage when the props map
+// lacks the required "sys_type" string key.
+var ErrInvalidSystemProps = errors.New("system message props must contain non-empty sys_type")
 
 // MessageRepo persists chat messages.
 //
@@ -28,6 +47,16 @@ import (
 type MessageRepo interface {
 	Send(ctx context.Context, msg *Message) error
 	AllocSeqAndInsert(ctx context.Context, tx *gorm.DB, msg *Message) (int64, error)
+	// PostSystemMessage inserts a msg_type=System message whose body is a typed
+	// JSON props payload (stored in messages.props). Used by channel-level
+	// events (member joined/removed, channel renamed, ...) so clients receive
+	// them via the normal push_msg + /api/sync pipe instead of bespoke events.
+	//
+	// props MUST contain a non-empty "sys_type" string key; otherwise
+	// ErrInvalidSystemProps is returned. tx != nil reuses the caller's
+	// transaction (required when combining with a sibling mutation such as
+	// RemoveMember to keep them atomic).
+	PostSystemMessage(ctx context.Context, tx *gorm.DB, channelID, senderID int64, props map[string]any) (*Message, error)
 	UpdateContent(ctx context.Context, msgID, callerID int64, content string) (*Message, error)
 	SoftDelete(ctx context.Context, msgID, callerID int64) (*Message, error)
 	GetByID(ctx context.Context, id int64) (*Message, error)
@@ -152,6 +181,42 @@ func (r *gormMessageRepo) AllocSeqAndInsert(ctx context.Context, tx *gorm.DB, ms
 	return msg.Seq, nil
 }
 
+// PostSystemMessage implements MessageRepo.PostSystemMessage.
+//
+// It validates props["sys_type"] is a non-empty string, marshals props to JSON
+// (stored in messages.props), constructs a Message with MsgType=System, and
+// delegates to AllocSeqAndInsert so seq monotonicity is preserved and the
+// optional external tx is reused. Empty content is intentional — the client
+// renders from props["sys_type"] + the remaining fields.
+func (r *gormMessageRepo) PostSystemMessage(
+	ctx context.Context, tx *gorm.DB,
+	channelID, senderID int64, props map[string]any,
+) (*Message, error) {
+	ctx, span := tracer.Start(ctx, "MessageRepo.PostSystemMessage")
+	defer span.End()
+
+	sysType, _ := props[SysTypeKey].(string)
+	if sysType == "" {
+		return nil, ErrInvalidSystemProps
+	}
+	payload, err := json.Marshal(props)
+	if err != nil {
+		return nil, fmt.Errorf("marshal system props: %w", err)
+	}
+	propsStr := string(payload)
+
+	msg := &Message{
+		ChannelID: channelID,
+		SenderID:  senderID,
+		MsgType:   MsgTypeSystem,
+		Props:     &propsStr,
+	}
+	if _, err := r.AllocSeqAndInsert(ctx, tx, msg); err != nil {
+		return nil, fmt.Errorf("post system message: %w", err)
+	}
+	return msg, nil
+}
+
 // UpdateContent sets content + updated_at=now() for msgID when callerID is the
 // sender and the message is not already soft-deleted. Returns the refreshed
 // row. Errors:
@@ -251,7 +316,7 @@ func (r *gormMessageRepo) FetchAroundTimestamp(ctx context.Context, channelID, u
 	err := r.db.WithContext(ctx).Raw(
 		`SELECT * FROM (
 		    SELECT id, channel_id, seq, client_msg_id, sender_id, msg_type, content,
-		           visible_to, reply_to, forwarded_from, created_at, updated_at,
+		           visible_to, reply_to, forwarded_from, props, created_at, updated_at,
 		           deleted, deleted_at
 		    FROM messages
 		    WHERE channel_id = ? AND created_at <= ? AND deleted = FALSE
@@ -268,7 +333,7 @@ func (r *gormMessageRepo) FetchAroundTimestamp(ctx context.Context, channelID, u
 	var newer []Message
 	err = r.db.WithContext(ctx).Raw(
 		`SELECT id, channel_id, seq, client_msg_id, sender_id, msg_type, content,
-		        visible_to, reply_to, forwarded_from, created_at, updated_at,
+		        visible_to, reply_to, forwarded_from, props, created_at, updated_at,
 		        deleted, deleted_at
 		 FROM messages
 		 WHERE channel_id = ? AND created_at > ? AND deleted = FALSE
@@ -289,7 +354,7 @@ func (r *gormMessageRepo) FetchReplies(ctx context.Context, rootID, userID int64
 	var out []Message
 	err := r.db.WithContext(ctx).Raw(
 		`SELECT id, channel_id, seq, client_msg_id, sender_id, msg_type, content,
-		        visible_to, reply_to, forwarded_from, created_at, updated_at,
+		        visible_to, reply_to, forwarded_from, props, created_at, updated_at,
 		        deleted, deleted_at
 		 FROM messages
 		 WHERE reply_to = ? AND deleted = FALSE
@@ -373,7 +438,7 @@ func (r *gormMessageRepo) FetchForUser(ctx context.Context, channelID, userID, a
 	var out []Message
 	err := r.db.WithContext(ctx).Raw(
 		`SELECT id, channel_id, seq, client_msg_id, sender_id, msg_type, content,
-		        visible_to, reply_to, forwarded_from, created_at
+		        visible_to, reply_to, forwarded_from, props, created_at
 		 FROM messages
 		 WHERE channel_id = ? AND seq > ?
 		   AND (visible_to IS NULL OR ? = ANY(visible_to) OR sender_id = ?)
@@ -396,7 +461,7 @@ func (r *gormMessageRepo) FetchBefore(ctx context.Context, channelID, userID, be
 	err := r.db.WithContext(ctx).Raw(
 		`SELECT * FROM (
 		    SELECT id, channel_id, seq, client_msg_id, sender_id, msg_type, content,
-		           visible_to, reply_to, forwarded_from, created_at
+		           visible_to, reply_to, forwarded_from, props, created_at
 		    FROM messages
 		    WHERE channel_id = ? AND seq < ?
 		      AND (visible_to IS NULL OR ? = ANY(visible_to) OR sender_id = ?)
@@ -421,14 +486,14 @@ func (r *gormMessageRepo) FetchAround(ctx context.Context, channelID, userID, ar
 	var out []Message
 	err := r.db.WithContext(ctx).Raw(
 		`(SELECT id, channel_id, seq, client_msg_id, sender_id, msg_type, content,
-		         visible_to, reply_to, forwarded_from, created_at
+		         visible_to, reply_to, forwarded_from, props, created_at
 		  FROM messages
 		  WHERE channel_id = ? AND seq <= ?
 		    AND (visible_to IS NULL OR ? = ANY(visible_to) OR sender_id = ?)
 		  ORDER BY seq DESC LIMIT ?)
 		 UNION ALL
 		 (SELECT id, channel_id, seq, client_msg_id, sender_id, msg_type, content,
-		         visible_to, reply_to, forwarded_from, created_at
+		         visible_to, reply_to, forwarded_from, props, created_at
 		  FROM messages
 		  WHERE channel_id = ? AND seq > ?
 		    AND (visible_to IS NULL OR ? = ANY(visible_to) OR sender_id = ?)

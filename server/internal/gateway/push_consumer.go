@@ -109,83 +109,106 @@ func (pc *PushConsumer) Start(ctx context.Context, pulsarClient *imPulsar.Client
 	return nil
 }
 
-// Handle is the Pulsar HandlerFunc. It processes one PulsarPushEvent: finds
-// target user connections in the Hub, pushes the message (full or phantom based
-// on visibility), and waits up to ackTimeout for a client ACK (1 retry).
+// Handle is the Pulsar HandlerFunc. It processes one PulsarPushEnvelope by
+// iterating the envelope's TargetUIDs, looking up local conns for each,
+// and pushing the shared raw payload as a WS frame of type env.MsgType.
+//
+// push_msg style ACK tracking: when the inner payload carries a push_id
+// (e.g. PushMsgPayload), deliverWithRetry waits for the client ACK on the
+// first recipient with live conns. Other payload types (read_sync,
+// friend_event, system messages) skip ACK tracking and rely on pong-diff
+// recovery for robustness.
 func (pc *PushConsumer) Handle(ctx context.Context, data []byte) error {
-	var event PulsarPushEvent
-	if err := json.Unmarshal(data, &event); err != nil {
-		return fmt.Errorf("unmarshal push event: %w", err)
+	var env PulsarPushEnvelope
+	if err := json.Unmarshal(data, &env); err != nil {
+		return fmt.Errorf("unmarshal push envelope: %w", err)
 	}
-
-	conns := pc.hub.ConnsForUser(event.TargetUID)
-	if len(conns) == 0 {
-		// User not connected to this gateway pod — routing should have prevented
-		// this, but log and ACK to avoid redelivery.
-		pc.log.Debug("push: no connections for user", "uid", event.TargetUID, "push_id", event.PushID)
+	if len(env.TargetUIDs) == 0 {
+		pc.log.Debug("push envelope has no target uids")
 		return nil
 	}
 
-	// Build payload. MsgType==2 means phantom: strip content and visible_to.
-	payload := buildPushPayload(event)
-
-	// Attempt delivery with 1 retry.
-	acked := pc.deliverWithRetry(ctx, event.PushID, event.ChannelID, event.Seq, payload, conns)
-	if !acked {
-		pc.log.Debug("push ack not received — pull fallback will catch up",
-			"push_id", event.PushID, "uid", event.TargetUID)
+	pushID := extractPushID(env.Payload)
+	delivered := 0
+	for _, uid := range env.TargetUIDs {
+		if pc.deliverOne(ctx, uid, env.MsgType, env.Payload, pushID) {
+			delivered++
+		}
 	}
-
-	// Always ACK the Pulsar message to avoid redelivery storm.
-	// Pull-based fallback (heartbeat pong diff) covers missed pushes.
+	if delivered == 0 {
+		pc.log.Debug("push: no target conns on this pod",
+			"count", len(env.TargetUIDs), "type", string(env.MsgType))
+	}
+	// Always ACK the Pulsar message. Client-side ACK failures are covered by
+	// pong-diff fallback; Pulsar redelivery would amplify storms here.
 	return nil
 }
 
-// deliverWithRetry pushes payload to conns and waits for an ACK up to ackTimeout.
-// It performs at most maxRetries+1 total attempts. Returns true if ACKed.
+// deliverOne pushes rawPayload to every local conn of uid and, for push_msg
+// frames, waits on the client ACK via the shared ackRegistry. Returns true
+// when at least one conn received the frame.
+func (pc *PushConsumer) deliverOne(
+	ctx context.Context,
+	uid int64,
+	msgType WSMessageType,
+	rawPayload json.RawMessage,
+	pushID string,
+) bool {
+	conns := pc.hub.ConnsForUser(uid)
+	if len(conns) == 0 {
+		return false
+	}
+	// ACK tracking is only meaningful for push_msg delivery (that's what the
+	// client ACKs). Other types go fire-and-forget; pong-diff handles loss.
+	if msgType == TypePushMsg && pushID != "" {
+		return pc.deliverWithRetry(ctx, pushID, rawPayload, conns)
+	}
+	sent := 0
+	for _, c := range conns {
+		if c.PushRaw(msgType, rawPayload) {
+			sent++
+		}
+	}
+	return sent > 0
+}
+
+// deliverWithRetry pushes payload to conns and waits for an ACK up to
+// ackTimeout. It performs at most maxRetries+1 total attempts. Returns true
+// if any conn received the frame (ACK is a best-effort signal — the client
+// may ACK late or not at all; pong-diff recovers either way).
 func (pc *PushConsumer) deliverWithRetry(
 	ctx context.Context,
 	pushID string,
-	channelID int64,
-	seq int64,
-	payload PushMsgPayload,
+	rawPayload json.RawMessage,
 	conns []*Conn,
 ) bool {
 	for attempt := 0; attempt <= maxRetries; attempt++ {
 		if attempt > 0 {
-			// Wait retryInterval before re-pushing.
 			select {
 			case <-time.After(retryInterval):
 			case <-ctx.Done():
 				return false
 			}
 		}
-
 		ackCh := globalACKRegistry.await(pushID)
-
 		sent := 0
 		for _, c := range conns {
-			if c.Push(TypePushMsg, payload) {
+			if c.PushRaw(TypePushMsg, rawPayload) {
 				sent++
-				c.UpdateKnownSeq(channelID, seq)
 			}
 		}
-
 		if sent == 0 {
 			globalACKRegistry.cancel(pushID)
 			pc.log.Warn("push: all send buffers full, skipping retry",
 				"push_id", pushID, "attempt", attempt)
 			return false
 		}
-
 		select {
 		case <-ackCh:
 			pc.log.Debug("push ack received", "push_id", pushID, "attempt", attempt)
 			return true
 		case <-time.After(ackTimeout):
 			globalACKRegistry.cancel(pushID)
-			pc.log.Debug("push ack timeout", "push_id", pushID, "attempt", attempt)
-			// Continue to next attempt if retries remain.
 		case <-ctx.Done():
 			globalACKRegistry.cancel(pushID)
 			return false
@@ -194,20 +217,17 @@ func (pc *PushConsumer) deliverWithRetry(
 	return false
 }
 
-// buildPushPayload converts a PulsarPushEvent to the wire PushMsgPayload.
-// For phantom messages (MsgType==2, VisibleTo set and target is not in list),
-// content is already stripped by the message service before publishing.
-func buildPushPayload(event PulsarPushEvent) PushMsgPayload {
-	createdAt, _ := time.Parse(time.RFC3339, event.CreatedAt)
-	return PushMsgPayload{
-		PushID:    event.PushID,
-		ChannelID: event.ChannelID,
-		Seq:       event.Seq,
-		ServerID:  event.ServerID,
-		SenderID:  event.SenderID,
-		Content:   event.Content,
-		MsgType:   event.MsgType,
-		VisibleTo: event.VisibleTo,
-		CreatedAt: createdAt,
+// extractPushID peeks at a payload's push_id field without decoding the whole
+// struct. Payloads without push_id (read_sync, friend_event, etc.) return "".
+func extractPushID(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
 	}
+	var probe struct {
+		PushID string `json:"push_id"`
+	}
+	if err := json.Unmarshal(raw, &probe); err != nil {
+		return ""
+	}
+	return probe.PushID
 }

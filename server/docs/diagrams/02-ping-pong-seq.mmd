@@ -1,0 +1,34 @@
+%% 心跳 ping-pong 携带 seq 做差异检测
+%% 核心：pong 只告警（diff），不直接下发消息；客户端看到 diff 再调 /api/sync 拉
+sequenceDiagram
+    autonumber
+    actor C as Client
+    participant G as gateway pod
+    participant H as runHeartbeat goroutine
+    participant DB as PostgreSQL
+    participant R as Redis routing
+
+    Note over C,G: 前置：WS 已建立<br/>conn.knownSeq = {} (刚连上全空)
+    C->>G: WS 首帧：{type:"sync", channels:[...]} 或调 POST /api/sync<br/>建立 knownSeq 基准
+
+    loop 每 15s
+        C->>G: {type:"ping", payload:{channel_seqs:{"42":130, "88":5}}}
+        G->>G: conn.UpdateKnownSeq(42,130)<br/>conn.UpdateKnownSeq(88,5)<br/>conn.lastPong = now
+        G->>R: 异步 routing.Refresh(uid, gwID, deviceID)<br/>Lua: HSET + EXPIRE 45s<br/>(不阻塞 readPump)
+        Note right of R: TTL 刷到 45s<br/>15s ping × 3 容错
+    end
+
+    loop 每 15s (独立 ticker)
+        H->>DB: GetMemberChannelSeqs(uid)<br/>SELECT id, last_seq FROM channels<br/>JOIN channel_members WHERE user_id=?
+        DB-->>H: {42:130, 88:5, 99:200}  ← 服务端真相
+        H->>H: diff = {}<br/>for chID, srvSeq in serverSeqs:<br/>  if srvSeq > conn.KnownSeqFor(chID):<br/>    diff[chID] = srvSeq
+        Note right of H: 例如 chID 99 的 knownSeq 是 180<br/>而 server 是 200 → diff[99]=200
+        H->>C: {type:"pong", payload:{server_time, channel_seqs:{"99":200}}}
+    end
+
+    C->>C: 发现 pong.channel_seqs 非空<br/>→ 本地缺消息
+    C->>G: POST /api/sync {channels:[{id:99, seq:180}]}
+    G->>DB: FetchForUser(99, uid, afterSeq=180, limit=100)
+    DB-->>G: messages[181..200]
+    G-->>C: {channels:[{id:99, server_seq:200, messages:[...], unread}]}
+    C->>C: 本地落库 + knownSeq[99] = 200<br/>（下次 ping 会带 99:200，pong diff 归零）

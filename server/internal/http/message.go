@@ -13,11 +13,16 @@ import (
 	"im-server/internal/service"
 )
 
-// MessagePusher pushes a message to an online user via the gateway hub.
-// Mirrors handler.MessagePusher exactly so the existing
-// hubMessagePusher adapter in cmd/gateway/main.go works unchanged.
+// MessagePusher fans a chat message out to a group of online users on the
+// given channel. BroadcastMessage is the batch primitive: it carries N user
+// IDs so the gateway can collapse routing.Lookup + producer.Send to one
+// round-trip per destination pod.
+//
+// Callers that need distinct payloads per user (e.g. directed messages with
+// phantom stripping) invoke BroadcastMessage twice — once for visible users
+// with the real message, once for the phantom bucket with a stripped variant.
 type MessagePusher interface {
-	PushMessage(userID int64, msg *repo.Message)
+	BroadcastMessage(channelID int64, userIDs []int64, msg *repo.Message)
 }
 
 // ReadSyncPusher pushes read-receipt sync events to other devices of the same
@@ -486,25 +491,65 @@ func RegisterMessageRoutes(authed *gin.RouterGroup, svc *service.MessageService,
 }
 
 // pushToMembers fans out a push notification to all online channel members.
-// Directed messages get a phantom for non-visible users — same semantics as
-// the legacy handler.pushToMembers.
+// Directed messages bucket recipients into a visible group and a phantom
+// group; each bucket ships in one BroadcastMessage call so the gateway can
+// collapse per-member routing.Lookup + producer.Send into one aggregated
+// Pulsar message per destination pod.
 func pushToMembers(ctx context.Context, svc *service.MessageService, pusher MessagePusher, msg *repo.Message, log *slog.Logger) {
 	members, err := svc.ListMembers(ctx, msg.ChannelID)
 	if err != nil {
 		log.Error("list members for push", "channel_id", msg.ChannelID, "error", err)
 		return
 	}
+	if len(members) == 0 {
+		return
+	}
+	if msg.VisibleTo == nil {
+		uids := extractMemberUIDs(members)
+		pusher.BroadcastMessage(msg.ChannelID, uids, msg)
+		return
+	}
+	visible, phantom := bucketByVisibility(members, msg)
+	if len(visible) > 0 {
+		pusher.BroadcastMessage(msg.ChannelID, visible, msg)
+	}
+	if len(phantom) > 0 {
+		pusher.BroadcastMessage(msg.ChannelID, phantom, phantomVariant(msg))
+	}
+}
+
+// extractMemberUIDs returns the user_ids of the given channel members.
+func extractMemberUIDs(members []repo.ChannelMember) []int64 {
+	out := make([]int64, 0, len(members))
 	for _, m := range members {
-		pushMsg := msg
-		if msg.VisibleTo != nil && !msg.IsVisibleTo(m.UserID) {
-			pushMsg = &repo.Message{
-				ChannelID: msg.ChannelID,
-				Seq:       msg.Seq,
-				MsgType:   repo.MsgTypePhantom,
-				CreatedAt: msg.CreatedAt,
-			}
+		out = append(out, m.UserID)
+	}
+	return out
+}
+
+// bucketByVisibility splits directed-message recipients into users who can
+// see the full content and users who only see a phantom placeholder. The
+// sender always lands in the visible bucket so they see their own message.
+func bucketByVisibility(members []repo.ChannelMember, msg *repo.Message) (visible, phantom []int64) {
+	for _, m := range members {
+		if msg.IsVisibleTo(m.UserID) || m.UserID == msg.SenderID {
+			visible = append(visible, m.UserID)
+		} else {
+			phantom = append(phantom, m.UserID)
 		}
-		pusher.PushMessage(m.UserID, pushMsg)
+	}
+	return visible, phantom
+}
+
+// phantomVariant returns a stripped copy of msg that carries only the seq
+// skeleton a phantom recipient needs (no content, no visible_to, msg_type
+// flipped to MsgTypePhantom).
+func phantomVariant(msg *repo.Message) *repo.Message {
+	return &repo.Message{
+		ChannelID: msg.ChannelID,
+		Seq:       msg.Seq,
+		MsgType:   repo.MsgTypePhantom,
+		CreatedAt: msg.CreatedAt,
 	}
 }
 

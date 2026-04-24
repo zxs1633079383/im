@@ -1,0 +1,63 @@
+%%{init: {
+  'theme': 'base',
+  'themeVariables': {
+    'background': '#0b1220',
+    'primaryColor': '#111827',
+    'secondaryColor': '#1f2937',
+    'tertiaryColor': '#374151',
+    'primaryTextColor': '#e5e7eb',
+    'lineColor': '#9ca3af',
+    'noteBkgColor': '#111827',
+    'noteTextColor': '#e5e7eb'
+  }
+}}%%
+%% 跨 pod 推送全链路（batched 版本）
+%% Step 1: routing.LookupBatch 一次 Redis pipeline 拿全部目标 pod
+%% Step 2: 按 gatewayID 聚合，每个目标 pod 一次 Pulsar Send（带 TargetUIDs）
+%% Step 3: 消费端展开 TargetUIDs 循环推 WS，共享一次 json.Marshal
+sequenceDiagram
+    autonumber
+    actor Sender as user-A (WS on pod-1)
+    participant P1 as pod-1 (HTTP+WS)
+    participant PG as PostgreSQL
+    participant R as Redis routing
+    participant Pul as Pulsar
+    participant P2 as pod-2 (hosts 100, 103)
+    participant P3 as pod-3 (hosts 101, 102)
+
+    Note over Sender,P3: 前置：500 人群，其中 100~103 在 pod-2/3，其余在 pod-1
+
+    Sender->>P1: POST /api/channels/42/messages
+    P1->>PG: Tx AllocSeqAndInsert → msg{seq=99}
+    PG-->>P1: msg
+    P1-->>Sender: 201 msg
+    P1->>P1: go pushToMembers(msg)
+
+    Note over P1: members = svc.ListMembers(42) = 500 人
+
+    Note over P1: visible_to=nil → 全员一个 payload
+    Note over P1: Local hit: 本 pod hub 直推 496 人 (Conn.PushRaw)
+    P1->>P1: 剩 remote = [100,101,102,103]
+
+    P1->>R: Pipeline HGETALL * 4 (一次 round-trip)
+    R-->>P1: {100:[pod-2], 101:[pod-3], 102:[pod-3], 103:[pod-2]}
+
+    Note over P1: bucketByGateway:<br/>pod-2 → [100,103]<br/>pod-3 → [101,102]
+
+    P1->>Pul: Send(msg.push.pod-2, PulsarPushEnvelope{<br/>  TargetUIDs:[100,103], MsgType:"push_msg", Payload:<原消息JSON>})
+    P1->>Pul: Send(msg.push.pod-3, PulsarPushEnvelope{<br/>  TargetUIDs:[101,102], MsgType:"push_msg", Payload:<同上>})
+
+    Note over P1,Pul: 500 人 3 pod → 之前 500 次 routing.Lookup + 500 次 Send<br/>现在 1 次 Pipeline + 2 次 Send（按目标 pod 聚合）
+
+    Pul->>P2: Handle(envelope)
+    loop for uid in envelope.TargetUIDs
+        P2->>P2: hub.ConnsForUser(uid) → conns
+        P2->>P2: c.PushRaw(msgType, envelope.Payload)
+    end
+
+    Pul->>P3: Handle(envelope)
+    loop for uid in envelope.TargetUIDs
+        P3->>P3: 同上
+    end
+
+    Note over P2,P3: 单次 Pulsar 消息 fan-out 到 2 个本 pod 用户<br/>Payload bytes 零拷贝复用

@@ -58,6 +58,21 @@ type ChannelRepo interface {
 	// 注册成员；ListTopics 返回 parentID 下所有 topic（按 id 排序）。
 	CreateTopic(ctx context.Context, params CreateTopicParams) (*Channel, error)
 	ListTopics(ctx context.Context, parentID int64) ([]Channel, error)
+
+	// AddMemberTx / RemoveMemberTx are tx-aware siblings of AddMember /
+	// RemoveMember. They exist so service-layer code can compose a system
+	// message insert + the membership mutation inside a single transaction —
+	// required when the system message must fan out BEFORE the membership
+	// change takes effect (e.g. "member_removed" needs to reach the target
+	// while it is still a member of the channel).
+	AddMemberTx(ctx context.Context, tx *gorm.DB, channelID, userID int64, role int16) error
+	RemoveMemberTx(ctx context.Context, tx *gorm.DB, channelID, userID int64) error
+
+	// WithinTx runs fn inside a gorm transaction, exposing the tx handle so
+	// the caller can thread it through AddMemberTx / RemoveMemberTx /
+	// MessageRepo.AllocSeqAndInsert. The callback either returns nil (commit)
+	// or any error (rollback). Nested transactions reuse the outer one.
+	WithinTx(ctx context.Context, fn func(tx *gorm.DB) error) error
 }
 
 type gormChannelRepo struct{ db *gorm.DB }
@@ -124,13 +139,20 @@ func (r *gormChannelRepo) IncrementSeq(ctx context.Context, tx *gorm.DB, channel
 }
 
 func (r *gormChannelRepo) AddMember(ctx context.Context, channelID, userID int64, role int16) error {
+	return r.AddMemberTx(ctx, nil, channelID, userID, role)
+}
+
+// AddMemberTx is the tx-aware variant of AddMember. When tx is nil it falls
+// back to the repo's own connection; otherwise the INSERT runs inside the
+// caller's transaction so membership changes can be atomic with sibling
+// writes (see ChannelService.AddMember → system message).
+func (r *gormChannelRepo) AddMemberTx(ctx context.Context, tx *gorm.DB, channelID, userID int64, role int16) error {
 	m := &ChannelMember{
 		UserID:    userID,
 		ChannelID: channelID,
 		Role:      role,
 	}
-	// Match existing INSERT ... ON CONFLICT (user_id, channel_id) DO NOTHING.
-	err := r.db.WithContext(ctx).Clauses(clause.OnConflict{
+	err := r.dbOr(ctx, tx).Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "user_id"}, {Name: "channel_id"}},
 		DoNothing: true,
 	}).Create(m).Error
@@ -141,15 +163,27 @@ func (r *gormChannelRepo) AddMember(ctx context.Context, channelID, userID int64
 }
 
 func (r *gormChannelRepo) RemoveMember(ctx context.Context, channelID, userID int64) error {
-	// Mirror the existing pgx semantics: DELETE is idempotent — no error
-	// when no row matches.
-	err := r.db.WithContext(ctx).
+	return r.RemoveMemberTx(ctx, nil, channelID, userID)
+}
+
+// RemoveMemberTx is the tx-aware variant of RemoveMember. DELETE is idempotent
+// — zero rows matched is not an error, matching the existing pgx semantics.
+func (r *gormChannelRepo) RemoveMemberTx(ctx context.Context, tx *gorm.DB, channelID, userID int64) error {
+	err := r.dbOr(ctx, tx).
 		Where("user_id = ? AND channel_id = ?", userID, channelID).
 		Delete(&ChannelMember{}).Error
 	if err != nil {
 		return fmt.Errorf("remove member: %w", err)
 	}
 	return nil
+}
+
+// WithinTx runs fn inside a GORM transaction. The callback's return value
+// decides commit (nil) vs rollback (non-nil). Exposed on the repo so
+// service-layer code can thread the tx through AddMemberTx / RemoveMemberTx /
+// MessageRepo.AllocSeqAndInsert without depending on *gorm.DB directly.
+func (r *gormChannelRepo) WithinTx(ctx context.Context, fn func(tx *gorm.DB) error) error {
+	return r.db.WithContext(ctx).Transaction(fn)
 }
 
 func (r *gormChannelRepo) GetMember(ctx context.Context, channelID, userID int64) (*ChannelMember, error) {

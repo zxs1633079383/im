@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 
+	"gorm.io/gorm"
+
 	"im-server/internal/repo"
 )
 
@@ -35,11 +37,20 @@ var (
 type ChannelService struct {
 	channels repo.ChannelRepo
 	users    repo.UserRepo
+	// messages is optional. When non-nil, membership / metadata mutations
+	// (Update / AddMember / RemoveMember / LeaveChannel / CreateGroup) emit a
+	// system message (MsgType=System) carrying a typed props payload so
+	// clients receive the event through the normal push_msg + /api/sync pipe.
+	// Passing nil turns off system-message emission — used by unit tests that
+	// don't care about the side channel.
+	messages repo.MessageRepo
 }
 
-// NewChannelService wires the supplied repos.
-func NewChannelService(channels repo.ChannelRepo, users repo.UserRepo) *ChannelService {
-	return &ChannelService{channels: channels, users: users}
+// NewChannelService wires the supplied repos. messages may be nil — when nil,
+// system-message emission is disabled (handy for older tests). Production
+// wires repo.MessageRepo so channel events land in the message stream.
+func NewChannelService(channels repo.ChannelRepo, users repo.UserRepo, messages repo.MessageRepo) *ChannelService {
+	return &ChannelService{channels: channels, users: users, messages: messages}
 }
 
 // MemberWithUser is a ChannelMember enriched with basic user profile fields.
@@ -93,6 +104,16 @@ func (s *ChannelService) CreateGroup(ctx context.Context, creatorID int64, name 
 			continue
 		}
 		added = append(added, AddedMember{UserID: uid})
+	}
+
+	// Anchor system messages so /api/sync replays the channel's history
+	// symmetrically: one channel_created at seq=1 and a member_joined per
+	// non-creator member, in the same order AddMember returned. Best-effort —
+	// the channel + members are already in place, so losing a marker is
+	// preferable to failing the whole request.
+	_ = s.postSys(ctx, nil, ch.ID, creatorID, channelCreatedProps(creatorID, ch.Name))
+	for _, m := range added {
+		_ = s.postSys(ctx, nil, ch.ID, creatorID, memberJoinedProps(creatorID, m.UserID))
 	}
 	return ch, added, nil
 }
@@ -150,7 +171,9 @@ func (s *ChannelService) GetByID(ctx context.Context, channelID, callerID int64)
 }
 
 // Update applies name/avatar to channelID. Requires admin or owner role.
-// Returns the post-update channel for the response body.
+// Returns the post-update channel for the response body. On success emits a
+// channel_updated system message so online members see the change through
+// push_msg (and offline members via /api/sync).
 func (s *ChannelService) Update(ctx context.Context, channelID, callerID int64, name, avatarURL string) (*repo.Channel, error) {
 	if err := s.requireAdminOrOwner(ctx, channelID, callerID); err != nil {
 		return nil, err
@@ -158,7 +181,14 @@ func (s *ChannelService) Update(ctx context.Context, channelID, callerID int64, 
 	if err := s.channels.Update(ctx, channelID, name, avatarURL); err != nil {
 		return nil, err
 	}
-	return s.channels.GetByID(ctx, channelID)
+	ch, err := s.channels.GetByID(ctx, channelID)
+	if err != nil {
+		return nil, err
+	}
+	// Best-effort: the rename already committed; losing the system message
+	// is recoverable by the next /api/channels list refresh.
+	_ = s.postSys(ctx, nil, channelID, callerID, channelUpdatedProps(callerID, ch.Name, ch.AvatarURL))
+	return ch, nil
 }
 
 // AddMember inserts newUserID into channelID. Requires caller to be admin or
@@ -179,6 +209,9 @@ func (s *ChannelService) AddMember(ctx context.Context, channelID, callerID, new
 	if err := s.channels.AddMember(ctx, channelID, newUserID, repo.MemberRoleMember); err != nil {
 		return "", err
 	}
+	// Best-effort system message so existing members' already-read/unread
+	// ratios stay consistent (the new member count changes immediately).
+	_ = s.postSys(ctx, nil, channelID, callerID, memberJoinedProps(callerID, newUserID))
 	// Best-effort: fetch the channel name for the push payload. A lookup
 	// miss shouldn't fail the request — the membership row is already in
 	// place. Transport fires the push with an empty name in that unlikely
@@ -191,7 +224,9 @@ func (s *ChannelService) AddMember(ctx context.Context, channelID, callerID, new
 }
 
 // RemoveMember deletes targetUserID from channelID. Requires admin or owner.
-// Refuses to remove the channel's owner.
+// Refuses to remove the channel's owner. Emits a member_removed system message
+// BEFORE the DELETE inside the same transaction so the target still counts as
+// a channel member when push fan-out runs (otherwise the event misses them).
 func (s *ChannelService) RemoveMember(ctx context.Context, channelID, callerID, targetUserID int64) error {
 	ctx, span := tracer.Start(ctx, "ChannelService.RemoveMember")
 	defer span.End()
@@ -206,7 +241,22 @@ func (s *ChannelService) RemoveMember(ctx context.Context, channelID, callerID, 
 	if target.Role == repo.MemberRoleOwner {
 		return ErrCannotRemoveOwner
 	}
-	return s.channels.RemoveMember(ctx, channelID, targetUserID)
+	return s.removeMemberAtomic(ctx, channelID, callerID, targetUserID)
+}
+
+// removeMemberAtomic runs "post system message → DELETE channel_members" in a
+// single transaction when s.messages is wired. When messages is nil (tests),
+// it falls back to the existing non-tx DELETE to keep older tests green.
+func (s *ChannelService) removeMemberAtomic(ctx context.Context, channelID, actorID, targetID int64) error {
+	if s.messages == nil {
+		return s.channels.RemoveMember(ctx, channelID, targetID)
+	}
+	return s.channels.WithinTx(ctx, func(tx *gorm.DB) error {
+		if err := s.postSys(ctx, tx, channelID, actorID, memberRemovedProps(actorID, targetID)); err != nil {
+			return err
+		}
+		return s.channels.RemoveMemberTx(ctx, tx, channelID, targetID)
+	})
 }
 
 // ListMembers returns all members of channelID enriched with basic user info.
@@ -239,7 +289,9 @@ func (s *ChannelService) ListMembers(ctx context.Context, channelID, callerID in
 }
 
 // LeaveChannel removes callerID from channelID. Owners cannot leave (they
-// must transfer ownership first — preserved from the legacy handler).
+// must transfer ownership first — preserved from the legacy handler). Emits a
+// member_left system message BEFORE the DELETE in the same transaction so
+// remaining members see the event in real time.
 func (s *ChannelService) LeaveChannel(ctx context.Context, channelID, callerID int64) error {
 	m, err := s.channels.GetMember(ctx, channelID, callerID)
 	if err != nil {
@@ -251,7 +303,21 @@ func (s *ChannelService) LeaveChannel(ctx context.Context, channelID, callerID i
 	if m.Role == repo.MemberRoleOwner {
 		return ErrOwnerCannotLeave
 	}
-	return s.channels.RemoveMember(ctx, channelID, callerID)
+	return s.leaveChannelAtomic(ctx, channelID, callerID)
+}
+
+// leaveChannelAtomic mirrors removeMemberAtomic but uses member_left props so
+// clients can render "X left" vs "X was removed".
+func (s *ChannelService) leaveChannelAtomic(ctx context.Context, channelID, callerID int64) error {
+	if s.messages == nil {
+		return s.channels.RemoveMember(ctx, channelID, callerID)
+	}
+	return s.channels.WithinTx(ctx, func(tx *gorm.DB) error {
+		if err := s.postSys(ctx, tx, channelID, callerID, memberLeftProps(callerID)); err != nil {
+			return err
+		}
+		return s.channels.RemoveMemberTx(ctx, tx, channelID, callerID)
+	})
 }
 
 // requireAdminOrOwner returns nil iff callerID is a member of channelID with

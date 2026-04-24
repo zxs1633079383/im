@@ -21,8 +21,10 @@ import (
 	"im-server/internal/testutil"
 )
 
-// recordingMessagePusher captures PushMessage calls so tests can assert that
-// the post-send fan-out hook fired with the right payload per member.
+// recordingMessagePusher captures BroadcastMessage calls so tests can assert
+// that the post-send fan-out hook fired with the right payload per user
+// bucket. Each batch is flattened into one event-per-user in `events` so
+// existing tests that count "this user got pushed" keep working.
 type recordingMessagePusher struct {
 	mu     sync.Mutex
 	events []messagePushEvent
@@ -33,10 +35,12 @@ type messagePushEvent struct {
 	msg    *repo.Message
 }
 
-func (p *recordingMessagePusher) PushMessage(userID int64, msg *repo.Message) {
+func (p *recordingMessagePusher) BroadcastMessage(_ int64, userIDs []int64, msg *repo.Message) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.events = append(p.events, messagePushEvent{userID: userID, msg: msg})
+	for _, uid := range userIDs {
+		p.events = append(p.events, messagePushEvent{userID: uid, msg: msg})
+	}
 }
 
 func (p *recordingMessagePusher) snapshot() []messagePushEvent {

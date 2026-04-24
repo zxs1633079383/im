@@ -44,8 +44,11 @@ type deliveryEvent struct {
 	SenderID    int64  `json:"sender_id"`
 }
 
-// pulsarPushEvent is a mirror of gateway.PulsarPushEvent.
-// Duplicated here to avoid circular imports.
+// pulsarPushEvent is the legacy single-user push envelope used by the
+// standalone cmd/message delivery worker. The production gateway path has
+// since moved to gateway.PulsarPushEnvelope (batched TargetUIDs + opaque
+// payload). This tool stays on the old schema — if you bring it back into
+// the hot path, rewrite it against PulsarPushEnvelope and delete this type.
 type pulsarPushEvent struct {
 	PushID    string  `json:"push_id"`
 	TargetUID int64   `json:"target_uid"`

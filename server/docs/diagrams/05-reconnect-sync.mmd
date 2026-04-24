@@ -1,0 +1,48 @@
+%% WS 断线重连 + /api/sync 补齐全流程 —— 最终兜底
+sequenceDiagram
+    autonumber
+    actor C as Client
+    participant G as gateway pod (可能与之前不同)
+    participant R as Redis routing
+    participant DB as PostgreSQL
+
+    Note over C,G: 场景：客户端网络抖动 / 后台挂起，WS 断开 T 秒
+
+    C-xG: WS 断开 (TCP FIN / 超时)
+    G->>G: readPump 退出<br/>conn.Close()<br/>hub.Deregister(conn)<br/>routing.Deregister(uid, deviceID)
+    Note over R: HDEL im-new:routing:user:{uid} {deviceID}<br/>若为最后一个 device，HASH 自动变空 key
+
+    Note over C: T 秒后客户端重连<br/>本地仍持有 {chID → seq} 游标
+
+    C->>G: GET /ws?token=...&device=...
+    G->>G: JWT 校验 → NewConn → hub.Register<br/>routing.Register(uid, deviceID) ← Redis 重新写入 pod 身份
+    G->>C: WS Upgrade 成功<br/>（conn.knownSeq = {} 刚建，服务端还不知道客户端已经有哪些 seq）
+
+    Note over C,G: 客户端必须立即做两件事之一：<br/>① 发 WS {type:"sync", channels:[...]} 建立基准<br/>② 调 POST /api/sync 同时建基准 + 拉消息
+    C->>G: POST /api/sync<br/>{channels:[{id:42,seq:130}, {id:88,seq:5}, {id:99,seq:180}]}
+
+    G->>DB: GetMemberChannelSeqs(uid)
+    DB-->>G: {42:130, 88:5, 99:200, 777:12}  ← 服务端真相
+
+    loop 对每个 serverSeq
+        alt client_seq >= server_seq
+            G->>G: 跳过 (chID 42, 88 已对齐)
+        else 新频道 (客户端没提交过)
+            G->>DB: FetchForUser(chID, uid, afterSeq=serverSeq-50, limit=50)
+            DB-->>G: 最近 50 条
+            G->>G: delta.has_more = (serverSeq > 50)
+            Note over G: chID 777 新加入 → 返最近 50 + has_more
+        else gap <= 100 (SyncGapThreshold)
+            G->>DB: FetchForUser(chID, uid, afterSeq=clientSeq, limit=100)
+            DB-->>G: 补全的 messages
+            Note over G: chID 99: gap=20 → 直接返 181..200
+        else gap > 100
+            G->>DB: FetchForUser(chID, uid, afterSeq=serverSeq-50, limit=50)
+            G->>G: delta.has_more = true
+            Note over G: 大缺口 fast-forward：只给最近 50<br/>客户端要翻更旧要 GET /messages?before_seq=
+        end
+        G->>G: 计算 unread = (srvSeq - last_read_seq) - (phantom_count - phantom_at_read)
+    end
+
+    G-->>C: {channels:[{id,server_seq,unread,messages,has_more}, ...]}
+    C->>C: 落库 + 更新本地 {chID → seq}<br/>后续 ping 携带最新 seq → pong diff 归零
