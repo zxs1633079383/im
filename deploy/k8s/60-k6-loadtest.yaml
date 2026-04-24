@@ -1,0 +1,82 @@
+# k6 load test Job — runs inside the im-v2 namespace against the in-cluster
+# Service (no NodePort round-trip). Observation goes through the HTTP API /
+# Grafana; the Job exits with k6's native pass/fail based on thresholds.
+#
+# Usage:
+#   # small smoke (default env below): 500 VUs for 3 min
+#   kubectl apply -f deploy/k8s/60-k6-loadtest.yaml
+#   kubectl -n im-v2 logs -f job/im-k6-load
+#
+#   # override VU count / duration:
+#   kubectl -n im-v2 set env job/im-k6-load TARGET_VUS=5000
+#
+#   # delete the job after inspecting logs:
+#   kubectl -n im-v2 delete job im-k6-load
+#
+# Config is via env vars that v4-load.js reads (API_BASE / WS_BASE /
+# TARGET_VUS / SEND_PROB / SEND_INTERVAL_MS / V4_PASS).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: im-k6-script
+  namespace: im-v2
+  labels:
+    app.kubernetes.io/part-of: im
+    app.kubernetes.io/component: load-test
+data:
+  v4-load.js: |
+    // Placeholder — populated at apply time via kubectl create configmap
+    // --from-file. The Job will block on an empty script; see README.
+    throw new Error("configmap not seeded; see scripts/apply-k6.sh");
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: im-k6-load
+  namespace: im-v2
+  labels:
+    app.kubernetes.io/part-of: im
+    app.kubernetes.io/component: load-test
+spec:
+  # One shot. Delete + recreate to rerun.
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: load-test
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: k6
+          image: grafana/k6:0.54.0
+          command: ["k6", "run", "/scripts/v4-load.js"]
+          env:
+            - name: API_BASE
+              value: "http://im-gateway:8080"
+            - name: WS_BASE
+              value: "ws://im-gateway:8080"
+            - name: TARGET_VUS
+              value: "500"
+            - name: SEND_PROB
+              value: "0.1"
+            - name: SEND_INTERVAL_MS
+              value: "15000"
+            - name: V4_PASS
+              value: "v4test1234"
+            - name: V4_USER_PREFIX
+              value: "k6pre"
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "512Mi"
+            limits:
+              cpu: "2000m"
+              memory: "2Gi"
+          volumeMounts:
+            - name: script
+              mountPath: /scripts
+              readOnly: true
+      volumes:
+        - name: script
+          configMap:
+            name: im-k6-script
