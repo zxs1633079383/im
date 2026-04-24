@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # pre-env.sh — source this before running scripts/v4-prepare.sh or
-# scripts/v4-cluster-test.sh against the pre cluster (im-2.0 namespace).
+# scripts/v4-cluster-test.sh against the pre cluster (im-v2 namespace).
 #
 # Usage:
 #   source scripts/pre-env.sh
@@ -10,7 +10,7 @@
 # / pulsar-cses) and match the k8s SVC DNS names. JWT_SECRET is generated per
 # run with openssl if not already set — treat it as ephemeral.
 
-export NAMESPACE="im-2.0"
+export NAMESPACE="im-v2"
 export REGISTRY="harbor.jinqidongli.com/x9-go/im"
 export IMAGE_TAG="${IMAGE_TAG:-v1.0.0-pre}"
 
