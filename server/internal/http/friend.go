@@ -82,13 +82,18 @@ func RegisterFriendRoutes(authed *gin.RouterGroup, svc *service.FriendService, p
 			c.JSON(422, gin.H{"error": "friendship_id is required"})
 			return
 		}
-		err := svc.AcceptRequest(c.Request.Context(), in.FriendshipID, uid)
+		requesterID, err := svc.AcceptRequest(c.Request.Context(), in.FriendshipID, uid)
 		switch {
 		case errors.Is(err, repo.ErrNotFound):
 			c.JSON(404, gin.H{"error": "pending request not found"})
 		case err != nil:
 			c.JSON(500, gin.H{"error": "internal error"})
 		default:
+			// Notify the original requester that their invite has been
+			// accepted — target is the requester, from_user is the accepter.
+			if pusher != nil {
+				pusher.PushFriendEvent(requesterID, "accepted", uid)
+			}
 			c.JSON(200, gin.H{"status": "accepted"})
 		}
 	})
@@ -107,13 +112,19 @@ func RegisterFriendRoutes(authed *gin.RouterGroup, svc *service.FriendService, p
 			c.JSON(422, gin.H{"error": "friendship_id is required"})
 			return
 		}
-		err := svc.RejectRequest(c.Request.Context(), in.FriendshipID, uid)
+		requesterID, err := svc.RejectRequest(c.Request.Context(), in.FriendshipID, uid)
 		switch {
 		case errors.Is(err, repo.ErrNotFound):
 			c.JSON(404, gin.H{"error": "pending request not found"})
 		case err != nil:
 			c.JSON(500, gin.H{"error": "internal error"})
 		default:
+			// Mirror accept: target is the requester, from_user is the
+			// rejecter. Clients use this to drop the outgoing request from
+			// the user's pending list in real time.
+			if pusher != nil {
+				pusher.PushFriendEvent(requesterID, "rejected", uid)
+			}
 			c.JSON(200, gin.H{"status": "rejected"})
 		}
 	})

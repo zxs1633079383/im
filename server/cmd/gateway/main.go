@@ -194,17 +194,59 @@ func run() int {
 	channelSvc := service.NewChannelService(channelRepo, userRepo)
 	imhttp.RegisterChannelRoutes(authedAPI, channelSvc, &hubChannelEventPusher{xpod: xpod})
 
+	// M2-A: fine-grained channel governance (patch, managers, pins, role/notify).
+	governanceRepo := repo.NewChannelGovernanceRepo(gormDB)
+	governanceSvc := service.NewChannelGovernanceService(channelRepo, governanceRepo, userRepo)
+	imhttp.RegisterChannelGovernanceRoutes(authedAPI, governanceSvc, &hubChannelEventPusher{xpod: xpod})
+
 	// Phase 7.4 cut-over: message endpoints. All three legacy hooks are
 	// preserved — Pusher fans new messages out to online members, ReadSyncer
 	// echoes read receipts to other devices of the same user, and the file
 	// repo handles attachment linkage on send.
 	messageSvc := service.NewMessageService(messageRepo, channelRepo, fileRepo)
+	msgBroadcaster := &hubEventBroadcaster{xpod: xpod, svc: messageSvc}
 	imhttp.RegisterMessageRoutes(authedAPI, messageSvc, imhttp.MessageRouteOpts{
 		Pusher:      &hubMessagePusher{xpod: xpod},
 		ReadSyncer:  &hubReadSyncer{xpod: xpod},
-		Broadcaster: &hubEventBroadcaster{xpod: xpod, svc: messageSvc},
+		Broadcaster: msgBroadcaster,
 		Logger:      log,
 	})
+
+	// M2-B: channel announcements. Re-uses the message broadcaster so
+	// announcement_posted fans out to the same member set as msg_updated.
+	announcementRepo := repo.NewAnnouncementRepo(gormDB)
+	announcementSvc := service.NewAnnouncementService(announcementRepo, channelRepo, governanceSvc)
+	imhttp.RegisterAnnouncementRoutes(authedAPI, announcementSvc, msgBroadcaster)
+
+	// M2-C: urgent messages (send/confirm/cancel + list confirmations).
+	urgentRepo := repo.NewUrgentRepo(gormDB)
+	urgentSvc := service.NewUrgentService(urgentRepo, messageRepo, channelRepo, messageSvc, governanceSvc)
+	imhttp.RegisterUrgentRoutes(authedAPI, urgentSvc, msgBroadcaster)
+
+	// M2-D: approvals (request / approve / reject / cancel + list).
+	// The user-push adapter delivers approval_updated events to the
+	// requester + approver via the same cross-pod dispatch path used by
+	// friend / channel events.
+	approvalRepo := repo.NewApprovalRepo(gormDB)
+	approvalSvc := service.NewApprovalService(approvalRepo, channelRepo, governanceSvc)
+	userPusher := &hubUserEventPusher{xpod: xpod}
+	imhttp.RegisterApprovalRoutes(authedAPI, approvalSvc, userPusher)
+
+	// M2-E: notifications — per-user inbox/outbox + mark-read.
+	notificationRepo := repo.NewNotificationRepo(gormDB)
+	notificationSvc := service.NewNotificationService(notificationRepo, userRepo)
+	imhttp.RegisterNotificationRoutes(authedAPI, notificationSvc, userPusher)
+
+	// M2-F: scheduled messages — CRUD + background worker.
+	scheduledRepo := repo.NewScheduledRepo(gormDB)
+	scheduledSvc := service.NewScheduledService(scheduledRepo, channelRepo, messageSvc)
+	scheduledWorker := service.NewScheduledWorker(scheduledSvc, log, service.ScheduledWorkerConfig{})
+	imhttp.RegisterScheduledRoutes(authedAPI, scheduledSvc)
+
+	// M2-G: quick replies — per-user preset CRUD.
+	quickReplyRepo := repo.NewQuickReplyRepo(gormDB)
+	quickReplySvc := service.NewQuickReplyService(quickReplyRepo)
+	imhttp.RegisterQuickReplyRoutes(authedAPI, quickReplySvc)
 
 	// Phase 7.5 cut-over: batch incremental sync. No real-time hooks — sync is
 	// pure pull, the algorithm + response shape are preserved verbatim from
@@ -251,6 +293,11 @@ func run() int {
 		return 1
 	}
 	log.Info("push consumer started", "topic", pushConsumer.Topic())
+
+	// Start the scheduled-message worker. It polls for due rows and calls
+	// MessageService.SendMessage on each; runCancel() stops it.
+	go scheduledWorker.Run(runCtx)
+	log.Info("scheduled worker started")
 
 	go func() {
 		log.Info("HTTP server listening", "addr", cfg.Gateway.HTTPAddr)
@@ -350,6 +397,18 @@ func (p *hubChannelEventPusher) PushChannelEvent(targetUserID int64, eventType s
 		ChannelID: channelID,
 		Name:      name,
 	})
+}
+
+// hubUserEventPusher implements imhttp.UserEventPusher by dispatching a WS
+// event to a single user via the shared cross-pod hub. Used by M2-D (approval)
+// and M2-E (notification) where audiences are explicit user IDs rather than
+// channel members.
+type hubUserEventPusher struct {
+	xpod crossPodDeps
+}
+
+func (p *hubUserEventPusher) PushToUser(userID int64, eventType imhttp.MessageEventType, payload any) {
+	p.xpod.dispatch(userID, gateway.WSMessageType(eventType), payload)
 }
 
 // hubEventBroadcaster implements imhttp.MessageEventBroadcaster. It fans

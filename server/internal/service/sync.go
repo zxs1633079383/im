@@ -106,6 +106,9 @@ func NewSyncService(channels SyncChannelStore, messages SyncMsgStore) *SyncServi
 // legacy log-and-continue behaviour); the transport layer is responsible
 // for logging.
 func (s *SyncService) Sync(ctx context.Context, callerID int64, p SyncParams) (SyncResult, error) {
+	ctx, span := tracer.Start(ctx, "SyncService.Sync")
+	defer span.End()
+
 	serverSeqs, err := s.channels.GetMemberChannelSeqs(ctx, callerID)
 	if err != nil {
 		return SyncResult{}, fmt.Errorf("get member channel seqs: %w", err)

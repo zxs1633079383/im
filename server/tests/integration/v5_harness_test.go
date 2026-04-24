@@ -45,13 +45,14 @@ import (
 // newV5Env; it owns the DB, the Gin engine, recorders, and the HTTP client
 // factory.
 type v5env struct {
-	t        *testing.T
-	db       any // *gorm.DB, kept opaque — tests only interact via repos
-	users    repo.UserRepo
-	channels repo.ChannelRepo
-	messages repo.MessageRepo
-	files    repo.FileRepo
-	friends  repo.FriendshipRepo
+	t          *testing.T
+	db         any // *gorm.DB, kept opaque — tests only interact via repos
+	users      repo.UserRepo
+	channels   repo.ChannelRepo
+	messages   repo.MessageRepo
+	files      repo.FileRepo
+	friends    repo.FriendshipRepo
+	governance repo.ChannelGovernanceRepo
 
 	// HTTP + recorders.
 	engine      *gin.Engine
@@ -61,6 +62,11 @@ type v5env struct {
 	broadcasts  *BroadcastRecorder
 	friendPush  *FriendRecorder
 	channelPush *ChannelRecorder
+	userPush    *UserPushRecorder
+
+	// Services kept on the env for tests that need to bypass HTTP (e.g. the
+	// scheduled-delivery test calls scheduledSvc.Deliver directly).
+	scheduledSvc *service.ScheduledService
 }
 
 // newV5Env builds a fresh V5 environment. Every test gets its own DB (one
@@ -82,12 +88,14 @@ func newV5Env(t *testing.T) *v5env {
 	messages := repo.NewMessageRepo(db, channels)
 	files := repo.NewFileRepo(db)
 	friends := repo.NewFriendshipRepo(db)
+	governance := repo.NewChannelGovernanceRepo(db)
 
 	pushes := &PushRecorder{}
 	readSyncs := &ReadSyncRecorder{}
 	broadcasts := &BroadcastRecorder{}
 	friendPush := &FriendRecorder{}
 	channelPush := &ChannelRecorder{}
+	userPush := &UserPushRecorder{}
 
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
@@ -104,8 +112,37 @@ func newV5Env(t *testing.T) *v5env {
 	imhttp.RegisterProfileRoutes(authed, service.NewProfileService(users))
 	imhttp.RegisterChannelRoutes(authed,
 		service.NewChannelService(channels, users), channelPush)
-	imhttp.RegisterMessageRoutes(authed,
-		service.NewMessageService(messages, channels, files),
+	governanceSvc := service.NewChannelGovernanceService(channels, governance, users)
+	imhttp.RegisterChannelGovernanceRoutes(authed, governanceSvc, channelPush)
+	announcements := repo.NewAnnouncementRepo(db)
+	imhttp.RegisterAnnouncementRoutes(authed,
+		service.NewAnnouncementService(announcements, channels, governanceSvc),
+		broadcasts,
+	)
+	msgSvc := service.NewMessageService(messages, channels, files)
+	urgentRepo := repo.NewUrgentRepo(db)
+	imhttp.RegisterUrgentRoutes(authed,
+		service.NewUrgentService(urgentRepo, messages, channels, msgSvc, governanceSvc),
+		broadcasts,
+	)
+	approvalRepo := repo.NewApprovalRepo(db)
+	imhttp.RegisterApprovalRoutes(authed,
+		service.NewApprovalService(approvalRepo, channels, governanceSvc),
+		userPush,
+	)
+	notificationRepo := repo.NewNotificationRepo(db)
+	imhttp.RegisterNotificationRoutes(authed,
+		service.NewNotificationService(notificationRepo, users),
+		userPush,
+	)
+	scheduledRepo := repo.NewScheduledRepo(db)
+	scheduledSvc := service.NewScheduledService(scheduledRepo, channels, msgSvc)
+	imhttp.RegisterScheduledRoutes(authed, scheduledSvc)
+	quickReplyRepo := repo.NewQuickReplyRepo(db)
+	imhttp.RegisterQuickReplyRoutes(authed,
+		service.NewQuickReplyService(quickReplyRepo),
+	)
+	imhttp.RegisterMessageRoutes(authed, msgSvc,
 		imhttp.MessageRouteOpts{
 			Pusher:      pushes,
 			ReadSyncer:  readSyncs,
@@ -129,6 +166,7 @@ func newV5Env(t *testing.T) *v5env {
 		messages:    messages,
 		files:       files,
 		friends:     friends,
+		governance:  governance,
 		engine:      r,
 		httpExpect:  testutil.NewExpect(t, r),
 		pushes:      pushes,
@@ -136,6 +174,9 @@ func newV5Env(t *testing.T) *v5env {
 		broadcasts:  broadcasts,
 		friendPush:  friendPush,
 		channelPush: channelPush,
+		userPush:    userPush,
+
+		scheduledSvc: scheduledSvc,
 	}
 }
 
@@ -477,4 +518,43 @@ func (r *ChannelRecorder) Snapshot() []ChannelEvent {
 	out := make([]ChannelEvent, len(r.events))
 	copy(out, r.events)
 	return out
+}
+
+// UserPushRecorder captures UserEventPusher.PushToUser calls. Used by the M2-D
+// (approval) and M2-E (notification) tests to verify per-user fan-out.
+type UserPushRecorder struct {
+	mu     sync.Mutex
+	events []UserPushEvent
+}
+
+// UserPushEvent is a single captured PushToUser invocation.
+type UserPushEvent struct {
+	UserID    int64
+	EventType imhttp.MessageEventType
+	Payload   any
+}
+
+// PushToUser satisfies imhttp.UserEventPusher.
+func (r *UserPushRecorder) PushToUser(userID int64, eventType imhttp.MessageEventType, payload any) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.events = append(r.events, UserPushEvent{
+		UserID: userID, EventType: eventType, Payload: payload,
+	})
+}
+
+// Snapshot returns a copy of every user push event so far.
+func (r *UserPushRecorder) Snapshot() []UserPushEvent {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make([]UserPushEvent, len(r.events))
+	copy(out, r.events)
+	return out
+}
+
+// Reset clears every recorded event.
+func (r *UserPushRecorder) Reset() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.events = nil
 }

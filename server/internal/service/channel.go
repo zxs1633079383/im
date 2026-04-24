@@ -68,6 +68,9 @@ type AddedMember struct {
 // appears in memberIDs; tolerate per-member AddMember failures (log + skip)
 // rather than rolling back the whole channel.
 func (s *ChannelService) CreateGroup(ctx context.Context, creatorID int64, name string, memberIDs []int64) (*repo.Channel, []AddedMember, error) {
+	ctx, span := tracer.Start(ctx, "ChannelService.CreateGroup")
+	defer span.End()
+
 	ch := &repo.Channel{
 		Type:      repo.ChannelTypeGroup,
 		Name:      name,
@@ -98,6 +101,9 @@ func (s *ChannelService) CreateGroup(ctx context.Context, creatorID int64, name 
 // creates a fresh one. The bool indicates whether a new channel was created
 // (true) so the transport can return 201 vs 200 to match the legacy shape.
 func (s *ChannelService) CreateOrGetDM(ctx context.Context, callerID, otherUserID int64) (*repo.Channel, bool, error) {
+	ctx, span := tracer.Start(ctx, "ChannelService.CreateOrGetDM")
+	defer span.End()
+
 	if otherUserID == callerID {
 		return nil, false, ErrSelfDM
 	}
@@ -125,6 +131,9 @@ func (s *ChannelService) CreateOrGetDM(ctx context.Context, callerID, otherUserI
 
 // ListByUser returns the channel previews (last-msg + unread) for userID.
 func (s *ChannelService) ListByUser(ctx context.Context, userID int64) ([]repo.ChannelWithPreview, error) {
+	ctx, span := tracer.Start(ctx, "ChannelService.ListByUser")
+	defer span.End()
+
 	return s.channels.ListByUserWithPreview(ctx, userID)
 }
 
@@ -155,16 +164,38 @@ func (s *ChannelService) Update(ctx context.Context, channelID, callerID int64, 
 // AddMember inserts newUserID into channelID. Requires caller to be admin or
 // owner. The legacy handler always added the new member with the plain
 // Member role — preserve that.
-func (s *ChannelService) AddMember(ctx context.Context, channelID, callerID, newUserID int64) error {
+//
+// Returns the channel's display name on success so the transport layer can
+// fire a real-time channel_event "added" to the new member (mirrors the
+// post-CreateGroup fan-out). An empty string is returned alongside any
+// non-nil error.
+func (s *ChannelService) AddMember(ctx context.Context, channelID, callerID, newUserID int64) (string, error) {
+	ctx, span := tracer.Start(ctx, "ChannelService.AddMember")
+	defer span.End()
+
 	if err := s.requireAdminOrOwner(ctx, channelID, callerID); err != nil {
-		return err
+		return "", err
 	}
-	return s.channels.AddMember(ctx, channelID, newUserID, repo.MemberRoleMember)
+	if err := s.channels.AddMember(ctx, channelID, newUserID, repo.MemberRoleMember); err != nil {
+		return "", err
+	}
+	// Best-effort: fetch the channel name for the push payload. A lookup
+	// miss shouldn't fail the request — the membership row is already in
+	// place. Transport fires the push with an empty name in that unlikely
+	// case.
+	ch, err := s.channels.GetByID(ctx, channelID)
+	if err != nil || ch == nil {
+		return "", nil
+	}
+	return ch.Name, nil
 }
 
 // RemoveMember deletes targetUserID from channelID. Requires admin or owner.
 // Refuses to remove the channel's owner.
 func (s *ChannelService) RemoveMember(ctx context.Context, channelID, callerID, targetUserID int64) error {
+	ctx, span := tracer.Start(ctx, "ChannelService.RemoveMember")
+	defer span.End()
+
 	if err := s.requireAdminOrOwner(ctx, channelID, callerID); err != nil {
 		return err
 	}

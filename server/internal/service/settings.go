@@ -27,6 +27,9 @@ func NewSettingsService(s repo.UserSettingsRepo) *SettingsService {
 // The defaults mirror the legacy handler's defaultSettings() helper exactly:
 // Theme="system", Language="zh", NotificationEnabled=true, SettingsJSON="{}".
 func (s *SettingsService) Get(ctx context.Context, userID int64) (*repo.UserSettings, error) {
+	ctx, span := tracer.Start(ctx, "SettingsService.Get")
+	defer span.End()
+
 	got, err := s.settings.Get(ctx, userID)
 	if err == nil {
 		return got, nil
@@ -40,6 +43,9 @@ func (s *SettingsService) Get(ctx context.Context, userID int64) (*repo.UserSett
 // Update persists settings via UserSettingsRepo.Upsert. The caller is
 // responsible for populating UserID and any unchanged fields.
 func (s *SettingsService) Update(ctx context.Context, settings *repo.UserSettings) error {
+	ctx, span := tracer.Start(ctx, "SettingsService.Update")
+	defer span.End()
+
 	return s.settings.Upsert(ctx, settings)
 }
 

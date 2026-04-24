@@ -23,15 +23,30 @@ type User struct {
 func (User) TableName() string { return "users" }
 
 // Channel maps the channels table. CreatorID is nullable per the schema.
+//
+// M2 fine-grained fields (Mattermost /channel/change/* alignment):
+//   - Notice/Purpose/PictureURL: descriptive text
+//   - Props: JSONB blob for arbitrary custom props (stored as a raw string
+//     so callers decide whether to json.RawMessage / map / struct-decode it)
+//   - Orient: small tag (0=default / 1=left / 2=right ... callers define)
+//   - Permission: 0=open 1=approval 2=closed
+//   - IsTop: channel pin/priority flag
 type Channel struct {
-	ID        int64     `gorm:"primaryKey;autoIncrement"                                json:"id"`
-	Type      int16     `gorm:"not null"                                                json:"type"`
-	Name      string    `gorm:"size:100;not null;default:''"                            json:"name"`
-	AvatarURL string    `gorm:"column:avatar_url;not null;default:''"                   json:"avatar_url"`
-	Seq       int64     `gorm:"not null;default:0"                                      json:"seq"`
-	CreatorID *int64    `gorm:"column:creator_id"                                       json:"creator_id"`
-	CreatedAt time.Time `gorm:"column:created_at;not null;default:now()"                json:"created_at"`
-	UpdatedAt time.Time `gorm:"column:updated_at;not null;default:now()"                json:"updated_at"`
+	ID         int64     `gorm:"primaryKey;autoIncrement"                                json:"id"`
+	Type       int16     `gorm:"not null"                                                json:"type"`
+	Name       string    `gorm:"size:100;not null;default:''"                            json:"name"`
+	AvatarURL  string    `gorm:"column:avatar_url;not null;default:''"                   json:"avatar_url"`
+	Seq        int64     `gorm:"not null;default:0"                                      json:"seq"`
+	CreatorID  *int64    `gorm:"column:creator_id"                                       json:"creator_id"`
+	Notice     string    `gorm:"column:notice;not null;default:''"                       json:"notice"`
+	Purpose    string    `gorm:"column:purpose;not null;default:''"                      json:"purpose"`
+	PictureURL string    `gorm:"column:picture_url;not null;default:''"                  json:"picture_url"`
+	Props      string    `gorm:"column:props;type:jsonb;not null;default:'{}'"           json:"props"`
+	Orient     int16     `gorm:"column:orient;not null;default:0"                        json:"orient"`
+	Permission int16     `gorm:"column:permission;not null;default:0"                    json:"permission"`
+	IsTop      bool      `gorm:"column:is_top;not null;default:false"                    json:"is_top"`
+	CreatedAt  time.Time `gorm:"column:created_at;not null;default:now()"                json:"created_at"`
+	UpdatedAt  time.Time `gorm:"column:updated_at;not null;default:now()"                json:"updated_at"`
 }
 
 // TableName pins the GORM-derived table name to the migration.
@@ -39,6 +54,9 @@ func (Channel) TableName() string { return "channels" }
 
 // ChannelMember maps the channel_members table — composite PK on (user_id,
 // channel_id). PhantomAtRead matches the column added in the actual schema.
+//
+// M2: NotifyPref is 0=all 1=mentions 2=none; used by the broadcaster to
+// decide whether to deliver a given message/event to this member.
 type ChannelMember struct {
 	UserID        int64     `gorm:"column:user_id;primaryKey"                               json:"user_id"`
 	ChannelID     int64     `gorm:"column:channel_id;primaryKey"                            json:"channel_id"`
@@ -46,6 +64,7 @@ type ChannelMember struct {
 	LastReadSeq   int64     `gorm:"column:last_read_seq;not null;default:0"                 json:"last_read_seq"`
 	PhantomCount  int64     `gorm:"column:phantom_count;not null;default:0"                 json:"phantom_count"`
 	PhantomAtRead int64     `gorm:"column:phantom_at_read;not null;default:0"               json:"phantom_at_read"`
+	NotifyPref    int16     `gorm:"column:notify_pref;not null;default:0"                   json:"notify_pref"`
 	JoinedAt      time.Time `gorm:"column:joined_at;not null;default:now()"                 json:"joined_at"`
 }
 
@@ -71,6 +90,7 @@ type Message struct {
 	UpdatedAt     *time.Time    `gorm:"column:updated_at"                                       json:"updated_at,omitempty"`
 	Deleted       bool          `gorm:"column:deleted;not null;default:false"                   json:"deleted,omitempty"`
 	DeletedAt     *time.Time    `gorm:"column:deleted_at"                                       json:"deleted_at,omitempty"`
+	IsUrgent      bool          `gorm:"column:is_urgent;not null;default:false"                 json:"is_urgent,omitempty"`
 }
 
 // TableName pins the GORM-derived table name to the migration.
@@ -153,6 +173,45 @@ type MessageFavorite struct {
 
 // TableName pins the GORM-derived table name to the migration.
 func (MessageFavorite) TableName() string { return "message_favorites" }
+
+// ChannelManager maps the channel_managers table — fine-grained manager
+// rights on a channel. A manager has admin rights beyond "member" but less
+// than "owner" (only owners can add/remove managers).
+type ChannelManager struct {
+	ChannelID int64     `gorm:"column:channel_id;primaryKey"                              json:"channel_id"`
+	UserID    int64     `gorm:"column:user_id;primaryKey"                                 json:"user_id"`
+	AddedBy   int64     `gorm:"column:added_by;not null"                                  json:"added_by"`
+	AddedAt   time.Time `gorm:"column:added_at;not null;default:now()"                    json:"added_at"`
+}
+
+// TableName pins the GORM-derived table name to the migration.
+func (ChannelManager) TableName() string { return "channel_managers" }
+
+// ChannelPinnedMessage maps channel_pinned_messages — a channel-scoped pin
+// table. Composite PK on (channel_id, message_id).
+type ChannelPinnedMessage struct {
+	ChannelID int64     `gorm:"column:channel_id;primaryKey"                              json:"channel_id"`
+	MessageID int64     `gorm:"column:message_id;primaryKey"                              json:"message_id"`
+	PinnedBy  int64     `gorm:"column:pinned_by;not null"                                 json:"pinned_by"`
+	PinnedAt  time.Time `gorm:"column:pinned_at;not null;default:now()"                   json:"pinned_at"`
+}
+
+// TableName pins the GORM-derived table name to the migration.
+func (ChannelPinnedMessage) TableName() string { return "channel_pinned_messages" }
+
+// Channel member notify_pref constants.
+const (
+	NotifyPrefAll      int16 = 0
+	NotifyPrefMentions int16 = 1
+	NotifyPrefNone     int16 = 2
+)
+
+// Channel permission constants.
+const (
+	ChannelPermissionOpen     int16 = 0
+	ChannelPermissionApproval int16 = 1
+	ChannelPermissionClosed   int16 = 2
+)
 
 // UserSettings maps the user_settings table. SettingsJSON is stored opaquely
 // as a JSONB string — callers marshal/unmarshal at the boundary.

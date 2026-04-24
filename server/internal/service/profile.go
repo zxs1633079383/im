@@ -23,5 +23,8 @@ func NewProfileService(users repo.UserRepo) *ProfileService {
 // UpdateProfile updates display_name and avatar_url for userID and returns the
 // refreshed user row. Returns repo.ErrNotFound when the user no longer exists.
 func (s *ProfileService) UpdateProfile(ctx context.Context, userID int64, displayName, avatarURL string) (*repo.User, error) {
+	ctx, span := tracer.Start(ctx, "ProfileService.UpdateProfile")
+	defer span.End()
+
 	return s.users.UpdateProfile(ctx, userID, displayName, avatarURL)
 }

@@ -90,6 +90,55 @@ func CountBroadcastsByType(events []BroadcastEvent, channelID int64, eventType s
 	return n
 }
 
+// CountReadSyncs returns how many read_sync events targeted userID on
+// channelID. ReadSeq is not asserted; callers who care should scan the
+// slice directly.
+func CountReadSyncs(events []ReadSyncEvent, userID, channelID int64) int {
+	n := 0
+	for _, ev := range events {
+		if ev.UserID == userID && ev.ChannelID == channelID {
+			n++
+		}
+	}
+	return n
+}
+
+// CountFriendEvents returns how many PushFriendEvent calls targeted
+// targetUserID with the given eventType.
+func CountFriendEvents(events []FriendEvent, targetUserID int64, eventType string) int {
+	n := 0
+	for _, ev := range events {
+		if ev.TargetUserID == targetUserID && ev.EventType == eventType {
+			n++
+		}
+	}
+	return n
+}
+
+// CountChannelEvents returns how many PushChannelEvent calls targeted
+// targetUserID for channelID with the given eventType.
+func CountChannelEvents(events []ChannelEvent, targetUserID, channelID int64, eventType string) int {
+	n := 0
+	for _, ev := range events {
+		if ev.TargetUserID == targetUserID && ev.ChannelID == channelID && ev.EventType == eventType {
+			n++
+		}
+	}
+	return n
+}
+
+// CountUserPushByType returns how many PushToUser calls of eventType
+// targeted userID.
+func CountUserPushByType(events []UserPushEvent, userID int64, eventType string) int {
+	n := 0
+	for _, ev := range events {
+		if ev.UserID == userID && string(ev.EventType) == eventType {
+			n++
+		}
+	}
+	return n
+}
+
 // FindMessageInSync returns the first message in a sync delta for channelID
 // whose seq == want. nil if not present.
 func FindMessageInSync(env *v5env, tok string, channelID, clientSeq, want int64) *repo.Message {

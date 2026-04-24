@@ -61,8 +61,9 @@ func TestChannel_FullFlow(t *testing.T) {
 	r := gin.New()
 	authedAPI := r.Group("/api")
 	authedAPI.Use(middleware.JWTGin(integrationSecret))
-	// nil pusher: the hub isn't wired in this test.
-	imhttp.RegisterChannelRoutes(authedAPI, service.NewChannelService(channels, users), nil)
+	// recording pusher so we can assert the add-member fan-out fires.
+	channelPush := &ChannelRecorder{}
+	imhttp.RegisterChannelRoutes(authedAPI, service.NewChannelService(channels, users), channelPush)
 
 	e := testutil.NewExpect(t, r)
 
@@ -88,6 +89,14 @@ func TestChannel_FullFlow(t *testing.T) {
 		WithJSON(map[string]int64{"user_id": carol.ID}).
 		Expect().Status(201).JSON().Object().
 		Value("status").IsEqual("added")
+
+	// The add-member handler must push an "added" channel_event to the
+	// newcomer (mirrors the group-create fan-out). Count matches BACKEND
+	// §1.1 contract: 1 event for bob (from create) + 1 for carol (from add).
+	if n := CountChannelEvents(channelPush.Snapshot(), carol.ID, chID, "added"); n < 1 {
+		t.Fatalf("add-member did not push channel_event to carol; events=%+v",
+			channelPush.Snapshot())
+	}
 
 	// list members — owner + bob + carol.
 	e.GET("/api/channels/"+strconv.FormatInt(chID, 10)+"/members").

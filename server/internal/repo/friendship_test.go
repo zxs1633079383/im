@@ -32,7 +32,9 @@ func TestFriendship_RequestAcceptListFriends(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, FriendshipPending, got.Status)
 
-	require.NoError(t, fr.AcceptRequest(ctx, got.ID, b.ID))
+	requesterID, err := fr.AcceptRequest(ctx, got.ID, b.ID)
+	require.NoError(t, err)
+	require.Equal(t, a.ID, requesterID)
 
 	friendsOfA, err := fr.ListFriends(ctx, a.ID)
 	require.NoError(t, err)
@@ -52,7 +54,7 @@ func TestFriendship_AcceptByNonAddressee_NotFound(t *testing.T) {
 	got, _ := fr.GetFriendship(ctx, a.ID, b.ID)
 
 	// requester (a) tries to accept their own request — should fail.
-	err := fr.AcceptRequest(ctx, got.ID, a.ID)
+	_, err := fr.AcceptRequest(ctx, got.ID, a.ID)
 	require.ErrorIs(t, err, ErrNotFound)
 }
 
@@ -61,7 +63,9 @@ func TestFriendship_Reject(t *testing.T) {
 	a, b := mkUser(t, ur, ctx, "alice"), mkUser(t, ur, ctx, "bob")
 	require.NoError(t, fr.SendRequest(ctx, a.ID, b.ID))
 	got, _ := fr.GetFriendship(ctx, a.ID, b.ID)
-	require.NoError(t, fr.RejectRequest(ctx, got.ID, b.ID))
+	requesterID, err := fr.RejectRequest(ctx, got.ID, b.ID)
+	require.NoError(t, err)
+	require.Equal(t, a.ID, requesterID)
 	updated, _ := fr.GetFriendship(ctx, a.ID, b.ID)
 	require.Equal(t, FriendshipRejected, updated.Status)
 }

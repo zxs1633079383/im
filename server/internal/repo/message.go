@@ -108,6 +108,9 @@ func (r *gormMessageRepo) Send(ctx context.Context, msg *Message) error {
 // Service/HTTP layers MUST NOT run their own UPDATE channels SET seq = …
 // statements — CI grep will enforce this as a follow-up.
 func (r *gormMessageRepo) AllocSeqAndInsert(ctx context.Context, tx *gorm.DB, msg *Message) (int64, error) {
+	ctx, span := tracer.Start(ctx, "MessageRepo.AllocSeqAndInsert")
+	defer span.End()
+
 	run := func(db *gorm.DB) error {
 		// UPDATE ... RETURNING seq — atomic row-lock on channels(id).
 		seq, err := r.channel.IncrementSeq(ctx, db, msg.ChannelID)
@@ -153,6 +156,9 @@ func (r *gormMessageRepo) AllocSeqAndInsert(ctx context.Context, tx *gorm.DB, ms
 // The returned *Message reflects the post-update state (including the new
 // updated_at value) so callers can echo it in the WS msg_updated payload.
 func (r *gormMessageRepo) UpdateContent(ctx context.Context, msgID, callerID int64, content string) (*Message, error) {
+	ctx, span := tracer.Start(ctx, "MessageRepo.UpdateContent")
+	defer span.End()
+
 	existing, err := r.GetByID(ctx, msgID)
 	if err != nil {
 		return nil, err
@@ -186,6 +192,9 @@ func (r *gormMessageRepo) UpdateContent(ctx context.Context, msgID, callerID int
 //   - ErrForbidden when the caller is not the sender.
 //   - ErrGone when the message is already soft-deleted (idempotent no-op).
 func (r *gormMessageRepo) SoftDelete(ctx context.Context, msgID, callerID int64) (*Message, error) {
+	ctx, span := tracer.Start(ctx, "MessageRepo.SoftDelete")
+	defer span.End()
+
 	existing, err := r.GetByID(ctx, msgID)
 	if err != nil {
 		return nil, err
@@ -332,6 +341,9 @@ func (r *gormMessageRepo) GetByID(ctx context.Context, id int64) (*Message, erro
 }
 
 func (r *gormMessageRepo) FetchAfter(ctx context.Context, channelID, afterSeq int64, limit int) ([]Message, error) {
+	ctx, span := tracer.Start(ctx, "MessageRepo.FetchAfter")
+	defer span.End()
+
 	var out []Message
 	err := r.db.WithContext(ctx).
 		Where("channel_id = ? AND seq > ?", channelID, afterSeq).
@@ -348,6 +360,9 @@ func (r *gormMessageRepo) FetchAfter(ctx context.Context, channelID, afterSeq in
 // to those visible to userID: visible_to IS NULL (broadcast), userID is in
 // visible_to, or userID is the sender.
 func (r *gormMessageRepo) FetchForUser(ctx context.Context, channelID, userID, afterSeq int64, limit int) ([]Message, error) {
+	ctx, span := tracer.Start(ctx, "MessageRepo.FetchForUser")
+	defer span.End()
+
 	var out []Message
 	err := r.db.WithContext(ctx).Raw(
 		`SELECT id, channel_id, seq, client_msg_id, sender_id, msg_type, content,
@@ -392,6 +407,9 @@ func (r *gormMessageRepo) FetchBefore(ctx context.Context, channelID, userID, be
 // FetchAround returns up to limit messages centered on aroundSeq (half before,
 // half after, both halves filtered by visible_to for userID). Ordered by seq.
 func (r *gormMessageRepo) FetchAround(ctx context.Context, channelID, userID, aroundSeq int64, limit int) ([]Message, error) {
+	ctx, span := tracer.Start(ctx, "MessageRepo.FetchAround")
+	defer span.End()
+
 	half := limit / 2
 	var out []Message
 	err := r.db.WithContext(ctx).Raw(

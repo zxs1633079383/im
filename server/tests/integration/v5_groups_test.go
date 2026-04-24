@@ -31,7 +31,7 @@ import (
 
 func TestV5_G1_MessageLifecycle(t *testing.T) {
 	env := newV5Env(t)
-	_, aliceTok := env.CreateUserAndToken("g1alice", "g1a@x.com")
+	aliceID, aliceTok := env.CreateUserAndToken("g1alice", "g1a@x.com")
 	bobID, bobTok := env.CreateUserAndToken("g1bob", "g1b@x.com")
 
 	chID := env.CreateOrGetDM(aliceTok, bobID)
@@ -39,8 +39,13 @@ func TestV5_G1_MessageLifecycle(t *testing.T) {
 	// Step 1: alice sends msg.
 	msgID := env.MustSendAndReturnMsgID(aliceTok, chID, "hi bob", "g1-1")
 
-	// Step 2: alice marks read → her unread goes to 0 on next /sync.
+	// Step 2: alice marks read → her unread goes to 0 on next /sync, and
+	// read_sync fires so her other devices catch up.
 	env.MarkRead(aliceTok, chID)
+	if n := CountReadSyncs(env.readSyncs.Snapshot(), aliceID, chID); n != 1 {
+		t.Fatalf("read_sync count for alice on chID=%d: got %d, want 1; events=%+v",
+			chID, n, env.readSyncs.Snapshot())
+	}
 
 	// Bob is still at seq=0 and hasn't read.
 	AssertSyncState(t, env, bobTok, chID, 0, 1, 1)
@@ -258,15 +263,21 @@ func TestV5_G7_FriendFullFlow(t *testing.T) {
 		WithJSON(map[string]int64{"addressee_id": bobID}).
 		Expect().Status(201)
 
-	// Friend pusher fired with the request event targeting bob.
-	found := false
+	// Friend pusher fires exactly one "request" event targeting bob.
+	if n := CountFriendEvents(env.friendPush.Snapshot(), bobID, "request"); n != 1 {
+		t.Fatalf("friend request event for bob: got %d, want 1; events=%+v",
+			n, env.friendPush.Snapshot())
+	}
+	// From-user field carries the sender's id on the recorded event.
+	fromUserCorrect := false
 	for _, ev := range env.friendPush.Snapshot() {
 		if ev.TargetUserID == bobID && ev.EventType == "request" && ev.FromUserID == aliceID {
-			found = true
+			fromUserCorrect = true
 		}
 	}
-	if !found {
-		t.Fatal("friend request event not fired for bob")
+	if !fromUserCorrect {
+		t.Fatalf("friend request event missing from_user=%d; events=%+v",
+			aliceID, env.friendPush.Snapshot())
 	}
 
 	// Bob lists pending → sees one request with friendship_id.
@@ -279,11 +290,27 @@ func TestV5_G7_FriendFullFlow(t *testing.T) {
 		t.Fatal("pending request missing friendship_id")
 	}
 
-	// Bob accepts.
+	// Bob accepts — this must fire exactly one "accepted" friend_event
+	// targeting the original requester (alice) with from_user=bob.
 	env.httpExpect.POST("/api/friends/accept").
 		WithHeader("Authorization", bearer(bobTok)).
 		WithJSON(map[string]int64{"friendship_id": fid}).
 		Expect().Status(200)
+
+	if n := CountFriendEvents(env.friendPush.Snapshot(), aliceID, "accepted"); n != 1 {
+		t.Fatalf("friend accepted event for alice: got %d, want 1; events=%+v",
+			n, env.friendPush.Snapshot())
+	}
+	acceptedFromCorrect := false
+	for _, ev := range env.friendPush.Snapshot() {
+		if ev.TargetUserID == aliceID && ev.EventType == "accepted" && ev.FromUserID == bobID {
+			acceptedFromCorrect = true
+		}
+	}
+	if !acceptedFromCorrect {
+		t.Fatalf("friend accepted event missing from_user=%d; events=%+v",
+			bobID, env.friendPush.Snapshot())
+	}
 
 	// Both now see each other in /friends.
 	env.httpExpect.GET("/api/friends").
@@ -293,19 +320,40 @@ func TestV5_G7_FriendFullFlow(t *testing.T) {
 		WithHeader("Authorization", bearer(bobTok)).
 		Expect().Status(200).JSON().Array().Length().Ge(1)
 
-	// Reject path: alice → carol request, carol rejects.
+	// Reject path: alice → dave request, dave rejects. The rejected
+	// event must flow back to alice the same way accept does.
+	daveID, daveTok := env.CreateUserAndToken("g7dave", "g7d@x.com")
 	env.httpExpect.POST("/api/friends/request").
 		WithHeader("Authorization", bearer(aliceTok)).
-		WithJSON(map[string]any{"addressee_id": env.allocUser(t, "g7d", "g7d@x.com")}).
+		WithJSON(map[string]any{"addressee_id": daveID}).
 		Expect().Status(201)
-	_ = carolTok
-}
 
-// allocUser is a one-off helper G7's reject branch needs — creates a user
-// and returns the id (no token needed for the "target" side).
-func (e *v5env) allocUser(t *testing.T, name, email string) int64 {
-	id, _ := e.CreateUserAndToken(name, email)
-	return id
+	pendingForDave := env.httpExpect.GET("/api/friends/pending").
+		WithHeader("Authorization", bearer(daveTok)).
+		Expect().Status(200).JSON().Array()
+	pendingForDave.Length().IsEqual(1)
+	rejectFID := int64(pendingForDave.Value(0).Object().Value("id").Number().Raw())
+
+	env.httpExpect.POST("/api/friends/reject").
+		WithHeader("Authorization", bearer(daveTok)).
+		WithJSON(map[string]int64{"friendship_id": rejectFID}).
+		Expect().Status(200)
+
+	if n := CountFriendEvents(env.friendPush.Snapshot(), aliceID, "rejected"); n != 1 {
+		t.Fatalf("friend rejected event for alice: got %d, want 1; events=%+v",
+			n, env.friendPush.Snapshot())
+	}
+	rejectedFromCorrect := false
+	for _, ev := range env.friendPush.Snapshot() {
+		if ev.TargetUserID == aliceID && ev.EventType == "rejected" && ev.FromUserID == daveID {
+			rejectedFromCorrect = true
+		}
+	}
+	if !rejectedFromCorrect {
+		t.Fatalf("friend rejected event missing from_user=%d; events=%+v",
+			daveID, env.friendPush.Snapshot())
+	}
+	_ = carolTok
 }
 
 // ---------------------------------------------------------------------------

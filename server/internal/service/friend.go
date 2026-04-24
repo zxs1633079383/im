@@ -34,6 +34,9 @@ func NewFriendService(friends repo.FriendshipRepo, users repo.UserRepo) *FriendS
 // Returns ErrAlreadyExists when a row between the pair already exists
 // (Postgres unique-violation). Other repo errors are returned as-is.
 func (s *FriendService) SendRequest(ctx context.Context, requesterID, addresseeID int64) error {
+	ctx, span := tracer.Start(ctx, "FriendService.SendRequest")
+	defer span.End()
+
 	err := s.friends.SendRequest(ctx, requesterID, addresseeID)
 	if err != nil && isAlreadyExistsErr(err) {
 		return ErrAlreadyExists
@@ -44,33 +47,57 @@ func (s *FriendService) SendRequest(ctx context.Context, requesterID, addresseeI
 // AcceptRequest marks the pending friendship friendshipID accepted, but only
 // if userID is the addressee. Returns repo.ErrNotFound otherwise (so the
 // transport layer can map non-addressee callers to 404).
-func (s *FriendService) AcceptRequest(ctx context.Context, friendshipID, userID int64) error {
+//
+// On success the original requester's user ID is returned so the caller can
+// push a real-time friend_event back to them without re-querying the repo.
+// Zero is returned alongside any non-nil error.
+func (s *FriendService) AcceptRequest(ctx context.Context, friendshipID, userID int64) (int64, error) {
+	ctx, span := tracer.Start(ctx, "FriendService.AcceptRequest")
+	defer span.End()
+
 	return s.friends.AcceptRequest(ctx, friendshipID, userID)
 }
 
-// RejectRequest mirrors AcceptRequest but flips the row to rejected.
-func (s *FriendService) RejectRequest(ctx context.Context, friendshipID, userID int64) error {
+// RejectRequest mirrors AcceptRequest but flips the row to rejected. Returns
+// the original requester's user ID on success (see AcceptRequest for the
+// rationale — the transport layer uses it for the real-time push).
+func (s *FriendService) RejectRequest(ctx context.Context, friendshipID, userID int64) (int64, error) {
+	ctx, span := tracer.Start(ctx, "FriendService.RejectRequest")
+	defer span.End()
+
 	return s.friends.RejectRequest(ctx, friendshipID, userID)
 }
 
 // ListFriends returns the accepted-friendship counter-parties for userID.
 func (s *FriendService) ListFriends(ctx context.Context, userID int64) ([]repo.User, error) {
+	ctx, span := tracer.Start(ctx, "FriendService.ListFriends")
+	defer span.End()
+
 	return s.friends.ListFriends(ctx, userID)
 }
 
 // ListPending returns inbound pending friendship rows for userID.
 func (s *FriendService) ListPending(ctx context.Context, userID int64) ([]repo.PendingRequest, error) {
+	ctx, span := tracer.Start(ctx, "FriendService.ListPending")
+	defer span.End()
+
 	return s.friends.ListPendingRequests(ctx, userID)
 }
 
 // BlockUser upserts a Blocked friendship row from blockerID to blockedID.
 func (s *FriendService) BlockUser(ctx context.Context, blockerID, blockedID int64) error {
+	ctx, span := tracer.Start(ctx, "FriendService.BlockUser")
+	defer span.End()
+
 	return s.friends.BlockUser(ctx, blockerID, blockedID)
 }
 
 // SearchUsers proxies to repo.UserRepo.Search. The repo handles trimming and
 // excludes the caller from results.
 func (s *FriendService) SearchUsers(ctx context.Context, query string, callerID int64) ([]repo.User, error) {
+	ctx, span := tracer.Start(ctx, "FriendService.SearchUsers")
+	defer span.End()
+
 	return s.users.Search(ctx, query, callerID)
 }
 

@@ -43,13 +43,34 @@ func TestV5_1_RegisterLoginMe(t *testing.T) {
 }
 
 // TestV5_2_CreateChannelAddMemberSend: alice creates a group with bob, sends
-// a message, and bob's pusher fires with the right payload.
+// a message, and bob's pusher fires with the right payload. The group-create
+// path also fires one "added" channel_event to bob (the non-creator member),
+// and the post-create POST /channels/:id/members path fires another "added"
+// to the newcomer.
 func TestV5_2_CreateChannelAddMemberSend(t *testing.T) {
 	env := newV5Env(t)
 	aliceID, aliceTok := env.CreateUserAndToken("alice2", "a2@x.com")
 	bobID, _ := env.CreateUserAndToken("bob2", "b2@x.com")
 
 	chID := env.CreateGroup(aliceTok, "team", bobID)
+
+	// Channel create fires "added" to bob (not the creator). Alice shouldn't
+	// receive an added event for her own channel.
+	if n := CountChannelEvents(env.channelPush.Snapshot(), bobID, chID, "added"); n != 1 {
+		t.Fatalf("channel added event for bob: got %d, want 1; events=%+v",
+			n, env.channelPush.Snapshot())
+	}
+	if n := CountChannelEvents(env.channelPush.Snapshot(), aliceID, chID, "added"); n != 0 {
+		t.Fatalf("creator alice must not receive her own added event; got %d", n)
+	}
+
+	// Single-add path: alice adds carol → one "added" to carol.
+	carolID, _ := env.CreateUserAndToken("carol2", "c2@x.com")
+	env.AddMember(aliceTok, chID, carolID)
+	if n := CountChannelEvents(env.channelPush.Snapshot(), carolID, chID, "added"); n != 1 {
+		t.Fatalf("channel added event for carol: got %d, want 1; events=%+v",
+			n, env.channelPush.Snapshot())
+	}
 
 	_ = env.SendMessage(aliceTok, chID, "hello bob", "uuid-v5-2-1")
 
@@ -180,7 +201,7 @@ func TestV5_6_MarkReadMultiDevice(t *testing.T) {
 }
 
 // TestV5_7_DeleteMessage: alice sends then soft-deletes; the broadcaster
-// fires msg_deleted.
+// fires msg_deleted exactly once for the channel.
 func TestV5_7_DeleteMessage(t *testing.T) {
 	env := newV5Env(t)
 	_, aliceTok := env.CreateUserAndToken("alice7", "a7@x.com")
@@ -189,21 +210,20 @@ func TestV5_7_DeleteMessage(t *testing.T) {
 	chID := env.CreateOrGetDM(aliceTok, bobID)
 	msgID := env.MustSendAndReturnMsgID(aliceTok, chID, "bye", "uuid-v5-7-1")
 
+	// Clear send-side broadcasts so the delete assertion is scoped precisely.
+	env.broadcasts.Reset()
 	env.DeleteMessage(aliceTok, msgID)
 
-	got := false
-	for _, ev := range env.broadcasts.Snapshot() {
-		if ev.ChannelID == chID && ev.EventType == imhttp.EventMsgDeleted {
-			got = true
-		}
-	}
-	if !got {
-		t.Fatalf("msg_deleted broadcast not observed; events=%+v", env.broadcasts.Snapshot())
+	// Delete broadcast is async via goroutine — wait for at least one event.
+	events := waitForBroadcastCount(t, env.broadcasts, 1, 2*time.Second)
+	if n := CountBroadcastsByType(events, chID, string(imhttp.EventMsgDeleted)); n != 1 {
+		t.Fatalf("msg_deleted broadcast count=%d, want 1; events=%+v", n, events)
 	}
 }
 
 // TestV5_8_EditMessage: alice edits her message; the broadcaster fires
-// msg_updated with the refreshed content.
+// msg_updated exactly once, and the refreshed content round-trips through
+// the read API.
 func TestV5_8_EditMessage(t *testing.T) {
 	env := newV5Env(t)
 	_, aliceTok := env.CreateUserAndToken("alice8", "a8@x.com")
@@ -212,6 +232,8 @@ func TestV5_8_EditMessage(t *testing.T) {
 	chID := env.CreateOrGetDM(aliceTok, bobID)
 	msgID := env.MustSendAndReturnMsgID(aliceTok, chID, "typo", "uuid-v5-8-1")
 
+	// Clear send-side broadcasts so the edit assertion is scoped precisely.
+	env.broadcasts.Reset()
 	env.EditMessage(aliceTok, msgID, "fixed")
 
 	// Fetch and confirm content is updated on the read side.
@@ -223,14 +245,10 @@ func TestV5_8_EditMessage(t *testing.T) {
 		t.Fatalf("no messages after edit")
 	}
 
-	found := false
-	for _, ev := range env.broadcasts.Snapshot() {
-		if ev.ChannelID == chID && ev.EventType == imhttp.EventMsgUpdated {
-			found = true
-		}
-	}
-	if !found {
-		t.Fatalf("msg_updated broadcast not observed")
+	// Edit broadcast is async via goroutine — wait for at least one event.
+	events := waitForBroadcastCount(t, env.broadcasts, 1, 2*time.Second)
+	if n := CountBroadcastsByType(events, chID, string(imhttp.EventMsgUpdated)); n != 1 {
+		t.Fatalf("msg_updated broadcast count=%d, want 1; events=%+v", n, events)
 	}
 }
 

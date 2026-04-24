@@ -23,21 +23,31 @@ func (_m *FriendshipRepoMock) EXPECT() *FriendshipRepoMock_Expecter {
 }
 
 // AcceptRequest provides a mock function with given fields: ctx, friendshipID, userID
-func (_m *FriendshipRepoMock) AcceptRequest(ctx context.Context, friendshipID int64, userID int64) error {
+func (_m *FriendshipRepoMock) AcceptRequest(ctx context.Context, friendshipID int64, userID int64) (int64, error) {
 	ret := _m.Called(ctx, friendshipID, userID)
 
 	if len(ret) == 0 {
 		panic("no return value specified for AcceptRequest")
 	}
 
-	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, int64, int64) error); ok {
+	var r0 int64
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, int64, int64) (int64, error)); ok {
+		return rf(ctx, friendshipID, userID)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, int64, int64) int64); ok {
 		r0 = rf(ctx, friendshipID, userID)
 	} else {
-		r0 = ret.Error(0)
+		r0 = ret.Get(0).(int64)
 	}
 
-	return r0
+	if rf, ok := ret.Get(1).(func(context.Context, int64, int64) error); ok {
+		r1 = rf(ctx, friendshipID, userID)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
 }
 
 // FriendshipRepoMock_AcceptRequest_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'AcceptRequest'
@@ -60,12 +70,12 @@ func (_c *FriendshipRepoMock_AcceptRequest_Call) Run(run func(ctx context.Contex
 	return _c
 }
 
-func (_c *FriendshipRepoMock_AcceptRequest_Call) Return(_a0 error) *FriendshipRepoMock_AcceptRequest_Call {
-	_c.Call.Return(_a0)
+func (_c *FriendshipRepoMock_AcceptRequest_Call) Return(requesterID int64, err error) *FriendshipRepoMock_AcceptRequest_Call {
+	_c.Call.Return(requesterID, err)
 	return _c
 }
 
-func (_c *FriendshipRepoMock_AcceptRequest_Call) RunAndReturn(run func(context.Context, int64, int64) error) *FriendshipRepoMock_AcceptRequest_Call {
+func (_c *FriendshipRepoMock_AcceptRequest_Call) RunAndReturn(run func(context.Context, int64, int64) (int64, error)) *FriendshipRepoMock_AcceptRequest_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -297,21 +307,31 @@ func (_c *FriendshipRepoMock_ListPendingRequests_Call) RunAndReturn(run func(con
 }
 
 // RejectRequest provides a mock function with given fields: ctx, friendshipID, userID
-func (_m *FriendshipRepoMock) RejectRequest(ctx context.Context, friendshipID int64, userID int64) error {
+func (_m *FriendshipRepoMock) RejectRequest(ctx context.Context, friendshipID int64, userID int64) (int64, error) {
 	ret := _m.Called(ctx, friendshipID, userID)
 
 	if len(ret) == 0 {
 		panic("no return value specified for RejectRequest")
 	}
 
-	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, int64, int64) error); ok {
+	var r0 int64
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, int64, int64) (int64, error)); ok {
+		return rf(ctx, friendshipID, userID)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, int64, int64) int64); ok {
 		r0 = rf(ctx, friendshipID, userID)
 	} else {
-		r0 = ret.Error(0)
+		r0 = ret.Get(0).(int64)
 	}
 
-	return r0
+	if rf, ok := ret.Get(1).(func(context.Context, int64, int64) error); ok {
+		r1 = rf(ctx, friendshipID, userID)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
 }
 
 // FriendshipRepoMock_RejectRequest_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'RejectRequest'
@@ -334,12 +354,12 @@ func (_c *FriendshipRepoMock_RejectRequest_Call) Run(run func(ctx context.Contex
 	return _c
 }
 
-func (_c *FriendshipRepoMock_RejectRequest_Call) Return(_a0 error) *FriendshipRepoMock_RejectRequest_Call {
-	_c.Call.Return(_a0)
+func (_c *FriendshipRepoMock_RejectRequest_Call) Return(requesterID int64, err error) *FriendshipRepoMock_RejectRequest_Call {
+	_c.Call.Return(requesterID, err)
 	return _c
 }
 
-func (_c *FriendshipRepoMock_RejectRequest_Call) RunAndReturn(run func(context.Context, int64, int64) error) *FriendshipRepoMock_RejectRequest_Call {
+func (_c *FriendshipRepoMock_RejectRequest_Call) RunAndReturn(run func(context.Context, int64, int64) (int64, error)) *FriendshipRepoMock_RejectRequest_Call {
 	_c.Call.Return(run)
 	return _c
 }
