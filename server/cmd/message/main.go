@@ -263,7 +263,12 @@ func run() int {
 
 	// Redis client for routing lookups
 	redisCtx, redisCancel := context.WithTimeout(context.Background(), 5*time.Second)
-	rdb, redisErr := repo.OpenRedis(redisCtx, cfg.Redis.Addr, cfg.Redis.Password, cfg.Redis.DB)
+	rdb, redisErr := repo.OpenRedis(redisCtx, repo.RedisOptions{
+		Addrs:    cfg.Redis.ResolveAddrs(),
+		Password: cfg.Redis.Password,
+		DB:       cfg.Redis.DB,
+		Cluster:  cfg.Redis.Cluster,
+	})
 	redisCancel()
 	if redisErr != nil {
 		log.Warn("could not connect to redis — push fan-out disabled (non-fatal)", "error", redisErr)

@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"strings"
 
 	"github.com/google/uuid"
 	"gopkg.in/yaml.v3"
@@ -20,9 +21,30 @@ type PGConfig struct {
 }
 
 type RedisConfig struct {
-	Addr     string `yaml:"addr"`
-	Password string `yaml:"password"`
-	DB       int    `yaml:"db"`
+	// Addr is the legacy single-node address. Kept for local/dev YAML compat.
+	Addr string `yaml:"addr"`
+	// Addrs is the preferred seed list. Cluster mode discovers the rest from
+	// one seed; Single mode uses Addrs[0]. Takes precedence over Addr.
+	Addrs    []string `yaml:"addrs"`
+	Password string   `yaml:"password"`
+	// DB is single-node only. Cluster supports DB 0 only; isolation is by
+	// key prefix (see repo/routing.go).
+	DB int `yaml:"db"`
+	// Cluster forces Cluster mode. Set true when the seed list resolves via
+	// headless DNS to one entry but the backing Redis is a Cluster.
+	Cluster bool `yaml:"cluster"`
+}
+
+// ResolveAddrs returns Addrs if non-empty, otherwise falls back to [Addr] so
+// older YAML configs keep working.
+func (c *RedisConfig) ResolveAddrs() []string {
+	if len(c.Addrs) > 0 {
+		return c.Addrs
+	}
+	if c.Addr != "" {
+		return []string{c.Addr}
+	}
+	return nil
 }
 
 type PulsarConfig struct {
@@ -65,6 +87,21 @@ func applyEnvOverrides(cfg *Config) {
 	}
 	if v := os.Getenv("IM_REDIS_ADDR"); v != "" {
 		cfg.Redis.Addr = v
+	}
+	if v := os.Getenv("IM_REDIS_ADDRS"); v != "" {
+		parts := strings.Split(v, ",")
+		addrs := make([]string, 0, len(parts))
+		for _, p := range parts {
+			if s := strings.TrimSpace(p); s != "" {
+				addrs = append(addrs, s)
+			}
+		}
+		if len(addrs) > 0 {
+			cfg.Redis.Addrs = addrs
+		}
+	}
+	if v := os.Getenv("IM_REDIS_CLUSTER"); v == "true" || v == "1" {
+		cfg.Redis.Cluster = true
 	}
 	if v := os.Getenv("IM_PULSAR_URL"); v != "" {
 		cfg.Pulsar.URL = v

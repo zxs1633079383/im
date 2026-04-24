@@ -31,20 +31,32 @@ redis.call("EXPIRE", KEYS[1], ARGV[3])
 return 1
 `)
 
+// routingKeyPrefix namespaces every key this package writes in Redis.
+//
+// Rationale: pre/prod Redis is a shared Cluster (no multi-DB support), so we
+// isolate im state by prefix instead of by DB index. The prefix is stable
+// across environments; the deployment itself picks the target Redis Cluster.
+const routingKeyPrefix = "im-new:routing"
+
 // Routing manages the Redis user-connection routing table.
 // It maps each user's deviceID to the gateway pod ID that hosts the connection.
 type Routing struct {
-	rdb       *redis.Client
+	rdb       redis.UniversalClient
 	gatewayID string
 }
 
-// NewRouting creates a new Routing backed by rdb.
-func NewRouting(rdb *redis.Client, gatewayID string) *Routing {
+// NewRouting creates a new Routing backed by rdb. The client is a
+// UniversalClient so both single-node and Cluster deployments work with the
+// same code path.
+func NewRouting(rdb redis.UniversalClient, gatewayID string) *Routing {
 	return &Routing{rdb: rdb, gatewayID: gatewayID}
 }
 
+// connKey returns the Redis hash key holding userID's (deviceID → gatewayID)
+// map. All Lua scripts below must target this single key so Cluster routing
+// by hash slot stays correct.
 func connKey(userID int64) string {
-	return fmt.Sprintf("user:connections:%d", userID)
+	return fmt.Sprintf("%s:user:%d", routingKeyPrefix, userID)
 }
 
 // Register records that deviceID for userID is connected to this gateway.

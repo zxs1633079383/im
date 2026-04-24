@@ -93,7 +93,12 @@ func run() int {
 
 	// Redis connection for routing.
 	redisCtx, redisCancel := context.WithTimeout(context.Background(), 5*time.Second)
-	rdb, err := repo.OpenRedis(redisCtx, cfg.Redis.Addr, cfg.Redis.Password, cfg.Redis.DB)
+	rdb, err := repo.OpenRedis(redisCtx, repo.RedisOptions{
+		Addrs:    cfg.Redis.ResolveAddrs(),
+		Password: cfg.Redis.Password,
+		DB:       cfg.Redis.DB,
+		Cluster:  cfg.Redis.Cluster,
+	})
 	redisCancel()
 	if err != nil {
 		log.Error("connect to redis", "error", err)
