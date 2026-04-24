@@ -80,10 +80,24 @@ e0ecb32 fix(gateway): push_consumer 走 PushTopicFor 与发送侧对齐
 ### 进行中
 - **cses-client 切换 37 处 Mattermost URI → `ImApiAdapter`**：message.service.ts F1 主线，未开工。
 
-### k6 压测观测（2026-04-24 深夜，两轮）
-- k6 Job 在 `im-v2` ns 内部跑（走 ClusterIP `im-gateway:8080`，无 NodePort 绕路），配置 `deploy/k8s/60-k6-loadtest.yaml` + 启动脚本 `scripts/apply-k6.sh`
-- **首轮 TARGET_VUS=500**：k6 脚本并发 register 路径打爆 bcrypt，gateway CPU 200%/70%，**HPA 自动扩容 3 → 6 pod，耗时 ~20s**（`stabilizationWindowSeconds: 30` + `Percent: 100` policy 生效）—— HPA 快速扩缩容验证通过
-- **二轮优化（当前）**：`v4-load.js` 改 login-only + `scripts/seed-users.sh` 预注册 300 个 user（26s 完成），k6 启动后 VU 稳步爬坡**无错误**，CPU 21%/70% 充裕。下步可爬到 1k/10k VU 摸真实 P99 push latency
+### k6 压测观测（2026-04-24 深夜，至 4 轮全链路）
+- k6 Job 在 `im-v2` ns 内部跑（走 ClusterIP `im-gateway:8080`），配置 `deploy/k8s/60-k6-loadtest.yaml` + orchestrator `scripts/benchmark-loop.sh`
+- **首轮 TARGET_VUS=500**（旧 v4-load.js）：k6 脚本并发 register 打爆 bcrypt，HPA 扩容 3→6 pod，耗时 ~20s — 验证快速扩缩容
+- **二轮 TARGET_VUS=300**：`v4-load.js` 改 login-only + 预种子，无 GoError，CPU 21%/70%
+- **三轮 4 档梯度全链路**（`fullchain-load.js` + `benchmark-loop.sh`，2026-04-24 12:34）：
+  - VU=100 action_ok=98.08% / http_send p95=1.46s / HPA 3 pod
+  - VU=300 action_ok=85.44% / p95=12.75s / HPA 4 pod
+  - VU=800 action_ok=85.46% / p95=13.5s / HPA 8 pod
+  - VU=1500 action_ok=73.47% / p95=27.67s / **HPA 11 pod**
+  - **应用层逻辑健康**（进入 handler 后动作成功率高），**瓶颈在 HTTP 连接建立**（PG 连接池 + 双 login bcrypt）
+  - 详细 5 份报告：`server/docs/benchmark/2026-04-24-1234-{VU100/300/800/1500}.md` + `summary.md`
+
+### 压测侧下轮改进清单
+- 修 `im_push_e2e_ms` 埋点（`scripts/fullchain-load.js`：VU 间 sendTs map 不共享，当前全 0）
+- seed 共享 peer 账号：`k6peer` → 所有 VU 只 login 自己 + 缓存 peer_id
+- `pg.max_conns` 每 pod 20 → 40 + 考虑 pgbouncer
+- deploy/k8s/40-hpa.yaml `minReplicas: 3 → 6` 避免 ramp 早期打爆
+- benchmark-loop.sh threshold 加 `action_ok < 0.95` 自动停
 
 ### HTTP↔WS 推送对应矩阵
 - 已固化到 `docs/HTTP_WS_MAP.md`（17 条 HTTP 端点对应 WS 事件分布 + 压测覆盖建议 + 非对称性说明）
