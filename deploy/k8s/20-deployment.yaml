@@ -83,6 +83,12 @@ spec:
                 secretKeyRef:
                   name: im-gateway-secret
                   key: jwt-secret
+            # Redis mode override. On pre/prod (Cluster) the config.yaml
+            # `addr` field still applies as the single seed; IM_REDIS_CLUSTER
+            # flips the client to NewClusterClient which auto-discovers
+            # the remaining nodes from the headless DNS.
+            - name: IM_REDIS_CLUSTER
+              value: "__REDIS_CLUSTER__"
             # OTel collector endpoint; override per-env. Setting empty
             # disables via OTEL_DISABLED=true.
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
