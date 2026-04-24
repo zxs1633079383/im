@@ -118,8 +118,30 @@ function ensureDM(jwt, peerUsername) {
     return null; // DM creation deferred to main loop via /api/channels/dm
 }
 
+// ---------- setup: resolve a shared peer once, not per VU ----------
+export function setup() {
+    const peerUser = `${USER_PREFIX}_shared_peer`;
+    // First try login; register on failure (single-threaded here, no stampede).
+    let jwt = login(peerUser);
+    if (!jwt) {
+        const regBody = JSON.stringify({
+            username: peerUser, email: `${peerUser}@k6.load`,
+            password: PASSWORD, display_name: peerUser,
+        });
+        const r = http.post(`${API_BASE}/api/auth/register`, regBody,
+            { headers: { 'Content-Type': 'application/json' } });
+        if (r && (r.status === 201 || r.status === 409)) {
+            jwt = login(peerUser);
+        }
+    }
+    if (!jwt) throw new Error('setup: cannot establish shared peer account');
+    const peerId = me(jwt);
+    if (!peerId) throw new Error('setup: cannot resolve peer user id');
+    return { peerId };
+}
+
 // ---------- main VU ----------
-export default function () {
+export default function (data) {
     const username = `${USER_PREFIX}${__VU}`;
     const jwt = login(username);
     if (!jwt) { mWsErrors.add(1); sleep(1); return; }
@@ -127,13 +149,9 @@ export default function () {
     const myId = me(jwt);
     if (!myId) { mWsErrors.add(1); sleep(1); return; }
 
-    // Peer = another seeded user. Use VU+1 (wraps around the pool).
-    const peerVU = (__VU % PEER_POOL) + 1;
-    if (peerVU === __VU) return; // safety: self-loop
-    // Login peer to resolve its ID. Cheap since users are pre-seeded.
-    const peerJwt = login(`${USER_PREFIX}${peerVU}`);
-    if (!peerJwt) { mWsErrors.add(1); sleep(1); return; }
-    const peerId = me(peerJwt);
+    // Shared peer — resolved once in setup(), so every VU skips the extra
+    // login/bcrypt round that used to dominate the single-pod load.
+    const peerId = data && data.peerId;
     if (!peerId) { mWsErrors.add(1); sleep(1); return; }
 
     // Create-or-get DM channel.

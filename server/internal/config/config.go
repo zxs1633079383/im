@@ -18,6 +18,7 @@ type Config struct {
 type PGConfig struct {
 	DSN      string `yaml:"dsn"`
 	MaxConns int    `yaml:"max_conns"`
+	MaxIdle  int    `yaml:"max_idle"`
 }
 
 type RedisConfig struct {
@@ -65,7 +66,9 @@ func Load(path string) (*Config, error) {
 	}
 
 	cfg := &Config{
-		PG:      PGConfig{MaxConns: 20},
+		// Raised pool defaults after 2026-04-24 benchmark: 20 open + 5 idle
+		// saturated by VU=300 and drove P95 to 10s+ on single-pod tests.
+		PG:      PGConfig{MaxConns: 50, MaxIdle: 25},
 		Gateway: GatewayConfig{HTTPAddr: ":8080"},
 	}
 	if err := yaml.Unmarshal(data, cfg); err != nil {

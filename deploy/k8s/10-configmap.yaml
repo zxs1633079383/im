@@ -19,7 +19,8 @@ data:
     env: pre
     pg:
       dsn: "__PG_DSN__"
-      max_conns: 20
+      max_conns: 50
+      max_idle: 25
     redis:
       addr: "__REDIS_ADDR__"
       password: ""
