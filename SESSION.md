@@ -29,7 +29,7 @@ e0ecb32 fix(gateway): push_consumer 走 PushTopicFor 与发送侧对齐
 
 ### Tags
 - `v0.1.0-m1-verified` / `v0.1.0-m1-complete` / `v0.2.0-m2-complete` / `v1.0.0`
-- （M3 未 tag，部署使用 image tag `v1.0.0-pre-2`）
+- **`v0.3.0-m3-pre-deployed`** — M3 主体 + pre 部署 + E2E 13/13 + HPA 扩容验证锁定点
 
 ---
 
@@ -80,11 +80,10 @@ e0ecb32 fix(gateway): push_consumer 走 PushTopicFor 与发送侧对齐
 ### 进行中
 - **cses-client 切换 37 处 Mattermost URI → `ImApiAdapter`**：message.service.ts F1 主线，未开工。
 
-### k6 首轮压测观测结果（2026-04-24 深夜）
-- k6 Job 在 `im-v2` ns 内部跑（走 ClusterIP `im-gateway:8080`，无 NodePort 绕路），配置文件 `deploy/k8s/60-k6-loadtest.yaml` + 启动脚本 `scripts/apply-k6.sh`
-- TARGET_VUS=500（爬坡 2m 到目标）—— **首轮发现 k6 脚本 login/register 路径并发 bcrypt 打爆 CPU**
-- gateway CPU 200% / 70%（1000m request 打满），HPA **成功扩容 3 → 6 pod**，耗时约 20s（`stabilizationWindowSeconds: 30` + `Percent: 100` policy 生效）
-- 下轮优化：预种子 N 个 user 避免并发 register 瓶颈；先小规模（50-100 VU）摸 P99 push latency 基线，再爬到 1k/10k
+### k6 压测观测（2026-04-24 深夜，两轮）
+- k6 Job 在 `im-v2` ns 内部跑（走 ClusterIP `im-gateway:8080`，无 NodePort 绕路），配置 `deploy/k8s/60-k6-loadtest.yaml` + 启动脚本 `scripts/apply-k6.sh`
+- **首轮 TARGET_VUS=500**：k6 脚本并发 register 路径打爆 bcrypt，gateway CPU 200%/70%，**HPA 自动扩容 3 → 6 pod，耗时 ~20s**（`stabilizationWindowSeconds: 30` + `Percent: 100` policy 生效）—— HPA 快速扩缩容验证通过
+- **二轮优化（当前）**：`v4-load.js` 改 login-only + `scripts/seed-users.sh` 预注册 300 个 user（26s 完成），k6 启动后 VU 稳步爬坡**无错误**，CPU 21%/70% 充裕。下步可爬到 1k/10k VU 摸真实 P99 push latency
 
 ### HTTP↔WS 推送对应矩阵
 - 已固化到 `docs/HTTP_WS_MAP.md`（17 条 HTTP 端点对应 WS 事件分布 + 压测覆盖建议 + 非对称性说明）
@@ -97,9 +96,10 @@ e0ecb32 fix(gateway): push_consumer 走 PushTopicFor 与发送侧对齐
 - OTel traces export 到 `otel-collector:4317` 在 im-v2 ns 解析不到（name resolver error），metrics 正常，traces 未送到 Jaeger。需部署 OTel collector 或改指 `jaeger-cses` 的 OTLP endpoint。
 
 ### 待用户拍板
-- 是否把 `v1.0.0-pre-2` image 打 tag `v0.3.0-m3-pre-deployed` 入仓？
-- k6 大规模压测（150k VU）何时落？需要先确认 pre 集群承载能力。
-- cses-client F1 切换 37 处 URI，先切哪 3 条最热（sendMessage / markRead / revoke 建议优先）。
+- ~~打 tag~~ → ✅ 已打 `v0.3.0-m3-pre-deployed`（commit `1d1c195`）
+- k6 大规模压测（10k/50k/150k VU）何时落？当前 300 VU 稳态 CPU 21%，可安全爬；150k 需要 distributed runner
+- **cses-client F1 切 37 处 URI** → 🗓 **TODO**（用户明确：先把后端 loop 做完，再全面替换 cses-client 代码）
+- `im.fanout.e2e.duration` 语义升级（见 §3 已知债务）— 可作为后续精度提升任务
 
 ### pre 集群环境事实（2026-04-24）
 
