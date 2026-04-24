@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 )
 
 const (
@@ -67,17 +69,22 @@ func (r *Routing) Register(ctx context.Context, userID int64, deviceID string) e
 	pipe.HSet(ctx, key, deviceID, r.gatewayID)
 	pipe.Expire(ctx, key, connKeyTTL)
 	_, err := pipe.Exec(ctx)
+	recordRoutingOp(ctx, "register", err)
 	return err
 }
 
 // Deregister removes the deviceID entry for userID.
 func (r *Routing) Deregister(ctx context.Context, userID int64, deviceID string) error {
-	return r.rdb.HDel(ctx, connKey(userID), deviceID).Err()
+	err := r.rdb.HDel(ctx, connKey(userID), deviceID).Err()
+	recordRoutingOp(ctx, "deregister", err)
+	return err
 }
 
 // RefreshTTL resets the expiry of the routing key (call on each heartbeat).
 func (r *Routing) RefreshTTL(ctx context.Context, userID int64) error {
-	return r.rdb.Expire(ctx, connKey(userID), connKeyTTL).Err()
+	err := r.rdb.Expire(ctx, connKey(userID), connKeyTTL).Err()
+	recordRoutingOp(ctx, "expire", err)
+	return err
 }
 
 // Refresh atomically re-registers the (connID → gatewayID) entry for userID
@@ -93,6 +100,7 @@ func (r *Routing) Refresh(ctx context.Context, userID int64, gatewayID string, c
 		[]string{key},
 		connID, gatewayID, int(RoutingTTL.Seconds()),
 	).Result()
+	recordRoutingOp(ctx, "refresh", err)
 	if err != nil {
 		return fmt.Errorf("routing refresh: %w", err)
 	}
@@ -109,6 +117,7 @@ func (r *Routing) Lookup(ctx context.Context, userID int64) ([]string, error) {
 // Returns an empty slice if the user has no active connections.
 func (r *Routing) GatewayIDsForUser(ctx context.Context, userID int64) ([]string, error) {
 	m, err := r.rdb.HGetAll(ctx, connKey(userID)).Result()
+	recordRoutingOp(ctx, "lookup", err)
 	if err != nil {
 		return nil, err
 	}
@@ -125,5 +134,24 @@ func (r *Routing) GatewayIDsForUser(ctx context.Context, userID int64) ([]string
 
 // DevicesForUser returns all device_id → gateway_id entries for userID.
 func (r *Routing) DevicesForUser(ctx context.Context, userID int64) (map[string]string, error) {
-	return r.rdb.HGetAll(ctx, connKey(userID)).Result()
+	out, err := r.rdb.HGetAll(ctx, connKey(userID)).Result()
+	recordRoutingOp(ctx, "devices", err)
+	return out, err
+}
+
+// recordRoutingOp stamps im.routing.redis.ops with the op and status tags.
+// Split out so the method bodies above read as plain Redis calls.
+func recordRoutingOp(ctx context.Context, op string, err error) {
+	m := metrics()
+	if m.RoutingOps == nil {
+		return
+	}
+	status := "ok"
+	if err != nil {
+		status = "error"
+	}
+	m.RoutingOps.Add(ctx, 1, metric.WithAttributes(
+		attribute.String("op", op),
+		attribute.String("status", status),
+	))
 }

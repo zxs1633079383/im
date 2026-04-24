@@ -109,6 +109,13 @@ func RegisterMessageRoutes(authed *gin.RouterGroup, svc *service.MessageService,
 
 	// POST /api/channels/:id/messages — send a new message.
 	authed.POST("/channels/:id/messages", func(c *gin.Context) {
+		fanoutStart := time.Now()
+		defer func() {
+			if m := metrics(); m.FanoutE2E != nil {
+				m.FanoutE2E.Record(c.Request.Context(),
+					float64(time.Since(fanoutStart).Milliseconds()))
+			}
+		}()
 		uid, ok := userIDFromCtx(c)
 		if !ok {
 			return

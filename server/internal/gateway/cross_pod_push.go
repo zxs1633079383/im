@@ -4,9 +4,11 @@ import (
 	"context"
 	"log/slog"
 	"strconv"
+	"time"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -111,7 +113,9 @@ func (h *Hub) crossPodPushImpl(
 				attribute.String("push.type", string(msgType)),
 				attribute.Int64("target.user_id", userID),
 			))
+		sendStart := time.Now()
 		sendErr := producer.Send(sendCtx, key, payload)
+		recordPushMetrics(sendCtx, time.Since(sendStart), string(msgType), sendErr)
 		if sendErr != nil {
 			span.SetStatus(codes.Error, sendErr.Error())
 			span.RecordError(sendErr)
@@ -165,3 +169,23 @@ var errNilProducerCache = &nilCacheErr{}
 type nilCacheErr struct{}
 
 func (*nilCacheErr) Error() string { return "cross pod push: producer cache is nil" }
+
+// recordPushMetrics bumps im.push.pulsar.send (status + type tagged) and
+// records im.pulsar.producer.send.duration for one target. Called inside
+// CrossPodPush's per-target loop; safe even if the meter is still noop.
+func recordPushMetrics(ctx context.Context, dur time.Duration, msgType string, err error) {
+	m := metrics()
+	status := "ok"
+	if err != nil {
+		status = "error"
+	}
+	if m.PushSend != nil {
+		m.PushSend.Add(ctx, 1, metric.WithAttributes(
+			attribute.String("status", status),
+			attribute.String("type", msgType),
+		))
+	}
+	if m.PulsarSendDur != nil {
+		m.PulsarSendDur.Record(ctx, float64(dur.Milliseconds()))
+	}
+}

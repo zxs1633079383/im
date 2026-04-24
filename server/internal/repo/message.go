@@ -111,6 +111,13 @@ func (r *gormMessageRepo) AllocSeqAndInsert(ctx context.Context, tx *gorm.DB, ms
 	ctx, span := tracer.Start(ctx, "MessageRepo.AllocSeqAndInsert")
 	defer span.End()
 
+	start := time.Now()
+	defer func() {
+		if m := metrics(); m.AllocSeqDur != nil {
+			m.AllocSeqDur.Record(ctx, float64(time.Since(start).Milliseconds()))
+		}
+	}()
+
 	run := func(db *gorm.DB) error {
 		// UPDATE ... RETURNING seq — atomic row-lock on channels(id).
 		seq, err := r.channel.IncrementSeq(ctx, db, msg.ChannelID)

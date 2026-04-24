@@ -29,12 +29,18 @@ type ProducerCache struct {
 }
 
 // NewProducerCache creates a ProducerCache backed by an LRU of size producerCacheSize.
+// Evict callback decrements im.pulsar.producer.active so the Grafana gauge
+// stays in sync with LRU churn.
 func NewProducerCache(client *imPulsar.Client) *ProducerCache {
+	m := metrics() // warm before evict callbacks fire
 	pc := &ProducerCache{client: client}
 	cache, _ := lru.NewWithEvict[string, *imPulsar.Producer](producerCacheSize,
 		func(_ string, p *imPulsar.Producer) {
 			if p != nil {
 				p.Close()
+				if m.ProdActive != nil {
+					m.ProdActive.Add(context.Background(), -1)
+				}
 			}
 		})
 	pc.cache = cache
@@ -43,7 +49,7 @@ func NewProducerCache(client *imPulsar.Client) *ProducerCache {
 
 // GetOrCreate returns a producer for topic, creating one on cache miss.
 // The returned producer is owned by the cache and must NOT be closed by the caller.
-func (pc *ProducerCache) GetOrCreate(_ context.Context, topic string) (*imPulsar.Producer, error) {
+func (pc *ProducerCache) GetOrCreate(ctx context.Context, topic string) (*imPulsar.Producer, error) {
 	if p, ok := pc.cache.Get(topic); ok {
 		return p, nil
 	}
@@ -58,6 +64,9 @@ func (pc *ProducerCache) GetOrCreate(_ context.Context, topic string) (*imPulsar
 		return nil, fmt.Errorf("producer cache: %w", err)
 	}
 	pc.cache.Add(topic, p)
+	if m := metrics(); m.ProdActive != nil {
+		m.ProdActive.Add(ctx, 1)
+	}
 	return p, nil
 }
 

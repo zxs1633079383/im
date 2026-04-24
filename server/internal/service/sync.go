@@ -4,6 +4,9 @@ import (
 	"context"
 	"fmt"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
+
 	"im-server/internal/repo"
 )
 
@@ -164,7 +167,43 @@ func (s *SyncService) Sync(ctx context.Context, callerID int64, p SyncParams) (S
 		results = append(results, delta)
 	}
 
+	recordSyncMetrics(ctx, results)
 	return SyncResult{Channels: results}, nil
+}
+
+// recordSyncMetrics feeds the Grafana "Sync" row: response count (tagged
+// is_empty / has_more), plus histograms over channels + messages returned.
+// Split out so Sync itself stays focused on the cursor math.
+func recordSyncMetrics(ctx context.Context, results []SyncChannelDelta) {
+	m := metrics()
+	totalMsgs := 0
+	anyHasMore := false
+	for _, d := range results {
+		totalMsgs += len(d.Messages)
+		if d.HasMore {
+			anyHasMore = true
+		}
+	}
+	isEmpty := "0"
+	if len(results) == 0 {
+		isEmpty = "1"
+	}
+	hasMore := "0"
+	if anyHasMore {
+		hasMore = "1"
+	}
+	if m.SyncResp != nil {
+		m.SyncResp.Add(ctx, 1, metric.WithAttributes(
+			attribute.String("is_empty", isEmpty),
+			attribute.String("has_more", hasMore),
+		))
+	}
+	if m.SyncChannels != nil {
+		m.SyncChannels.Record(ctx, int64(len(results)))
+	}
+	if m.SyncMessages != nil {
+		m.SyncMessages.Record(ctx, int64(totalMsgs))
+	}
 }
 
 // fetchLatest returns up to limit messages with seq <= serverSeq for
