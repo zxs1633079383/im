@@ -70,23 +70,15 @@ export const options = {
   noConnectionReuse: false,
 };
 
+// login does a plain login — no inline register. Callers MUST seed the user
+// set via scripts/seed-users.sh before the Job starts; otherwise VUs stampede
+// the /api/auth/register path which bcrypts every call and pins gateway CPU.
 function login(username) {
   const body = JSON.stringify({ login: username, password: PASSWORD });
   const r = http.post(`${API_BASE}/api/auth/login`, body,
     { headers: { 'Content-Type': 'application/json' } });
-  if (r.status === 200) return r.json('token');
-  // fall back to register — parallel VUs may 409 on 'username taken', that's OK.
-  const regBody = JSON.stringify({
-    username, email: `${username}@v4.load`, password: PASSWORD, display_name: username,
-  });
-  const rr = http.post(`${API_BASE}/api/auth/register`, regBody,
-    { headers: { 'Content-Type': 'application/json' } });
-  if (rr.status === 201) return rr.json('token');
-  if (rr.status === 409) {
-    // try login once more
-    const r2 = http.post(`${API_BASE}/api/auth/login`, body,
-      { headers: { 'Content-Type': 'application/json' } });
-    if (r2.status === 200) return r2.json('token');
+  if (r && r.status === 200 && r.body) {
+    try { return r.json('token'); } catch { return null; }
   }
   return null;
 }
