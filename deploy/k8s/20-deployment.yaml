@@ -78,7 +78,7 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: status.podIP
-            - name: IM_GATEWAY_JWT_SECRET
+            - name: IM_JWT_SECRET
               valueFrom:
                 secretKeyRef:
                   name: im-gateway-secret
@@ -135,6 +135,10 @@ spec:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
             runAsNonRoot: true
+            # distroless/static:nonroot exposes USER as symbolic "nonroot";
+            # kubelet's verify_non_root requires a numeric UID, so pin it.
+            runAsUser: 65532
+            runAsGroup: 65532
             capabilities:
               drop:
                 - ALL

@@ -70,17 +70,22 @@ const (
 type PushConsumer struct {
 	hub       *Hub
 	gatewayID string
+	env       string
 	log       *slog.Logger
 }
 
-// NewPushConsumer creates a PushConsumer.
-func NewPushConsumer(hub *Hub, gatewayID string, log *slog.Logger) *PushConsumer {
-	return &PushConsumer{hub: hub, gatewayID: gatewayID, log: log}
+// NewPushConsumer creates a PushConsumer. env must match the sender side's
+// gateway env (prod/pre/local) so the subscribe topic agrees with
+// PushTopicFor. A blank env (for legacy call sites) falls back to
+// PushTopicFor's "local" bucket.
+func NewPushConsumer(hub *Hub, gatewayID, env string, log *slog.Logger) *PushConsumer {
+	return &PushConsumer{hub: hub, gatewayID: gatewayID, env: env, log: log}
 }
 
-// Topic returns the Pulsar topic this consumer should subscribe to.
+// Topic returns the Pulsar topic this consumer should subscribe to. Uses
+// PushTopicFor so sender + receiver share a single source of truth.
 func (pc *PushConsumer) Topic() string {
-	return "msg.push." + pc.gatewayID
+	return PushTopicFor(pc.gatewayID, pc.env)
 }
 
 // SubscriptionName returns a stable subscription name for at-least-once delivery.

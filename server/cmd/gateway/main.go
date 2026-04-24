@@ -131,7 +131,7 @@ func run() int {
 	log.Info("gateway environment", "env", env)
 
 	// Push consumer subscribes to msg.push.{gatewayID}.
-	pushConsumer := gateway.NewPushConsumer(hub, gatewayID, log)
+	pushConsumer := gateway.NewPushConsumer(hub, gatewayID, env, log)
 
 	// WsHandler wires hub, routing, channelRepo, and JWT secret together.
 	wsHandler := gateway.NewWsHandler(hub, routing, cfg.Gateway.JWTSecret, gatewayID, channelRepo, log)
