@@ -21,7 +21,9 @@
 #   RAMP_SEC   = 30
 #   DOWN_SEC   = 30
 
-set -euo pipefail
+# Intentionally NOT using `-e`: one round's empty `kubectl top` output must
+# not abort the whole gradient. We handle errors per-step and keep going.
+set -uo pipefail
 
 NS="${NAMESPACE:-im-v2}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -101,6 +103,8 @@ for VU in $VU_LEVELS; do
     CPU_TOP=$(kubectl -n "$NS" top pods 2>/dev/null | awk '/im-gateway-/ {cpu=$2; sub("m","",cpu); sum+=cpu; cnt++} END{if(cnt)print sum" "cnt}')
     CPU_SUM=$(echo "$CPU_TOP" | awk '{print $1}')
     CPU_POD_CNT=$(echo "$CPU_TOP" | awk '{print $2}')
+    CPU_SUM="${CPU_SUM:-0}"
+    CPU_POD_CNT="${CPU_POD_CNT:-0}"
     K6_SUMMARY=$(tail -60 "$LOG_TMP" | grep -E '^\s*im_|^\s*http_req|^\s*checks|^\s*iterations|^\s*data_|^\s*ws_|^\s*push_latency|^\s*level=(error|warn)' | head -80)
 
     # Threshold check.
