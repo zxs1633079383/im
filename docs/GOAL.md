@@ -42,17 +42,19 @@ cd server && make verify-all   # ≈ 90 min
 |----|------|------|------|
 | M1 | 核心消息与同步 | auth / channel / message / sync / WS / 跨 pod 推送骨架 | ✅ 完成，tag `v0.1.0-m1-complete` |
 | M2 | 企业协作 | 公告 / 治理 / 紧急 / 审批 / 通知 / 定时 / 快捷回复 | ✅ 完成，tag `v0.2.0-m2-complete` |
-| M3 | 模板 / 组织 / 前端 F1 切换 | 前端 `apiFlavor` 从 mattermost → im 默认切换 | 🔜 待启动 |
-| M4 | V4 集群韧性落 pre 环境 | HPA / PDB / 故障注入验证 | 🔜 待启动（脚本已就绪） |
-| M5 | 历史数据 ETL | `migration_sort_key` 算法已冻结，迁移脚本待写 | 🔜 待启动 |
+| M3 | cses-client 全面切换 | 前端 + Rust **抛弃 Mattermost 全部调用**，`apiFlavor` 默认 `im`；模板/组织/投票/搜索直连 Java | 🔜 待启动（inventory 未做） |
+| M4 | V4 集群韧性落 pre 环境 | HPA / PDB / 故障注入验证；k8s ns `im-2.0`（未创建） | 🔜 待启动（脚本已就绪） |
+| M5 | 历史数据 ETL | `migration_sort_key` 算法已冻结，迁移脚本待写 | 🗓 TODO（非短期） |
 | M6 | 下线 Mattermost / csesapi | 全量切换 + 监控观察期 | 🔜 待启动 |
 
 ### 不在范围（外部服务，不归 im 拥有）
 
-- `/vote/*`（走 Java）
-- `/Im/search/*`（走 Java 搜索）
-- 文件分片上传 / 存储（外部对象存储）
-- Bot / Agent / Webhook / Templates / Organization 设置 UI（未来 m3+）
+- `/vote/*` —— 走 Java 投票服务
+- `/Im/search/*` —— 走 Java 搜索服务
+- 文件分片上传 / 断点续传 —— 外部对象存储
+- **模板消息** `/post/templateReceived` —— 走 Java
+- **组织架构 / 群模块 / 团队** `/modules`、`/groups`、`/teams/*` —— 走 Java
+- Bot / Agent / Webhook 设置 UI —— 延后到 M4（im 实现，非本期）
 
 ---
 

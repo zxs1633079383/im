@@ -934,11 +934,21 @@ export const MAX_CHANNELS_PER_CALL = 500;
 > - 搜索引擎高级能力（全文 / 近义 / 排序调权）→ 依赖独立 Search 服务
 > - 以上均 **不纳入 M2 验收**
 
-### M3：P2 辅助 + 前端主体切换（3 周，与 M2 末端并行）
-- [ ] 模板消息 `/api/messages/:id/template-received`
-- [ ] 组织信息 `/api/modules`、`/api/groups`、`/api/teams/*`
-- [ ] 前端 F1 + F2 + F3 同步推进（见 `FRONTEND.md`）
-- [ ] **TODO（不在 Go 侧实现）：** 投票 `/vote/*` 走 Java 远程调用；im 只负责鉴权头透传
+### M3：cses-client 全面抛弃 Mattermost（3 周）
+**主题：前端 + Rust 全量切到 im，`apiFlavor` 默认 `im`，删除 Mattermost 调用代码。**
+
+- [ ] **cses-client mattermost 依赖 inventory**（全仓 grep `/api/cses/*` / `mattermostHttp` / 旧 `channels.service` 等），产出替换清单（每条调用 → im 对应端点 或 → "直连 Java，不经 im"）
+- [ ] F1~F3 迭代（见 `FRONTEND.md`）：核心消息流 → 企业协作（M2 功能对齐）→ 治理 / 通知 / 定时
+- [ ] `apiFlavor` 默认值从 `'mattermost'` 切到 `'im'`
+- [ ] 清理 `ImApiAdapter` 剩余 5 个 stub：`fetchAround / deleteMessage / editMessage / getReplies / getReaders`
+- [ ] V6 smoke 7/7 基线保持 + 新增 V7 全量端到端回归
+
+**不在 M3 范围（外部直连 Java / 独立服务，不经 im）：**
+- 模板消息 `/post/templateReceived` — Java
+- 组织架构 `/modules`、`/groups`、`/teams/*` — Java
+- 投票 `/vote/*` — Java
+- 搜索 `/search/*` — Java
+- 文件分片上传 / 断点续传 — 独立对象存储
 
 ### M4：Bot 生态 + 数据迁移准备（3 周）
 - [ ] AI Agent `/api/agents/*`（独立 subservice）
