@@ -3,7 +3,7 @@
 > 这份文档是"会话快照"：每次会话结束前更新一次，下次会话开局只要先读它 + `docs/GOAL.md` + `CLAUDE.md` 就能无缝接着干。
 > **更新原则**：事实先写（分支/tag/commit），决策次之，待办最后。过时信息必须删除，不留历史沉积。
 
-Last updated: 2026-04-24
+Last updated: 2026-04-24（下午：M1 + M2 + 项目级文档全部合并进 main）
 
 ---
 
@@ -11,11 +11,19 @@ Last updated: 2026-04-24
 
 | 分支 | 用途 | 最新 commit | 状态 |
 |------|------|-------------|------|
-| `main` | 稳定主干 | `60ddd3f` Merge cloud-native migration | 稳定 |
-| `feature/im-m1-replacement` | M1 核心消息 | 已合并 | ✅ CI 绿 |
-| `feature/im-m2` | M2 企业协作 | `226963d` test(integration): friend accept/reject + single add-member push | ✅ CI 绿 |
-| `im-backend-switch` (client) | 双端适配 | `85c2b3c34` | ✅ V6 smoke 7/7 |
-| `worktree-agent-a961b4cc` | 本 worktree | （本次 doc 落地分支） | 进行中 |
+| `main` | 稳定主干 — 含 M1 + M2 + 项目级文档 | `0b185ef` Merge worktree-agent-a961b4cc | ✅ 本地合并完成，**尚未 push 到 origin** |
+| `feature/im-m1-replacement` | M1 核心消息 | `1cf732c` — 已通过 `d215705` 合入 main | ✅ 已合并 |
+| `feature/im-m2` (= origin) | M2 企业协作 | `226963d` — 已通过 `fb46e87` 合入 main | ✅ 已合并（本地无同名分支） |
+| `worktree-agent-a961b4cc` | 项目级文档落地 | `51b1577` — 已通过 `0b185ef` 合入 main | ✅ 已合并，可清理 |
+| `im-backend-switch` (client) | 双端适配 | `85c2b3c34` | ✅ V6 smoke 7/7，独立客户端仓库 |
+
+### main 最近 merge 链
+```
+0b185ef  Merge worktree-agent-a961b4cc → main   （4 份项目级文档）
+fb46e87  Merge origin/feature/im-m2    → main   （M2 企业协作全量）
+d215705  Merge feature/im-m1-replacement → main（M1 核心消息 + 同步）
+f9f83bb  chore: save WIP docs ...              （merge 前保护主仓库 WIP：CORS 中间件等）
+```
 
 ### Tags
 - `v0.1.0-m1-verified`
@@ -26,6 +34,12 @@ Last updated: 2026-04-24
 ---
 
 ## 2. 已完成（截至今天）
+
+### Merge 状态（今日新）
+- M1 + M2 全部合并进 `main`（保留 merge commit 历史，`--no-ff`）。
+- 项目级文档（CLAUDE.md / SESSION.md / docs/ARCHITECTURE.md / docs/GOAL.md）合入 main。
+- 主仓库 merge 前的未提交 WIP（CORS 中间件、docker-compose、client 小改、`server/docs/{FRONTEND,OVERALL,TECH}.md`、`AGENTS.md`）已 commit 为 `f9f83bb` 保护。
+- 冲突 0 次：M1/M2 与主仓库 router.go 的 CORS 修改自动合入；`CLAUDE.md` 由 worktree 版覆盖（已内嵌 GitNexus 要点）。
 
 ### Backend
 - **M1**：auth / friends / channel / messages / sync / WS / 跨 pod 推送骨架 + ProducerCache + routing TTL — 全绿。
@@ -54,13 +68,14 @@ Last updated: 2026-04-24
 ## 3. 进行中 / 未决
 
 ### 进行中
-- 本会话：落地 4 份文档（ARCHITECTURE / GOAL / SESSION / CLAUDE），worktree 分支待 commit。
+- 无。
 
 ### 待用户拍板的分叉
-- **A. Merge PR 到 main**：把 `feature/im-m1-replacement` + `feature/im-m2` 合回 main。
+- **A. `git push origin main`**：把 main 最新的 merge commit 链推到 origin（目前仅本地）。
 - **B. V4 落 pre 环境**：用 `scripts/v4-prepare.sh` + `kubectl`，跑 k6 150k WS 压测。
 - **C. 启动 M3**：Templates / Organization + 前端 F1 真正默认切 `apiFlavor=im`。
 - **D. 启动 M5 ETL**：历史数据迁移脚本 + `migration_sort_key` 实现。
+- **E. 清理 worktree**：本次 doc worktree `agent-a961b4cc` 已合并，可 `git worktree remove` 回收。
 
 ### 已知债务
 - `cross_pod_push.go` 里 `markOffline(userID)` 还是骨架位，Pulsar `producer.Send` 失败后真正从 routing 摘除用户未实现。
@@ -83,11 +98,11 @@ Last updated: 2026-04-24
 ## 5. 会话快速命令
 
 ```bash
-# 查看当前分支状态
-git status && git log --oneline -10
+# 查看当前分支状态（main 已是最新主力）
+git status && git log --oneline --graph -15
 
-# 切到 M2 分支（最新主力）
-git checkout feature/im-m2
+# push merge chain 到 origin（待用户授权）
+# git push origin main
 
 # 启动本地 infra（Postgres/Redis/Pulsar）
 docker compose up -d
