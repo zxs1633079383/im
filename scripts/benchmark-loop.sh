@@ -41,10 +41,14 @@ echo "benchmark run $RUN_STAMP starting. reports -> $REPORT_DIR/"
 
 # Seed the max VU count once; each round reuses the pool.
 MAX_VU=$(echo "$VU_LEVELS" | tr ' ' '\n' | sort -rn | head -1)
-export SEED_USER_COUNT="$MAX_VU"
-export SEED_PARALLELISM="${SEED_PARALLELISM:-15}"
-echo "==> seeding $MAX_VU users (once)"
-bash "$SCRIPT_DIR/seed-users.sh" || { echo "seed failed"; exit 2; }
+if [[ "${SKIP_SEED:-0}" == "1" ]]; then
+    echo "==> SKIP_SEED=1 — skipping seed (pool expected to already exist)"
+else
+    export SEED_USER_COUNT="$MAX_VU"
+    export SEED_PARALLELISM="${SEED_PARALLELISM:-15}"
+    echo "==> seeding $MAX_VU users (once)"
+    bash "$SCRIPT_DIR/seed-users.sh" || { echo "seed failed"; exit 2; }
+fi
 
 for VU in $VU_LEVELS; do
     REPORT="$REPORT_DIR/$RUN_STAMP-VU${VU}.md"
@@ -58,25 +62,18 @@ for VU in $VU_LEVELS; do
         --from-file=v4-load.js="$K6_SCRIPT" \
         --dry-run=client -o yaml | kubectl apply -f - >/dev/null
 
-    # 2. Delete existing Job + re-apply with patched TARGET_VUS + knobs.
+    # 2. Delete existing Job + re-render from placeholder yaml.
     kubectl -n "$NS" delete job im-k6-load --ignore-not-found --wait=true >/dev/null
 
-    # Render the Job inline with the gradient values.
+    PEER_POOL_VAL=$(( VU < 50 ? VU : 50 ))
     awk '/^---$/ {p=1; next} p' "$JOB_YAML" \
       | sed \
-          -e "s|value: \"[0-9]\\+\"$|value: \"$VU\"|" \
-          -e "/name: TARGET_VUS/{n;s|value:.*|value: \"$VU\"|}" \
+          -e "s|__TARGET_VUS__|$VU|g" \
+          -e "s|__RAMP_SEC__|$RAMP_SEC|g" \
+          -e "s|__SOAK_SEC__|$SOAK_SEC|g" \
+          -e "s|__DOWN_SEC__|$DOWN_SEC|g" \
+          -e "s|__PEER_POOL__|$PEER_POOL_VAL|g" \
       | kubectl apply -f - >/dev/null
-
-    # Inject ramp/soak as env.
-    kubectl -n "$NS" patch job im-k6-load --type='json' -p "$(cat <<JSON
-[
-  {"op":"add","path":"/spec/template/spec/containers/0/env/-","value":{"name":"RAMP_SEC","value":"$RAMP_SEC"}},
-  {"op":"add","path":"/spec/template/spec/containers/0/env/-","value":{"name":"SOAK_SEC","value":"$SOAK_SEC"}},
-  {"op":"add","path":"/spec/template/spec/containers/0/env/-","value":{"name":"DOWN_SEC","value":"$DOWN_SEC"}}
-]
-JSON
-)" >/dev/null 2>&1 || true
 
     # 3. Wait for pod + stream logs into a buffer.
     echo "waiting for k6 pod..."

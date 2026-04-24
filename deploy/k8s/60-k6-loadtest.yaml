@@ -56,7 +56,15 @@ spec:
             - name: WS_BASE
               value: "ws://im-gateway:8080"
             - name: TARGET_VUS
-              value: "300"
+              value: "__TARGET_VUS__"
+            - name: RAMP_SEC
+              value: "__RAMP_SEC__"
+            - name: SOAK_SEC
+              value: "__SOAK_SEC__"
+            - name: DOWN_SEC
+              value: "__DOWN_SEC__"
+            - name: PEER_POOL
+              value: "__PEER_POOL__"
             - name: SEND_PROB
               value: "0.1"
             - name: SEND_INTERVAL_MS
