@@ -202,14 +202,13 @@ export class MessageService {
     }
 
     // 2. Fetch from server for the latest data.
+    // Server returns seq ASC (oldest → newest) — see repo/message.go:FetchBefore.
     const msgs = await this.fetchMessages(channelId, { limit: 50 });
-    // FetchBefore (default) returns newest-first; reverse for display order.
-    const sorted = [...msgs].reverse();
-    this.messages.set(sorted);
+    this.messages.set(msgs);
     this.activeChannelId.set(channelId);
 
     // 3. Persist fetched messages to SQLite.
-    this.persistMessages(sorted);
+    this.persistMessages(msgs);
 
     // Mark read optimistically — don't await to avoid delaying UI
     this.markRead(channelId).catch(err =>
@@ -272,13 +271,11 @@ export class MessageService {
 
     // 4. Gap detected (or not enough messages): fetch from server.
     try {
-      const serverMsgs = await this.fetchMessages(channelId, {
+      // Server returns seq ASC already — no reverse needed.
+      return await this.fetchMessages(channelId, {
         before_seq: pivotSeq,
         limit: pageSize,
       });
-
-      // fetchMessages returns newest-first; reverse to ascending order.
-      return [...serverMsgs].reverse();
     } catch (err) {
       console.warn('[MessageService] hole fill fetch failed', err);
       // Return whatever we have locally as a best-effort fallback.

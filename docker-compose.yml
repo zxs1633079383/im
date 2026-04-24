@@ -15,7 +15,7 @@ services:
     image: redis:7-alpine
     container_name: im-redis
     ports:
-      - "6379:6379"
+      - "16379:6379"
 
   pulsar:
     image: apachepulsar/pulsar:3.3.0

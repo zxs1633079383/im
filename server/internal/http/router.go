@@ -30,6 +30,7 @@ func New(cfg Config) *gin.Engine {
 	r := gin.New()
 	r.Use(gin.Recovery())
 	r.Use(otelgin.Middleware(cfg.ServiceName))
+	r.Use(corsMiddleware())
 
 	r.GET("/healthz", func(c *gin.Context) { c.String(200, "ok") })
 	r.GET("/readyz", func(c *gin.Context) { c.String(200, "ok") })
@@ -44,4 +45,26 @@ func New(cfg Config) *gin.Engine {
 		})
 	}
 	return r
+}
+
+// corsMiddleware adds permissive CORS headers and short-circuits OPTIONS
+// preflight requests. Permissive on purpose for local dev / Tauri origins;
+// tighten the allowed origin list before exposing to the public internet.
+func corsMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		origin := c.GetHeader("Origin")
+		if origin == "" {
+			origin = "*"
+		}
+		c.Header("Access-Control-Allow-Origin", origin)
+		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		c.Header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		c.Header("Access-Control-Allow-Credentials", "true")
+		c.Header("Access-Control-Max-Age", "600")
+		if c.Request.Method == stdhttp.MethodOptions {
+			c.AbortWithStatus(stdhttp.StatusNoContent)
+			return
+		}
+		c.Next()
+	}
 }
