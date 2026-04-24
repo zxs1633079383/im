@@ -171,11 +171,13 @@ export default function (data) {
         const sendTs = new Map();
 
         socket.on('open', () => {
-            // Heartbeat ping.
+            // Heartbeat ping. Server expects {type:"ping", payload:{channel_seqs:{}}}
+            // as a flat JSON object — k6 runtime has no Node Buffer, and the
+            // server does json.Unmarshal on payload directly, so never base64.
             socket.setInterval(() => {
                 socket.send(JSON.stringify({
                     type: 'ping',
-                    payload: Buffer.from(JSON.stringify({ channel_seqs: {} })).toString('base64'),
+                    payload: { channel_seqs: {} },
                 }));
             }, 15000);
 
