@@ -7,10 +7,12 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
 	"im-server/internal/config"
+	"im-server/internal/gateway"
 	"im-server/internal/observability"
 	imPulsar "im-server/internal/pulsar"
 	"im-server/internal/repo"
@@ -44,33 +46,28 @@ type deliveryEvent struct {
 	SenderID    int64  `json:"sender_id"`
 }
 
-// pulsarPushEvent is the legacy single-user push envelope used by the
-// standalone cmd/message delivery worker. The production gateway path has
-// since moved to gateway.PulsarPushEnvelope (batched TargetUIDs + opaque
-// payload). This tool stays on the old schema — if you bring it back into
-// the hot path, rewrite it against PulsarPushEnvelope and delete this type.
-type pulsarPushEvent struct {
-	PushID    string  `json:"push_id"`
-	TargetUID int64   `json:"target_uid"`
-	ChannelID int64   `json:"channel_id"`
-	Seq       int64   `json:"seq"`
-	ServerID  int64   `json:"server_msg_id"`
-	SenderID  int64   `json:"sender_id"`
-	Content   string  `json:"content,omitempty"`
-	MsgType   int16   `json:"msg_type"`
-	VisibleTo []int64 `json:"visible_to,omitempty"`
-	CreatedAt string  `json:"created_at"` // RFC3339
-}
+// (legacy pulsarPushEvent has been deleted — cmd/message now publishes via
+// gateway.PulsarPushEnvelope, bucketing recipients by gatewayID so each
+// destination pod gets one Pulsar Send carrying every affected user, not one
+// per user.)
 
 // ---------- service ----------
 
 type messageService struct {
-	messages     repo.MessageRepo
-	channels     repo.ChannelRepo
-	routing      *repo.Routing
-	producer     *imPulsar.Producer // publishes deliver ACK to msg.deliver.{gateway_id}
-	pushProducer *imPulsar.Producer // publishes push events to msg.push.{gateway_id}
-	log          *slog.Logger
+	messages repo.MessageRepo
+	channels repo.ChannelRepo
+	routing  *repo.Routing
+	// producer publishes the delivery ACK back to msg.deliver.{gateway_id}
+	// so the originating gateway can mark the sender's send_ack. Still a
+	// single-topic single-user envelope; unrelated to the push fan-out.
+	producer *imPulsar.Producer
+	// pushCache opens one producer per push topic (msg.push.{gwID}) on demand
+	// and is the batched replacement for the legacy single-topic producer.
+	pushCache *gateway.ProducerCache
+	// env selects the Pulsar namespace when building push topics
+	// (prod / pre / other → dev-suffixed).
+	env string
+	log *slog.Logger
 }
 
 func (svc *messageService) handle(ctx context.Context, data []byte) error {
@@ -126,67 +123,133 @@ func (svc *messageService) handle(ctx context.Context, data []byte) error {
 	return nil
 }
 
-// pushToMembers publishes a PulsarPushEvent to msg.push.{gatewayID} for every
-// member of msg.ChannelID that currently has an active connection.
+// pushToMembers publishes gateway.PulsarPushEnvelope messages for every online
+// channel member, bucketed by destination gatewayID so each pod gets exactly
+// one Pulsar Send per visibility bucket. Same batching contract as
+// cmd/gateway/hubMessagePusher.BroadcastMessage, but driven from the
+// standalone delivery worker.
 func (svc *messageService) pushToMembers(ctx context.Context, msg *repo.Message) {
-	if svc.pushProducer == nil || svc.channels == nil || svc.routing == nil {
+	if svc.pushCache == nil || svc.channels == nil || svc.routing == nil {
 		return
 	}
-
 	members, err := svc.channels.ListMembers(ctx, msg.ChannelID)
 	if err != nil {
 		svc.log.Warn("pushToMembers: list members failed", "error", err)
 		return
 	}
+	if len(members) == 0 {
+		return
+	}
+	visible, phantom := bucketByVisibility(members, msg)
+	if len(visible) > 0 {
+		svc.broadcastBucket(ctx, msg, visible, false)
+	}
+	if len(phantom) > 0 {
+		svc.broadcastBucket(ctx, msg, phantom, true)
+	}
+}
 
-	for _, member := range members {
-		gatewayIDs, err := svc.routing.GatewayIDsForUser(ctx, member.UserID)
-		if err != nil || len(gatewayIDs) == 0 {
-			continue // user offline, skip
+// broadcastBucket marshals a single payload variant (real or phantom) and
+// spreads it across every destination pod hosting at least one of userIDs.
+// routing.LookupBatch does one Redis round-trip for the whole set so we pay
+// O(1) network per call regardless of bucket size.
+func (svc *messageService) broadcastBucket(
+	ctx context.Context, msg *repo.Message, userIDs []int64, phantomVariant bool,
+) {
+	payload := buildPushPayload(msg, phantomVariant)
+	rawPayload, err := json.Marshal(payload)
+	if err != nil {
+		svc.log.Warn("marshal push payload", "error", err)
+		return
+	}
+	gwMap, err := svc.routing.LookupBatch(ctx, userIDs)
+	if err != nil {
+		svc.log.Warn("pushToMembers: lookup batch failed", "error", err)
+		return
+	}
+	buckets := bucketByGateway(gwMap)
+	msgType := gateway.TypePushMsg
+	partitionKey := strconv.FormatInt(msg.ChannelID, 10)
+	for gwID, uids := range buckets {
+		topic := gateway.PushTopicFor(gwID, svc.env)
+		producer, err := svc.pushCache.GetOrCreate(ctx, topic)
+		if err != nil {
+			svc.log.Warn("push producer open failed",
+				"gw", gwID, "topic", topic, "error", err)
+			continue
 		}
-
-		// Determine visibility for this member.
-		isVisible := msg.VisibleTo == nil || containsID(msg.VisibleTo, member.UserID)
-		pushMsgType := int16(1) // normal
-		content := msg.Content
-		visibleTo := []int64(msg.VisibleTo)
-		if !isVisible {
-			pushMsgType = 2 // phantom: strip content so offline user sees a placeholder
-			content = ""
-			visibleTo = nil
+		envelope := gateway.PulsarPushEnvelope{
+			TargetUIDs: uids,
+			MsgType:    msgType,
+			Payload:    rawPayload,
 		}
-
-		pushID := fmt.Sprintf("%d-%d-%d", msg.ChannelID, msg.Seq, member.UserID)
-		event := pulsarPushEvent{
-			PushID:    pushID,
-			TargetUID: member.UserID,
-			ChannelID: msg.ChannelID,
-			Seq:       msg.Seq,
-			ServerID:  msg.ID,
-			SenderID:  msg.SenderID,
-			Content:   content,
-			MsgType:   pushMsgType,
-			VisibleTo: visibleTo,
-			CreatedAt: msg.CreatedAt.Format(time.RFC3339),
-		}
-
-		for _, gwID := range gatewayIDs {
-			topic := "msg.push." + gwID
-			key := fmt.Sprintf("%d", member.UserID)
-			if err := svc.pushProducer.Send(ctx, key, event); err != nil {
-				svc.log.Warn("push event send failed", "topic", topic, "uid", member.UserID, "error", err)
-			}
+		if err := producer.Send(ctx, partitionKey, envelope); err != nil {
+			svc.log.Warn("push envelope send failed",
+				"gw", gwID, "topic", topic, "count", len(uids), "error", err)
 		}
 	}
 }
 
-func containsID(list []int64, id int64) bool {
-	for _, v := range list {
-		if v == id {
-			return true
+// bucketByVisibility splits members into a visible bucket (sees real content)
+// and a phantom bucket (sees placeholder); the sender always lands in visible
+// so they see their own message.
+func bucketByVisibility(members []repo.ChannelMember, msg *repo.Message) (visible, phantom []int64) {
+	for _, m := range members {
+		if msg.VisibleTo == nil || msg.IsVisibleTo(m.UserID) || m.UserID == msg.SenderID {
+			visible = append(visible, m.UserID)
+		} else {
+			phantom = append(phantom, m.UserID)
 		}
 	}
-	return false
+	return visible, phantom
+}
+
+// bucketByGateway groups (uid → gwID list) into (gwID → uid list) skipping
+// offline users (empty gwID list). De-duplicates per-uid multi-device entries
+// so the same envelope does not carry duplicate TargetUIDs.
+func bucketByGateway(gwMap map[int64][]string) map[string][]int64 {
+	out := make(map[string][]int64, len(gwMap))
+	for uid, gwIDs := range gwMap {
+		seen := make(map[string]struct{}, len(gwIDs))
+		for _, gw := range gwIDs {
+			if gw == "" {
+				continue
+			}
+			if _, dup := seen[gw]; dup {
+				continue
+			}
+			seen[gw] = struct{}{}
+			out[gw] = append(out[gw], uid)
+		}
+	}
+	return out
+}
+
+// buildPushPayload returns the gateway.PushMsgPayload that represents msg
+// for a given visibility branch. The wire shape is identical to the one
+// produced by cmd/gateway's hubMessagePusher so both producers interoperate
+// against the same PushConsumer.Handle on the receiving pod.
+func buildPushPayload(msg *repo.Message, phantomVariant bool) gateway.PushMsgPayload {
+	if phantomVariant {
+		return gateway.PushMsgPayload{
+			PushID:    fmt.Sprintf("msg-%d-%d", msg.ChannelID, msg.Seq),
+			ChannelID: msg.ChannelID,
+			Seq:       msg.Seq,
+			MsgType:   repo.MsgTypePhantom,
+			CreatedAt: msg.CreatedAt,
+		}
+	}
+	return gateway.PushMsgPayload{
+		PushID:    fmt.Sprintf("msg-%d-%d", msg.ChannelID, msg.Seq),
+		ChannelID: msg.ChannelID,
+		Seq:       msg.Seq,
+		ServerID:  msg.ID,
+		SenderID:  msg.SenderID,
+		Content:   msg.Content,
+		MsgType:   msg.MsgType,
+		VisibleTo: []int64(msg.VisibleTo),
+		CreatedAt: msg.CreatedAt,
+	}
 }
 
 // ---------- run ----------
@@ -255,13 +318,15 @@ func run() int {
 		defer deliverProducer.Close()
 	}
 
-	// Producer for push fan-out events (best-effort)
-	pushProducer, err := pulsarClient.NewProducer("msg.push.fanout")
-	if err != nil {
-		log.Warn("could not create push producer (non-fatal)", "error", err)
-		pushProducer = nil
-	} else {
-		defer pushProducer.Close()
+	// One producer per msg.push.{gwID} topic, opened on demand and cached.
+	// Replaces the old single-topic producer that accidentally fanned every
+	// push to msg.push.fanout — wrong topology for the per-pod receiver setup.
+	pushCache := gateway.NewProducerCache(pulsarClient)
+	defer pushCache.Close()
+
+	env := os.Getenv("IM_ENV")
+	if env == "" {
+		env = "local"
 	}
 
 	// Redis client for routing lookups
@@ -284,12 +349,13 @@ func run() int {
 	}
 
 	svc := &messageService{
-		messages:     messageRepo,
-		channels:     channelRepo,
-		routing:      routing,
-		producer:     deliverProducer,
-		pushProducer: pushProducer,
-		log:          log,
+		messages:  messageRepo,
+		channels:  channelRepo,
+		routing:   routing,
+		producer:  deliverProducer,
+		pushCache: pushCache,
+		env:       env,
+		log:       log,
 	}
 
 	consumer, err := pulsarClient.NewConsumer("msg.incoming", "message-service", svc.handle)

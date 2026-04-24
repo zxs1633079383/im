@@ -115,6 +115,10 @@ func run() int {
 	// Hub and routing.
 	hub := gateway.NewHub()
 	routing := gateway.NewRouting(rdb, gatewayID)
+	// After N consecutive Pulsar Send failures to the same destination pod,
+	// the tracker evicts every routing entry pointing there so subsequent
+	// broadcasts skip the dead pod. Wire once at boot; thread-safe.
+	hub.AttachFailureTracker(routing, log)
 
 	// Pulsar client.
 	pulsarClient, err := imPulsar.New(cfg.Pulsar.URL, log)

@@ -187,6 +187,7 @@ func (h *Hub) sendBuckets(
 		if err != nil {
 			log.Warn("cross pod broadcast: producer open failed",
 				"gw", gwID, "topic", topic, "error", err)
+			h.failures.RecordFailure(ctx, gwID, uids)
 			continue
 		}
 		envelope := PulsarPushEnvelope{
@@ -194,13 +195,16 @@ func (h *Hub) sendBuckets(
 			MsgType:    msgType,
 			Payload:    rawPayload,
 		}
-		sendOne(ctx, producer, topic, gwID, partitionKey, msgType, envelope, uids, log)
+		h.sendOne(ctx, producer, topic, gwID, partitionKey, msgType, envelope, uids, log)
 	}
 }
 
 // sendOne publishes a single envelope and records per-send tracing + metrics.
-// Extracted so sendBuckets stays under the 60-line function cap.
-func sendOne(
+// On failure it also bumps the per-gateway failure counter so the
+// markOfflineThreshold eviction path can kick in when a target pod is really
+// gone. On success it resets the counter so an intermittent blip does not
+// accumulate forever.
+func (h *Hub) sendOne(
 	ctx context.Context,
 	producer crossPodSender,
 	topic, gwID, partitionKey string,
@@ -227,7 +231,10 @@ func sendOne(
 	if err != nil {
 		log.Warn("cross pod broadcast: send failed",
 			"gw", gwID, "topic", topic, "count", len(uids), "error", err)
+		h.failures.RecordFailure(ctx, gwID, uids)
+		return
 	}
+	h.failures.RecordSuccess(gwID)
 }
 
 // routingBatchAdapter adapts *Routing (which has LookupBatch) to the narrow

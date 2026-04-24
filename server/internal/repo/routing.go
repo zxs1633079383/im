@@ -34,6 +34,28 @@ redis.call("EXPIRE", KEYS[1], ARGV[3])
 return 1
 `)
 
+// markOfflineScript removes every deviceID entry pointing at a given gatewayID
+// and returns the number of entries dropped. Used when the gateway consistently
+// fails to reach a pod — the assumption is that the target pod is unreachable
+// and every device routed to it is stale.
+//
+// The whole sweep runs inside one EVAL so a concurrent Refresh cannot re-add
+// an entry between HGETALL and HDEL.
+//
+// KEYS[1] = user:connections:{userID}
+// ARGV[1] = gatewayID to evict
+var markOfflineScript = redis.NewScript(`
+local hash = redis.call("HGETALL", KEYS[1])
+local removed = 0
+for i = 1, #hash, 2 do
+  if hash[i+1] == ARGV[1] then
+    redis.call("HDEL", KEYS[1], hash[i])
+    removed = removed + 1
+  end
+end
+return removed
+`)
+
 // routingKeyPrefix namespaces every key this package writes in Redis.
 //
 // Rationale: pre/prod Redis is a shared Cluster (no multi-DB support), so we
@@ -138,6 +160,28 @@ func (r *Routing) DevicesForUser(ctx context.Context, userID int64) (map[string]
 	out, err := r.rdb.HGetAll(ctx, connKey(userID)).Result()
 	recordRoutingOp(ctx, "devices", err)
 	return out, err
+}
+
+// MarkOffline removes every (deviceID → gatewayID) entry for userID where the
+// stored gatewayID matches the supplied one. Returns the count of dropped
+// entries (0 is not an error — the caller may have already been cleared).
+//
+// Intended use: the gateway's broadcast fan-out saw N consecutive Pulsar Send
+// failures for a given gwID, so it tells routing to evict every device still
+// pointing there. The routing key itself stays if the user has other devices
+// on healthy pods.
+func (r *Routing) MarkOffline(ctx context.Context, userID int64, gatewayID string) (int, error) {
+	if gatewayID == "" {
+		return 0, fmt.Errorf("routing mark offline: empty gatewayID")
+	}
+	res, err := markOfflineScript.Run(ctx, r.rdb,
+		[]string{connKey(userID)}, gatewayID).Result()
+	recordRoutingOp(ctx, "mark_offline", err)
+	if err != nil {
+		return 0, fmt.Errorf("routing mark offline: %w", err)
+	}
+	n, _ := res.(int64)
+	return int(n), nil
 }
 
 // LookupBatch pipelines N HGETALLs in one round-trip and returns a map of

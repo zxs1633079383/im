@@ -136,7 +136,7 @@ HPA `minReplicas=3 → maxReplicas=20`，VU=800 时实际扩到 17 pod 触发 st
 - 已固化到 `docs/HTTP_WS_MAP.md`（17 条 HTTP 端点对应 WS 事件分布 + 压测覆盖建议 + 非对称性说明）
 
 ### 已知债务
-- `cross_pod_push.go` `markOffline(userID)` 仍是骨架位（Pulsar Send 失败后未从 routing 摘除用户）。
+- ~~`cross_pod_push.go` `markOffline(userID)` 仍是骨架位~~ → ✅ 已补齐（`v0.4.1-m3-markoffline-cleanup`）：`Routing.MarkOffline` Lua 原子 HDEL + `sendFailureTracker` 连续 3 次失败触发；`cmd/message` 同步改走 `PulsarPushEnvelope` + `ProducerCache`。
 - `im.fanout.e2e.duration` 当前 = HTTP handler 总耗时（近似）。语义升级方向：精确到"所有接收方的 conn.send 入队完成时刻 `t2`"（HTTP handler 结束时 goroutine 可能尚未 fanout 完），需 handler 与 fanout goroutine 用 channel 同步。
 - ~~cses-client `ImApiAdapter` 差 5 个 F1 stub~~ → ✅ 已补齐（commit `c0b3985c9`），现 M1 完整覆盖 11 方法
 - cses-client `message.service.ts` 37 处 `imHttp.post(/mattermost-path)` 切换到 adapter 方法仍待做（Adapter 就绪，不阻塞）

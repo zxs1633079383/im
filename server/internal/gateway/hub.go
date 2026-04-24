@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"log/slog"
 	"sync"
 
 	"go.opentelemetry.io/otel"
@@ -13,6 +14,11 @@ import (
 type Hub struct {
 	mu    sync.RWMutex
 	conns map[int64][]*Conn // userID → list of active connections
+	// failures is an optional tracker that evicts stale routing entries when
+	// producer.Send repeatedly fails for the same destination pod. Nil means
+	// failure-driven eviction is disabled (zero-value Hub in tests leaves it
+	// nil; production wires it in cmd/gateway/main.go).
+	failures *sendFailureTracker
 }
 
 // NewHub creates an empty Hub and registers an OTel ObservableGauge that
@@ -21,6 +27,14 @@ func NewHub() *Hub {
 	h := &Hub{conns: make(map[int64][]*Conn)}
 	_ = h.registerMetrics()
 	return h
+}
+
+// AttachFailureTracker wires a sendFailureTracker backed by the given routing
+// so broadcast-side producer.Send failures can evict stale presence entries
+// after markOfflineThreshold consecutive failures. Call once at startup; a
+// subsequent call replaces the tracker (last-writer-wins, harmless in tests).
+func (h *Hub) AttachFailureTracker(routing offlineMarker, log *slog.Logger) {
+	h.failures = newSendFailureTracker(routing, log)
 }
 
 // connCount returns the number of currently registered connections across all users.
