@@ -3,6 +3,7 @@ package gateway
 import (
 	"encoding/json"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -28,6 +29,13 @@ type Conn struct {
 	knownSeq map[int64]int64 // channel_id → seq
 
 	lastPong time.Time // updated on every pong received
+
+	// closeOnce + closed protect Close() from running twice and let Push()
+	// short-circuit cleanly after the send channel has been closed. Without
+	// this, a heartbeat or fan-out Push racing with Close panics with
+	// "send on closed channel" — observed in the 2026-04-24 pre benchmark.
+	closeOnce sync.Once
+	closed    atomic.Bool
 }
 
 // NewConn creates a new Conn and starts its writePump goroutine.
@@ -73,8 +81,21 @@ func (c *Conn) KnownSeqs() map[int64]int64 {
 }
 
 // Push enqueues a JSON-serialisable payload for asynchronous delivery.
-// Returns false if the connection's send buffer is full (slow consumer).
-func (c *Conn) Push(msgType WSMessageType, payload any) bool {
+// Returns false if the connection's send buffer is full (slow consumer)
+// or the connection has already been closed.
+//
+// The recover() guards against a narrow race: runHeartbeat / xpod fan-out
+// can call Push concurrently with Close(), and if Close's close(c.send)
+// lands first the `case c.send <- b` panics with "send on closed channel"
+// and takes down the whole pod. Treat that as a benign "conn is gone" and
+// return false — 2026-04-24 pre benchmark crashed all 3 gateways this way.
+func (c *Conn) Push(msgType WSMessageType, payload any) (ok bool) {
+	defer func() {
+		if r := recover(); r != nil {
+			ok = false
+		}
+	}()
+
 	data, err := json.Marshal(payload)
 	if err != nil {
 		return false
@@ -87,6 +108,9 @@ func (c *Conn) Push(msgType WSMessageType, payload any) bool {
 	if err != nil {
 		return false
 	}
+	if c.closed.Load() {
+		return false
+	}
 	select {
 	case c.send <- b:
 		return true
@@ -95,9 +119,13 @@ func (c *Conn) Push(msgType WSMessageType, payload any) bool {
 	}
 }
 
-// Close closes the send channel, which causes writePump to exit.
+// Close closes the send channel, which causes writePump to exit. Safe to
+// call multiple times; subsequent Pushes after Close return false.
 func (c *Conn) Close() {
-	close(c.send)
+	c.closeOnce.Do(func() {
+		c.closed.Store(true)
+		close(c.send)
+	})
 }
 
 // writePump drains c.send and writes to the WebSocket.
