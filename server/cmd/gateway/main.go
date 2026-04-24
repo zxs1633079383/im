@@ -70,9 +70,11 @@ func run() int {
 	// Open the GORM-backed Postgres connection. The repo package owns the
 	// pool; we close the underlying *sql.DB on shutdown.
 	gormDB, err := repo.Open(repo.Config{
-		DSN:     cfg.PG.DSN,
-		MaxOpen: cfg.PG.MaxConns,
-		MaxIdle: cfg.PG.MaxIdle,
+		DSN:             cfg.PG.DSN,
+		MaxOpen:         cfg.PG.MaxConns,
+		MaxIdle:         cfg.PG.MaxIdle,
+		ConnMaxLifetime: time.Duration(cfg.PG.ConnMaxLifeSec) * time.Second,
+		ConnMaxIdleTime: time.Duration(cfg.PG.ConnMaxIdleSec) * time.Second,
 	})
 	if err != nil {
 		log.Error("connect to postgres", "error", err)

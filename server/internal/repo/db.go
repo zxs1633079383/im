@@ -16,11 +16,16 @@ import (
 )
 
 // Config configures Open. DSN is required; the rest have sane defaults.
+//
+// Defaults mirror the Java HikariCP config used by the sibling cses service
+// (maximum-pool-size=300, idle-timeout=300s, max-lifetime=600s) so the
+// Go-side gateway sustains comparable concurrency on the same PG instance.
 type Config struct {
 	DSN             string
-	MaxOpen         int             // default 25
-	MaxIdle         int             // default 5
-	ConnMaxLifetime time.Duration   // default 30m
+	MaxOpen         int             // default 300  (was 25)
+	MaxIdle         int             // default 30   (was 5)
+	ConnMaxLifetime time.Duration   // default 10m  (was 30m; matches Java max-lifetime=600s)
+	ConnMaxIdleTime time.Duration   // default 5m   (new; matches Java idle-timeout=300s)
 	LogLevel        logger.LogLevel // default Warn
 }
 
@@ -28,13 +33,16 @@ type Config struct {
 // Caller owns the underlying sql.DB — close on shutdown.
 func Open(cfg Config) (*gorm.DB, error) {
 	if cfg.MaxOpen == 0 {
-		cfg.MaxOpen = 25
+		cfg.MaxOpen = 300
 	}
 	if cfg.MaxIdle == 0 {
-		cfg.MaxIdle = 5
+		cfg.MaxIdle = 30
 	}
 	if cfg.ConnMaxLifetime == 0 {
-		cfg.ConnMaxLifetime = 30 * time.Minute
+		cfg.ConnMaxLifetime = 10 * time.Minute
+	}
+	if cfg.ConnMaxIdleTime == 0 {
+		cfg.ConnMaxIdleTime = 5 * time.Minute
 	}
 	if cfg.LogLevel == 0 {
 		cfg.LogLevel = logger.Warn
@@ -60,5 +68,6 @@ func Open(cfg Config) (*gorm.DB, error) {
 	sqlDB.SetMaxOpenConns(cfg.MaxOpen)
 	sqlDB.SetMaxIdleConns(cfg.MaxIdle)
 	sqlDB.SetConnMaxLifetime(cfg.ConnMaxLifetime)
+	sqlDB.SetConnMaxIdleTime(cfg.ConnMaxIdleTime)
 	return db, nil
 }

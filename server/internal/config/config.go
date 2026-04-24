@@ -15,10 +15,21 @@ type Config struct {
 	Gateway GatewayConfig `yaml:"gateway"`
 }
 
+// PGConfig mirrors the Java HikariCP knobs so the two services use
+// comparable pool sizes when they share the same Postgres instance.
+//
+// Java (reference):
+//   maximum-pool-size: 300
+//   minimum-idle: 1
+//   idle-timeout: 300000        # 300s
+//   max-lifetime: 600000        # 600s
+//   connection-timeout: 30000   # handled at context level on the Go side
 type PGConfig struct {
-	DSN      string `yaml:"dsn"`
-	MaxConns int    `yaml:"max_conns"`
-	MaxIdle  int    `yaml:"max_idle"`
+	DSN             string `yaml:"dsn"`
+	MaxConns        int    `yaml:"max_conns"`        // ~= HikariCP maximum-pool-size
+	MaxIdle         int    `yaml:"max_idle"`         // Go has no minimum-idle; set to ~10% of MaxConns
+	ConnMaxLifeSec  int    `yaml:"conn_max_life_s"`  // ~= HikariCP max-lifetime, seconds
+	ConnMaxIdleSec  int    `yaml:"conn_max_idle_s"`  // ~= HikariCP idle-timeout, seconds
 }
 
 type RedisConfig struct {
@@ -66,9 +77,16 @@ func Load(path string) (*Config, error) {
 	}
 
 	cfg := &Config{
-		// Raised pool defaults after 2026-04-24 benchmark: 20 open + 5 idle
-		// saturated by VU=300 and drove P95 to 10s+ on single-pod tests.
-		PG:      PGConfig{MaxConns: 50, MaxIdle: 25},
+		// Align defaults with the Java HikariCP settings used by sibling cses
+		// services on the same PG instance (max=300 / max-life=600s /
+		// idle-timeout=300s). Benchmarks showed 20/50 both saturated under
+		// modest VU counts.
+		PG: PGConfig{
+			MaxConns:       300,
+			MaxIdle:        30,
+			ConnMaxLifeSec: 600,
+			ConnMaxIdleSec: 300,
+		},
 		Gateway: GatewayConfig{HTTPAddr: ":8080"},
 	}
 	if err := yaml.Unmarshal(data, cfg); err != nil {
