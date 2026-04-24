@@ -229,16 +229,25 @@ func (r *gormChannelRepo) IncrementPhantomCount(ctx context.Context, tx *gorm.DB
 
 // FindDM returns the DM channel that exists between userA and userB.
 // Returns ErrNotFound if no such channel exists.
+//
+// Query shape: drive from channel_members(user_id=A)[PK] → filter DM channel
+// → EXISTS lookup on channel_members(channel_id, user_id=B) via the M3-C
+// index idx_channel_members_channel_user. Replaces the double INNER JOIN
+// that Postgres planned as a bitmap scan + re-filter under load (slow-sql
+// 3s in the 2026-04-24 pre-5 benchmark).
 func (r *gormChannelRepo) FindDM(ctx context.Context, userA, userB int64) (*Channel, error) {
 	var ch Channel
 	err := r.db.WithContext(ctx).Raw(
 		`SELECT c.id, c.type, c.name, c.avatar_url, c.seq, c.creator_id, c.created_at, c.updated_at
-		 FROM channels c
-		 JOIN channel_members ma ON ma.channel_id = c.id AND ma.user_id = ?
-		 JOIN channel_members mb ON mb.channel_id = c.id AND mb.user_id = ?
-		 WHERE c.type = ?
+		 FROM channel_members ma
+		 JOIN channels c ON c.id = ma.channel_id AND c.type = ?
+		 WHERE ma.user_id = ?
+		   AND EXISTS (
+		     SELECT 1 FROM channel_members mb
+		     WHERE mb.channel_id = ma.channel_id AND mb.user_id = ?
+		   )
 		 LIMIT 1`,
-		userA, userB, ChannelTypeDM,
+		ChannelTypeDM, userA, userB,
 	).Scan(&ch).Error
 	if err != nil {
 		return nil, fmt.Errorf("find dm: %w", err)
