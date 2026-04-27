@@ -9,9 +9,9 @@ Last updated: 2026-04-27（**M4 GA + pre 部署完成**：spec / migration 014 /
 
 ## 0. 下次会话一句话启动 ⭐
 
-**复制粘贴这句话开新会话即可**（v0.6.2 perf baseline 已落，下一步 WS cookie 化 + 上线流量切换）：
+**复制粘贴这句话开新会话即可**（v0.6.3 WS cookie 化已落，下一步把 cses-client 真接到我们 + 跨 pod 验证）：
 
-> 继续 v0.6.3：① ws_handler.go 把 `?token=<jwt>` 鉴权改成 cookieId（接受 query param 或 Header.cookieId 二选一），mint JWT for WS 的死路径删掉；② 把 e2e-pre.mjs 原 G2/G3/G4/G7/G8/G9 的 WS 事件断言迁回 e2e-pre-m4.mjs 用 cookie 鉴权；③ 跑 v4-load-m4.js + 加一个 WS 持有 push_msg 接收 latency trend；④ HPA 阈值复盘：当前 pre-7d VU=300 只用到 12/20 pod，可考虑 maxReplicas 30 / minReplicas 6 测 1500+ VU 真实天花板；⑤ cses-client `message.service.ts` 37 处 mattermost URI 切换到 ImApiAdapter（M4 场景下 sender_id 字符串路径全打通了）；⑥ 把 v0.6.2 的 SESSION.md / GOAL.md / docs/ARCHITECTURE.md 同步刷 — V0.6.x 系列已经 4 个 tag 了。打 tag v0.6.3-m4-ws-cookie。
+> 继续 v0.6.4：① 后端 auth/login 响应里加 `imGatewayWs` 字段下发（im-v2 namespace svc DNS 或 NodePort），让前端 `ImApiAdapter.wsUrl(true)` 真正路由到我们；② 把 e2e-pre-m4.mjs 的 WS 事件断言（G2 read_sync / G3 msg_deleted / G4 msg_updated / G7-G9 channel + friend events）从 ws-smoke 迁过来，凑齐 13/13 + 6 ws；③ 跑 fullchain-load.js 让 v4-load-m4.js 同时持有 WS 长连接，验证跨 pod Pulsar fan-out 走 cookie 路径无 regression；④ HPA `maxReplicas 20→30 minReplicas 3→6` 准备测 VU=1500 真实上限；⑤ cses-client `message.service.ts` 37 处 mattermost URI 切到 ImApiAdapter（M4 sender_id 字符串路径已通）；⑥ scripts/e2e-teardown.sh 切到 im-only lite 版本（只 TRUNCATE im_pre）。打 tag v0.6.4-m4-client-cutover。
 
 ### v0.6.1 已经做掉的（不要重做）
 - ✅ Step ① migration 014 dev DB dry-run + im_pre 实落（force 13 清 dirty → up to 14）
@@ -151,7 +151,8 @@ e0ecb32 fix(gateway): push_consumer 走 PushTopicFor 与发送侧对齐
 - **`v0.5.2-m4-foundation`** — M4 Foundation phase（spec + migration 014 + Cookie 单栈 + LRU + 测试 fixture）
 - **`v0.6.0-m4-cookie-id-native`** — M4 GA 代码闭环 commit 标签。
 - **`v0.6.1-m4-pre-deployed`** — pre 集群 v1.0.0-pre-7b 镜像 + im_pre 014 migration + 张立超 cookie 冒烟 200 / no-cookie 401。
-- **`v0.6.2-m4-perf-baseline`** — **当前 HEAD**：M4.5 全量闭环。OTel cookie_cache.{hit,miss,size} 指标 + Prometheus /metrics pull endpoint + cookie-auth k6 tooling + pre-7d 镜像 + Grafana panel + cookie-auth e2e harness。pre-7d k6 测得 send P95 = **211ms**（pre-6 baseline 375ms，−44%）+ cookie cache **hit_rate=97.78%**（target ≥90% ✅）+ action_ok 100% / send_ok 100% / HPA peak 12 of 20。e2e-pre-m4 13/13 PASS。WS handler cookie 化（替换 ?token=jwt）挪到 v0.6.3。
+- **`v0.6.2-m4-perf-baseline`** — M4.5 全量闭环。OTel cookie_cache.{hit,miss,size} 指标 + Prometheus /metrics pull endpoint + cookie-auth k6 tooling + Grafana panel + cookie-auth e2e harness。pre-7d k6 测得 send P95 = **211ms** + cookie cache hit_rate=97.78%。
+- **`v0.6.3-m4-ws-cookie`** — **当前 HEAD**：WS 鉴权切到 cookieId（替换 ?token=jwt 死路径）。后端 `WsHandler.WithCookieAuth(rdb)` 三优先级解析（Header CookieId → query ?cookieId= / ?cookie_id= → JWT fallback）；前端 `ImApiAdapter.wsUrl(true)` 在 `auth.imGatewayWs` 下发时把 reconnectMainWs 切到我们的 /ws。pre-7e 部署 ✅；ws-smoke-m4 5/5 PASS（Header / Query / 无 auth 401 / 跨 conn push_msg fan-out）；e2e-pre-m4 12/13 PASS（G6 唯一失败是 im_pre 库累积态干扰，非回归）。测试计划落档 server/docs/v0.6.3-test-plan.md。
 
 ### 回归基线
 - **v0.5.1**：build + vet + unit + race + 集成 71 PASS / 0 FAIL / 1 SKIP；e2e 13/13；pod 0 restart / 0 panic（详见 `server/docs/regression/2026-04-27-v0.5.1.md`）
