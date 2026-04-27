@@ -179,10 +179,19 @@ func MattermostCookieAuth(rdb redis.UniversalClient, _ any, log *slog.Logger) gi
 var errMMUserNotFound = errors.New("mm user not in redis hash")
 
 // resolveMMUser is the cache-aware lookup. Cache layer is process-local;
-// Redis fall-through has the upstream timeout cap.
+// Redis fall-through has the upstream timeout cap. Hit/miss counters feed
+// the im.auth.cookie_cache.{hit,miss} OTel instruments so ops can verify
+// the 30s × 10k LRU sizing under load (target hit_rate ≥ 90%).
 func resolveMMUser(ctx context.Context, rdb redis.UniversalClient, cookieID string, log *slog.Logger) (*MattermostUser, error) {
+	m := metrics()
 	if cached, ok := cookieCache.Get(cookieID); ok {
+		if m.CookieCacheHit != nil {
+			m.CookieCacheHit.Add(ctx, 1)
+		}
 		return cached, nil
+	}
+	if m.CookieCacheMiss != nil {
+		m.CookieCacheMiss.Add(ctx, 1)
 	}
 	user, err := lookupMattermostUser(ctx, rdb, cookieID)
 	if err != nil {
