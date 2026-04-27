@@ -1,4 +1,31 @@
-.PHONY: build-gateway build-message build-sync migrate-up migrate-down test
+.PHONY: build-gateway build-message build-sync migrate-up migrate-down test run-dev run-pre-tunnel
+
+# Local dev: start gateway pointing at pre middleware via Consul KV.
+# - Loads im-go/dev/config.yaml from consul-pre (PG/Redis/Pulsar via NodePort)
+# - Writes to im_dev database (NOT im_pre — keeps the cluster-deployed pod safe)
+# - Sends OTel traces to jaeger-cses
+# Override IM_GATEWAY_JWT_SECRET only if you need a non-default JWT secret.
+run-dev:
+	IM_ENV=dev \
+	IM_CONSUL_URL=http://consul-pre.jinqidongli.com \
+	IM_CONSUL_KEY=im-go/dev/config.yaml \
+	OTEL_EXPORTER_OTLP_ENDPOINT=http://192.168.6.66:32317 \
+	OTEL_EXPORTER_OTLP_INSECURE=true \
+	OTEL_SERVICE_NAME=im-gateway-local \
+	go run ./cmd/gateway
+
+# Local debugging against the pre cluster's exact config (im_pre database).
+# DANGEROUS: hits the same DB the cluster pod uses. Use only when reproducing
+# a pre-only bug locally.
+run-pre-tunnel:
+	IM_ENV=pre \
+	IM_CONSUL_URL=http://consul-pre.jinqidongli.com \
+	IM_CONSUL_KEY=im-go/pre/config.yaml \
+	IM_GATEWAY_JWT_SECRET=$$(kubectl -n im-v2 get secret im-gateway-secret -o jsonpath='{.data.jwt-secret}' | base64 -d) \
+	OTEL_EXPORTER_OTLP_ENDPOINT=http://192.168.6.66:32317 \
+	OTEL_EXPORTER_OTLP_INSECURE=true \
+	go run ./cmd/gateway
+
 
 build-gateway:
 	go build -o bin/gateway ./cmd/gateway

@@ -53,11 +53,14 @@ func run() int {
 		cfgPath = "config.yaml"
 	}
 
-	cfg, err := config.Load(cfgPath)
+	// Resolve config from Consul when IM_ENV / IM_CONSUL_URL is set,
+	// otherwise from the YAML file. Source string is logged for traceability.
+	cfg, src, err := config.LoadFromConsulOrFile(cfgPath)
 	if err != nil {
 		log.Error("load config", "error", err)
 		return 1
 	}
+	log.Info("config loaded", "source", src)
 
 	if cfg.Gateway.JWTSecret == "" {
 		log.Error("gateway.jwt_secret must not be empty")

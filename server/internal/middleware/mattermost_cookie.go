@@ -87,7 +87,21 @@ func MattermostCookieAuth(rdb redis.UniversalClient, log *slog.Logger) gin.Handl
 	}
 	return func(c *gin.Context) {
 		cookieID := c.GetHeader(MMCookieHeader)
-		if cookieID == "" || rdb == nil {
+		if cookieID == "" {
+			// Migration warn: legacy cses-client builds always send the
+			// cookieId header. A request that lands without it is either
+			// a JWT-only im-native client (fine, ignore later) or the
+			// caller forgot to forward the header — surface the latter so
+			// we notice during the cutover. WARN level is rate-limited by
+			// slog's default sampling on most setups.
+			log.Warn("mm cookie auth: request missing cookieId header",
+				"path", c.Request.URL.Path,
+				"method", c.Request.Method,
+				"remote", c.ClientIP())
+			c.Next()
+			return
+		}
+		if rdb == nil {
 			c.Next()
 			return
 		}
