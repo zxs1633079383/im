@@ -106,6 +106,7 @@ func TestLookupMattermostUser_BadJSON(t *testing.T) {
 // MMUserFromCtx.
 func TestMattermostCookieAuth_HitInjectsUser(t *testing.T) {
 	gin.SetMode(gin.TestMode)
+	t.Cleanup(resetCookieCacheForTest)
 	rdb := &fakeRedis{getFn: func(context.Context, string, string) (string, error) {
 		return sampleUserJSON(t), nil
 	}}
@@ -163,6 +164,8 @@ func TestMattermostCookieAuth_NoHeaderIsNoOp(t *testing.T) {
 // downstream will reject the request if it has no JWT either).
 func TestMattermostCookieAuth_RedisMissDoesNotAbort(t *testing.T) {
 	gin.SetMode(gin.TestMode)
+	t.Cleanup(resetCookieCacheForTest)
+	resetCookieCacheForTest()
 	rdb := &fakeRedis{getFn: func(context.Context, string, string) (string, error) {
 		return "", redis.Nil
 	}}
