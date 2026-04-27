@@ -3,7 +3,7 @@
 > 这份文档是"会话快照"：每次会话结束前更新一次，下次会话开局只要先读它 + `docs/GOAL.md` + `CLAUDE.md` 就能无缝接着干。
 > **更新原则**：事实先写（分支/tag/commit），决策次之，待办最后。过时信息必须删除，不留历史沉积。
 
-Last updated: 2026-04-24（M3 全闭环 + 性能调优三轮压测 + cses-client M1 适配完成 + 本地 Pulsar 一键初始化）
+Last updated: 2026-04-27（M3 闭环 + 跨 pod 批量化 + cookie 桥接 + Consul 配置中心；M4 重构方案已锁定，待新 session 开工）
 
 ---
 
@@ -36,7 +36,16 @@ e0ecb32 fix(gateway): push_consumer 走 PushTopicFor 与发送侧对齐
 - `v0.1.0-m1-verified` / `v0.1.0-m1-complete` / `v0.2.0-m2-complete` / `v1.0.0`
 - **`v0.3.0-m3-pre-deployed`** — M3 主体首次部署 + E2E 13/13
 - **`v0.3.1-m3-racefix-pool300`** — Conn.Push race 修复 + PG 池对齐 HikariCP，全链路 100% 可靠
-- **`v0.3.2-m3-dm-index`** — FindDM 反向索引 + EXISTS 重写，SLOW SQL 归零，**当前 HEAD 指向的生产候选**
+- **`v0.3.2-m3-dm-index`** — FindDM 反向索引 + EXISTS 重写，SLOW SQL 归零
+- **`v0.4.0-m3-sysmsg-broadcast`** — 频道事件 → system message + 跨 pod 推送批量化（envelope+TargetUIDs）+ 修历史丢消息 bug
+- **`v0.4.1-m3-markoffline-cleanup`** — `Routing.MarkOffline` 连续失败 3 次自动摘除 + `cmd/message` 改走新 envelope
+- **`v0.4.2-m3-mm-cookie-bridge`** — Mattermost cookieId → MattermostUser 注入 ctx + OTel traces 接入 jaeger-cses
+- **`v0.5.0-config-consul`** — Consul KV 配置中心 + 本地 `make run-dev` 直连 pre 中间件 + cookie 缺失 warn
+- **`v0.5.1-cookie-auth`** — 纯 cookie 也通过鉴权（lazy-upsert shadow user + JWTOrCookie 双栈），**当前 HEAD 指向的生产候选**（pre image: `v1.0.0-pre-11`）。注意：影子映射模型在 M4 会被废弃（详见 §3 M4 spec）。
+
+### 回归基线（2026-04-27 v0.5.1）
+- build + vet + unit + race + 集成 71 PASS / 0 FAIL / 1 SKIP；e2e 13/13；pod 0 restart / 0 panic
+- 详见 `server/docs/regression/2026-04-27-v0.5.1.md`
 
 ### 镜像演进
 `harbor.jinqidongli.com/x9-go/im/im-gateway:v1.0.0-pre-{2,3,4,5,6}` — 每轮性能调优一个 tag，pre-6 是最新。
@@ -137,12 +146,53 @@ HPA `minReplicas=3 → maxReplicas=20`，VU=800 时实际扩到 17 pod 触发 st
 
 ### 已知债务
 - ~~`cross_pod_push.go` `markOffline(userID)` 仍是骨架位~~ → ✅ 已补齐（`v0.4.1-m3-markoffline-cleanup`）：`Routing.MarkOffline` Lua 原子 HDEL + `sendFailureTracker` 连续 3 次失败触发；`cmd/message` 同步改走 `PulsarPushEnvelope` + `ProducerCache`。
+- **影子映射 mm_user_id ↔ im int64** 是过渡方案，M4 会全部删除（见下面 "M4 用户身份模型重构"）。本期 v0.5.1 的 lazy-upsert / shadow user 都会被清理，业务表 user 字段全部改成 TEXT 直接存 mm UserID。
+- `scripts/e2e-teardown.sh` 末尾 Pulsar `topics list` 在没 topic 时返非零被 `set -e` 抓到 exit=1（不影响实际清理）。补 `|| true` 即可。
+- OTel SDK metrics push 到 jaeger-cses 失败刷 INFO 噪音（jaeger-v2-collector 只支持 traces service）。修法：env `OTEL_METRICS_EXPORTER=none` 或 SDK 侧禁 metric exporter。
+- `internal/repo` 单测覆盖率 2.1%（目前主要靠集成测试）。补 sqlmock 拉到 15-20%。
 - `im.fanout.e2e.duration` 当前 = HTTP handler 总耗时（近似）。语义升级方向：精确到"所有接收方的 conn.send 入队完成时刻 `t2`"（HTTP handler 结束时 goroutine 可能尚未 fanout 完），需 handler 与 fanout goroutine 用 channel 同步。
 - ~~cses-client `ImApiAdapter` 差 5 个 F1 stub~~ → ✅ 已补齐（commit `c0b3985c9`），现 M1 完整覆盖 11 方法
 - cses-client `message.service.ts` 37 处 `imHttp.post(/mattermost-path)` 切换到 adapter 方法仍待做（Adapter 就绪，不阻塞）
 - V2 WS 候选事件未实现：`typing`（用户明确延后） / `presence_changed` / `reaction_updated`。Presence 当前走 HTTP GET 代替。
 - OTel traces export 到 `otel-collector:4317` 在 im-v2 ns 解析不到（name resolver error），metrics 正常，traces 未送到 Jaeger。需部署 OTel collector 或改指 `jaeger-cses` 的 OTLP endpoint。
 - `ListByUser` / `ListByUserWithPreview` 未 EXPLAIN 验证是否享受 DM 反向索引的收益。
+
+### M4：用户身份模型重构（**下一次 session 开工的主线**）
+
+**背景**：v0.5.1 的"影子映射 mm_user_id ↔ im int64"是过渡方案。用户明确要求**所有 userId 走 mm/Redis**，im 不再"开户"。等价于把 Mattermost 的 sql session_store 模型搬过来：cookieId → Redis HGET "User" → 用户档案 JSON → 信任 + 注入 context。im 业务表全部用 mm UserID（24-char hex MongoDB ObjectId）做外键。
+
+**目标态（M4 完成后）**：
+- 删 `users` 表（或退化为只读缓存）；删 `mm_user_id` 影子映射；删 lazy-upsert
+- `messages.sender_id`、`channel_members.user_id`、`friendships.{requester,addressee}_id`、`channels.creator_id` 等**全部 BIGINT → TEXT**（mm UserID）
+- 加 `team_id TEXT NULL` 到 `channels` / `messages`（设计点：维度跟随 mm `companyId`/`organizes[].orgId`），**NULL = 无公司用户**，业务路径不强制 team
+- handler 不再用 `c.GetInt64("user_id")`，改 `MMUserFromCtx(c).UserID` (string)
+- **userSnapshot 概念**：im 只冷冻 `(user_id, team_id)` 两个字段；name/email/avatar/orgRole 等其余字段**前端拿 userId 自己去 Redis 或 cses 查**，im 不存
+- 鉴权统一只信 cookieId（与 Mattermost 完全一致），JWT 路径退役或留 admin only
+
+**参考真实 cookie 档案 schema**（来自 `cookieId=69eec6dbe6876865ff98945a`）：
+- 顶层 `userId` / `id`（同值，24-hex）→ 用作所有外键
+- `companyId` + `organizes[].orgId`（单组织时 `companyId==orgId`）→ team_id 候选
+- `name` / `userName` / `mobile` / `deptId` / `deptName` / `roles` / `permissions` —— 全部不存 im
+- `mattermostHttp` / `mattermostWebSocket` —— 客户端用，im 后端无视
+
+**作用域评估**：
+- migration 014 重写所有 user FK 为 TEXT，加 team_id 列；同时**保留** v0.5.1 的 mm_user_id（migration 013）作为兼容数据迁移路径
+- 13 个 migration、所有 repo 接口、所有 service、所有 handler、所有 test 全部改一遍
+- ImApiAdapter 客户端要同步改（用 cookie 调用，不再走 JWT register/login）
+- 等于第二个 M1 工作量，建议**双周冲刺**（spec + 代码 + 测试）
+
+**测试需求**（用户要求："测试类覆盖全量回归测试集合：单接口 + 测试用例集"）：
+- 每个 HTTP 端点（76 个）都要有：成功路径 + cookie 缺失 + cookie 无效 + team_id 空 + team_id 非空 5 种 case 至少
+- WS 路径同理：每种 WSMessageType 在两种 team_id 状态下的发送 / 接收 / ACK
+- 集成测试目录下新增 `m4_*_test.go` 系列；现有 `v5_*_test.go` 全部改造（user fixture 从 int64 → mm UserID）
+
+**前置 / 解锁顺序**：
+1. spec 落地 `server/docs/M4_SPEC.md`（重点：team_id 语义 / userSnapshot 字段冷冻 / 兼容期的 dual-write 不需要因为不回切 / cookieId Redis lookup 的缓存策略）
+2. migration 014 + 数据 backfill 脚本（im_pre / im_dev 都要跑；老数据 sender_id 从历史 mm_user_id 反查或标 unknown）
+3. repo + service + handler 三层一起改（不能拆，会半截编译不过）
+4. 全量测试集合改造 + 5 种 case 覆盖
+5. cses-client 切到 cookie 鉴权
+6. 性能基线复测（cookie 解析每请求多 1 次 Redis HGET，本应不显著影响 P95；做 LRU 缓存进一步压低）
 
 ### 待用户拍板
 - ~~打 tag~~ → ✅ `v0.3.0` / `v0.3.1` / `v0.3.2` 三枚 tag 覆盖 M3 演进
