@@ -6,14 +6,17 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/lib/pq"
+	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"im-server/internal/auth"
+	"im-server/internal/middleware"
 	"im-server/internal/repo"
 )
 
@@ -50,13 +53,17 @@ type WsHandler struct {
 	routing   *Routing
 	jwtSecret string
 	gatewayID string
-	channelSt ChannelSeqStore // to compute pong diff
-	msgStore  WsSendStore     // for WS send path (nil = WS send disabled)
-	members   WsMemberLister  // for WS send push fan-out (nil = WS send disabled)
+	channelSt ChannelSeqStore       // to compute pong diff
+	msgStore  WsSendStore           // for WS send path (nil = WS send disabled)
+	members   WsMemberLister        // for WS send push fan-out (nil = WS send disabled)
+	rdb       redis.UniversalClient // for cookieId resolution; nil = JWT-only
 	log       *slog.Logger
 }
 
-// NewWsHandler creates a WsHandler.
+// NewWsHandler creates a WsHandler. rdb is optional — pass nil to keep
+// JWT-only auth (legacy callers); pass the upstream cses Redis client to
+// enable cookieId auth via either CookieId / cookieId header or
+// ?cookie_id= query param. JWT remains accepted as a back-compat fallback.
 func NewWsHandler(hub *Hub, routing *Routing, jwtSecret, gatewayID string,
 	channelSt ChannelSeqStore, log *slog.Logger) *WsHandler {
 	return &WsHandler{
@@ -69,6 +76,14 @@ func NewWsHandler(hub *Hub, routing *Routing, jwtSecret, gatewayID string,
 	}
 }
 
+// WithCookieAuth enables cookieId-based WS authentication using rdb as the
+// upstream cses session store. Call after construction. JWT auth still
+// works when set; cookie auth is tried first.
+func (h *WsHandler) WithCookieAuth(rdb redis.UniversalClient) *WsHandler {
+	h.rdb = rdb
+	return h
+}
+
 // WithSendSupport enables the WS send path. Call after construction.
 func (h *WsHandler) WithSendSupport(msgStore WsSendStore, members WsMemberLister) *WsHandler {
 	h.msgStore = msgStore
@@ -76,19 +91,20 @@ func (h *WsHandler) WithSendSupport(msgStore WsSendStore, members WsMemberLister
 	return h
 }
 
-// ServeHTTP handles GET /ws?token=<jwt>&device=<device_id>.
-// It validates the JWT, upgrades to WebSocket, registers the connection,
-// runs the read pump inline, and cleans up on disconnect.
+// ServeHTTP handles GET /ws.
+//
+// Auth precedence (first match wins):
+//  1. CookieId / cookieId Header — message-v3 wire shape (cses parity)
+//  2. cookie_id query param      — browser fallback (no custom header)
+//  3. token query param          — JWT, kept for legacy clients
+//
+// Cookie auth resolves via middleware.ResolveCookieID so the LRU cache +
+// im.auth.cookie_cache.{hit,miss,size} metrics cover WS connection bursts
+// the same way they cover HTTP ones.
 func (h *WsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// 1. Authenticate via JWT in query param.
-	tokenStr := r.URL.Query().Get("token")
-	if tokenStr == "" {
-		http.Error(w, "missing token", http.StatusUnauthorized)
-		return
-	}
-	claims, err := auth.ValidateToken(h.jwtSecret, tokenStr)
+	userID, err := h.authenticate(r)
 	if err != nil {
-		http.Error(w, "invalid token", http.StatusUnauthorized)
+		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
 
@@ -106,18 +122,18 @@ func (h *WsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 4. Build and register the connection.
-	conn := NewConn(claims.UserID, deviceID, ws, h.hub)
+	conn := NewConn(userID, deviceID, ws, h.hub)
 
 	// Derive a cancellable context so the heartbeat exits on disconnect.
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
 
 	h.hub.Register(conn)
-	if err := h.routing.Register(ctx, claims.UserID, deviceID); err != nil {
-		h.log.Warn("redis register failed", "error", err, "user_id", claims.UserID)
+	if err := h.routing.Register(ctx, userID, deviceID); err != nil {
+		h.log.Warn("redis register failed", "error", err, "user_id", userID)
 	}
 
-	h.log.Info("ws connected", "user_id", claims.UserID, "device_id", deviceID)
+	h.log.Info("ws connected", "user_id", userID, "device_id", deviceID)
 
 	// 5. Start heartbeat loop (sends pings, closes conn on timeout).
 	go runHeartbeat(ctx, conn, h.channelSt, h.log)
@@ -133,6 +149,45 @@ func (h *WsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.log.Warn("redis deregister failed", "error", err)
 	}
 	h.log.Info("ws disconnected", "user_id", conn.UserID, "device_id", conn.DeviceID)
+}
+
+// authenticate resolves the connecting user's mm UserID from the upgrade
+// request. Cookie auth (Header / query) is tried first; JWT is the legacy
+// fall-through. Returns a 401-style error string on failure.
+func (h *WsHandler) authenticate(r *http.Request) (string, error) {
+	if cookieID := readCookieID(r); cookieID != "" && h.rdb != nil {
+		mm, err := middleware.ResolveCookieID(r.Context(), h.rdb, cookieID, h.log)
+		if err == nil {
+			if uid := mm.ResolvedUserID(); uid != "" {
+				return uid, nil
+			}
+		}
+		// Cookie was supplied but resolution failed — refuse rather than
+		// silently fall through to JWT, otherwise a stale cookie could
+		// hide an upstream session timeout from the client.
+		return "", fmt.Errorf("invalid cookieId")
+	}
+	tokenStr := r.URL.Query().Get("token")
+	if tokenStr == "" {
+		return "", fmt.Errorf("missing auth: cookieId header or ?token= required")
+	}
+	claims, err := auth.ValidateToken(h.jwtSecret, tokenStr)
+	if err != nil {
+		return "", fmt.Errorf("invalid token")
+	}
+	return claims.UserID, nil
+}
+
+// readCookieID returns the cookieId carried by either the upgrade Header
+// (CookieId / cookieId — message-v3 sends the former) or the cookie_id
+// query param (browser fallback). Empty string when neither is set.
+func readCookieID(r *http.Request) string {
+	for _, h := range []string{"CookieId", "cookieId", "Cookieid"} {
+		if v := strings.TrimSpace(r.Header.Get(h)); v != "" {
+			return v
+		}
+	}
+	return strings.TrimSpace(r.URL.Query().Get("cookie_id"))
 }
 
 // readPump reads inbound frames from the WebSocket and dispatches them.

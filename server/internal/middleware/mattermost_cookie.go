@@ -178,6 +178,20 @@ func MattermostCookieAuth(rdb redis.UniversalClient, _ any, log *slog.Logger) gi
 // parse error.
 var errMMUserNotFound = errors.New("mm user not in redis hash")
 
+// ResolveCookieID is the public re-entry point for cookie-id resolution
+// outside the gin middleware chain. Use it from non-HTTP code paths
+// (WebSocket upgrade handlers, gRPC interceptors, scripts) that need the
+// same cache + Redis fall-through + metric counters as the gin
+// MattermostCookieResolve middleware. rdb may be nil; a nil rdb forces a
+// miss path that still records metrics consistently.
+func ResolveCookieID(ctx context.Context, rdb redis.UniversalClient, cookieID string, log *slog.Logger) (*MattermostUser, error) {
+	if log == nil {
+		log = slog.Default()
+	}
+	initCookieCache()
+	return resolveMMUser(ctx, rdb, cookieID, log)
+}
+
 // resolveMMUser is the cache-aware lookup. Cache layer is process-local;
 // Redis fall-through has the upstream timeout cap. Hit/miss counters feed
 // the im.auth.cookie_cache.{hit,miss} OTel instruments so ops can verify

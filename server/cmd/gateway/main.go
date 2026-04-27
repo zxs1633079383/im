@@ -149,6 +149,10 @@ func run() int {
 	// WsHandler wires hub, routing, channelRepo, and JWT secret together.
 	wsHandler := gateway.NewWsHandler(hub, routing, cfg.Gateway.JWTSecret, gatewayID, channelRepo, log)
 	wsHandler.WithSendSupport(messageRepo, channelRepo)
+	// M4: accept Mattermost cookieId on the WS upgrade so message-v3 (and the
+	// pre cluster's cookie-only HTTP path) can hold a real-time channel
+	// without minting a JWT just for /ws.
+	wsHandler.WithCookieAuth(rdb)
 
 	mux := http.NewServeMux()
 
