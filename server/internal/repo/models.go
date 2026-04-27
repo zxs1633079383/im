@@ -183,6 +183,20 @@ type MessageFavorite struct {
 // TableName pins the GORM-derived table name to the migration.
 func (MessageFavorite) TableName() string { return "message_favorites" }
 
+// Module maps the modules table — fixed-slot "module entry card" metadata
+// (会议聊天 / 审批 / 任务 / 成果导向 / 切换公司 / 文档). Schema mirrors the
+// mattermost csesapi /modules/getAll source table 1:1 for client parity.
+// Schema-stable read-only seed; no created_at / updated_at on purpose.
+type Module struct {
+	Name  string `gorm:"column:name;type:varchar(100);primaryKey" json:"name"`
+	Label string `gorm:"column:label;type:varchar(100)"           json:"label,omitempty"`
+	URL   string `gorm:"column:url;type:text"                     json:"url,omitempty"`
+	ID    string `gorm:"column:id;type:varchar(64)"               json:"id,omitempty"`
+}
+
+// TableName pins the GORM-derived table name to the migration.
+func (Module) TableName() string { return "modules" }
+
 // MessageReaction maps the message_reactions table — emoji reactions on a
 // message. Composite PK (message_id, user_id, emoji) makes adding the same
 // emoji a no-op; remove via explicit DELETE call. Mirrors mattermost csesapi

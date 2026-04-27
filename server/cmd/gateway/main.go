@@ -308,6 +308,11 @@ func run() int {
 	reactionSvc := service.NewReactionService(reactionRepo, messageRepo, channelRepo)
 	imhttp.RegisterReactionRoutes(authedAPI, reactionSvc, &hubReactionPusher{xpod: xpod, svc: messageSvc})
 
+	// v0.7.2: module catalog (会议聊天 / 审批 / 任务 / ...) — replaces
+	// mattermost csesapi /modules/getAll. Read-only seeded by migration 016.
+	moduleRepo := repo.NewModuleRepo(gormDB)
+	imhttp.RegisterModuleRoutes(authedAPI, moduleRepo)
+
 	// M3-B Presence: who is currently online in a given channel. Backed by
 	// the same Redis routing table the push fan-out uses, so no extra state
 	// store or migration is needed.
