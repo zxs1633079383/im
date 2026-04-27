@@ -300,6 +300,14 @@ func run() int {
 	favoriteSvc := service.NewFavoriteService(favoriteRepo)
 	imhttp.RegisterFavoriteRoutes(authedAPI, favoriteSvc)
 
+	// v0.7.0: emoji reactions on messages — replaces mattermost csesapi
+	// /posts/quickReply (the wire shape is "quick reply" but the actual
+	// behaviour is emoji reaction). reaction_added / reaction_removed WS
+	// events fan out to every channel member via the existing broadcaster.
+	reactionRepo := repo.NewReactionRepo(gormDB)
+	reactionSvc := service.NewReactionService(reactionRepo, messageRepo, channelRepo)
+	imhttp.RegisterReactionRoutes(authedAPI, reactionSvc, &hubReactionPusher{xpod: xpod, svc: messageSvc})
+
 	// M3-B Presence: who is currently online in a given channel. Backed by
 	// the same Redis routing table the push fan-out uses, so no extra state
 	// store or migration is needed.
@@ -487,6 +495,31 @@ func (b *hubEventBroadcaster) BroadcastToMembers(channelID int64, eventType imht
 		uids = append(uids, m.UserID)
 	}
 	b.xpod.broadcast(uids, strconv.FormatInt(channelID, 10),
+		gateway.WSMessageType(eventType), payload)
+}
+
+// hubReactionPusher implements imhttp.ReactionEventPusher. Reactions fan
+// out to every channel member, same shape as msg_updated / msg_deleted.
+// Reuses the message service's ListMembers to avoid plumbing channel.go
+// directly into the reaction layer.
+type hubReactionPusher struct {
+	xpod crossPodDeps
+	svc  *service.MessageService
+}
+
+func (p *hubReactionPusher) BroadcastReaction(channelID int64, eventType imhttp.ReactionEventType, payload any) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	members, err := p.svc.ListMembers(ctx, channelID)
+	if err != nil {
+		p.xpod.log.Warn("reaction broadcast: list members failed", "error", err, "channel_id", channelID)
+		return
+	}
+	uids := make([]string, 0, len(members))
+	for _, m := range members {
+		uids = append(uids, m.UserID)
+	}
+	p.xpod.broadcast(uids, strconv.FormatInt(channelID, 10),
 		gateway.WSMessageType(eventType), payload)
 }
 

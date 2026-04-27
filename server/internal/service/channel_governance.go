@@ -143,6 +143,19 @@ func (s *ChannelGovernanceService) UpdateMemberNotifyPref(
 	return s.governance.UpdateMemberNotifyPref(ctx, channelID, callerID, pref)
 }
 
+// UpdateMemberIsTop pins or unpins the channel at the top of the caller's
+// channel list. Per-user state — owners cannot change other members'
+// is_top, so the API is implicitly self-only and only requires "is a
+// member of this channel" as the authorization gate.
+func (s *ChannelGovernanceService) UpdateMemberIsTop(
+	ctx context.Context, channelID int64, callerID string, isTop bool,
+) error {
+	if err := s.requireMember(ctx, channelID, callerID); err != nil {
+		return err
+	}
+	return s.governance.UpdateMemberIsTop(ctx, channelID, callerID, isTop)
+}
+
 // IsManagerOrOwner is exported so other services can share the admin check.
 func (s *ChannelGovernanceService) IsManagerOrOwner(
 	ctx context.Context, channelID int64, callerID string,

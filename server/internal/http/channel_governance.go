@@ -26,9 +26,12 @@ type patchChannelReq struct {
 }
 
 // patchMemberReq is the body of PATCH /api/channels/:id/members/:user_id.
+// is_top is per-user (channel_members.is_top, v0.7.0+); only the caller may
+// flip their own row. Role is owner-only; notify_pref is self-only.
 type patchMemberReq struct {
 	Role       *int16 `json:"role,omitempty"`
 	NotifyPref *int16 `json:"notify_pref,omitempty"`
+	IsTop      *bool  `json:"is_top,omitempty"`
 }
 
 // toRepoFields converts the wire request to the repo/service PatchChannelFields
@@ -279,7 +282,7 @@ func RegisterChannelGovernanceRoutes(
 			c.JSON(400, gin.H{"error": "invalid JSON"})
 			return
 		}
-		if in.Role == nil && in.NotifyPref == nil {
+		if in.Role == nil && in.NotifyPref == nil && in.IsTop == nil {
 			c.JSON(422, gin.H{"error": "no fields to update"})
 			return
 		}
@@ -313,6 +316,23 @@ func RegisterChannelGovernanceRoutes(
 				return
 			case errors.Is(err, service.ErrInvalidNotifyPref):
 				c.JSON(422, gin.H{"error": "invalid notify_pref"})
+				return
+			case err != nil:
+				c.JSON(500, gin.H{"error": "internal error"})
+				return
+			}
+		}
+		if in.IsTop != nil {
+			// is_top is strictly self-only — pinning a channel to the top
+			// of the caller's list, not other members'.
+			if targetID != uid {
+				c.JSON(403, gin.H{"error": "is_top can only be updated for the caller"})
+				return
+			}
+			err := svc.UpdateMemberIsTop(c.Request.Context(), channelID, uid, *in.IsTop)
+			switch {
+			case errors.Is(err, service.ErrNotMember):
+				c.JSON(403, gin.H{"error": "not a member of this channel"})
 				return
 			case err != nil:
 				c.JSON(500, gin.H{"error": "internal error"})

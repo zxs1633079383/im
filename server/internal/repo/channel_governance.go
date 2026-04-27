@@ -43,6 +43,11 @@ type ChannelGovernanceRepo interface {
 
 	UpdateMemberRole(ctx context.Context, channelID int64, userID string, role int16) error
 	UpdateMemberNotifyPref(ctx context.Context, channelID int64, userID string, pref int16) error
+	// UpdateMemberIsTop flips the per-user "pin this channel to the top of
+	// my list" state. Per-user (channel_members.is_top) — distinct from the
+	// global channels.is_top column which stays for legacy compatibility but
+	// is not surfaced by the API.
+	UpdateMemberIsTop(ctx context.Context, channelID int64, userID string, isTop bool) error
 }
 
 // gormChannelGovernanceRepo implements ChannelGovernanceRepo against GORM.
@@ -218,6 +223,22 @@ func (r *gormChannelGovernanceRepo) UpdateMemberNotifyPref(ctx context.Context, 
 		Update("notify_pref", pref)
 	if res.Error != nil {
 		return fmt.Errorf("update notify pref: %w", res.Error)
+	}
+	if res.RowsAffected == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// UpdateMemberIsTop flips channel_members.is_top for (channelID, userID).
+// Per-user state distinct from channels.is_top (legacy global). ErrNotFound
+// when the member row is missing.
+func (r *gormChannelGovernanceRepo) UpdateMemberIsTop(ctx context.Context, channelID int64, userID string, isTop bool) error {
+	res := r.db.WithContext(ctx).Model(&ChannelMember{}).
+		Where("channel_id = ? AND user_id = ?", channelID, userID).
+		Update("is_top", isTop)
+	if res.Error != nil {
+		return fmt.Errorf("update member is_top: %w", res.Error)
 	}
 	if res.RowsAffected == 0 {
 		return ErrNotFound

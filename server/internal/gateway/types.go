@@ -51,6 +51,17 @@ const (
 	TypeApprovalUpdated WSMessageType = "approval_updated"
 	// TypeNotificationReceived is pushed server→client when a new notification lands (M2 feature).
 	TypeNotificationReceived WSMessageType = "notification_received"
+	// TypeReactionAdded is pushed server→client when a user reacts to a message
+	// with an emoji (v0.7.0 — replaces mattermost csesapi quickReply).
+	TypeReactionAdded WSMessageType = "reaction_added"
+	// TypeReactionRemoved is pushed server→client when a reaction is removed.
+	TypeReactionRemoved WSMessageType = "reaction_removed"
+	// TypeChannelTopUpdated is pushed server→client when caller pins / unpins
+	// a channel to the top of their channel list (v0.7.0 — per-user state).
+	TypeChannelTopUpdated WSMessageType = "channel_top_updated"
+	// TypeChannelInfoUpdated is pushed to channel members when notice / purpose /
+	// orient / permission changes (v0.7.0 — channel governance extras).
+	TypeChannelInfoUpdated WSMessageType = "channel_info_updated"
 )
 
 // WSFrame is the top-level envelope for every WebSocket message.

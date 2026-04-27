@@ -62,6 +62,7 @@ type ChannelMember struct {
 	PhantomCount  int64     `gorm:"column:phantom_count;not null;default:0"                 json:"phantom_count"`
 	PhantomAtRead int64     `gorm:"column:phantom_at_read;not null;default:0"               json:"phantom_at_read"`
 	NotifyPref    int16     `gorm:"column:notify_pref;not null;default:0"                   json:"notify_pref"`
+	IsTop         bool      `gorm:"column:is_top;not null;default:false"                    json:"is_top"`
 	JoinedAt      time.Time `gorm:"column:joined_at;not null;default:now()"                 json:"joined_at"`
 }
 
@@ -181,6 +182,22 @@ type MessageFavorite struct {
 
 // TableName pins the GORM-derived table name to the migration.
 func (MessageFavorite) TableName() string { return "message_favorites" }
+
+// MessageReaction maps the message_reactions table — emoji reactions on a
+// message. Composite PK (message_id, user_id, emoji) makes adding the same
+// emoji a no-op; remove via explicit DELETE call. Mirrors mattermost csesapi
+// QuickReply but persisted server-side instead of broadcasting only.
+//
+// M4: UserID is mm UserID (24-hex string).
+type MessageReaction struct {
+	MessageID int64     `gorm:"column:message_id;primaryKey"                          json:"message_id"`
+	UserID    string    `gorm:"column:user_id;type:text;primaryKey"                   json:"user_id"`
+	Emoji     string    `gorm:"column:emoji;type:varchar(64);primaryKey"              json:"emoji"`
+	CreatedAt time.Time `gorm:"column:created_at;not null;default:now()"              json:"created_at"`
+}
+
+// TableName pins the GORM-derived table name to the migration.
+func (MessageReaction) TableName() string { return "message_reactions" }
 
 // ChannelManager maps the channel_managers table — fine-grained manager
 // rights on a channel. A manager has admin rights beyond "member" but less

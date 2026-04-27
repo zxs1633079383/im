@@ -494,6 +494,96 @@ func RegisterMessageRoutes(authed *gin.RouterGroup, svc *service.MessageService,
 		}
 		c.JSON(201, gin.H{"messages": forwarded})
 	})
+
+	// POST /api/messages/batch — fan a single content out to N channels.
+	// Replaces mattermost csesapi /posts/createPosts. ChannelIDs the caller
+	// is not a member of are silently skipped (best-effort, mirroring
+	// ForwardMessages). 201 with the inserted messages slice.
+	authed.POST("/messages/batch", func(c *gin.Context) {
+		uid, ok := userIDFromCtx(c)
+		if !ok {
+			return
+		}
+		var in struct {
+			ChannelIDs  []int64 `json:"channel_ids"`
+			Content     string  `json:"content"`
+			MsgType     int16   `json:"msg_type"`
+			ClientMsgID string  `json:"client_msg_id"`
+		}
+		if err := c.ShouldBindJSON(&in); err != nil {
+			c.JSON(400, gin.H{"error": "invalid JSON"})
+			return
+		}
+		if len(in.ChannelIDs) == 0 {
+			c.JSON(422, gin.H{"error": "channel_ids must not be empty"})
+			return
+		}
+		if len(in.ChannelIDs) > 50 {
+			c.JSON(422, gin.H{"error": "at most 50 target channels allowed"})
+			return
+		}
+		if in.Content == "" {
+			c.JSON(422, gin.H{"error": "content is required"})
+			return
+		}
+		teamID := teamIDFromCtx(c)
+		var teamPtr *string
+		if teamID != "" {
+			teamPtr = &teamID
+		}
+		out, err := svc.BatchSendMessages(c.Request.Context(), service.BatchSendParams{
+			ChannelIDs:  in.ChannelIDs,
+			SenderID:    uid,
+			TeamID:      teamPtr,
+			Content:     in.Content,
+			MsgType:     in.MsgType,
+			ClientMsgID: in.ClientMsgID,
+		})
+		if err != nil {
+			log.Error("batch send", "error", err, "user_id", uid)
+			c.JSON(422, gin.H{"error": err.Error()})
+			return
+		}
+		// Fan out push to online members per inserted row, same hook as the
+		// single-send path so realtime delivery stays consistent.
+		if opts.Pusher != nil {
+			for _, m := range out {
+				go pushToMembers(context.Background(), svc, opts.Pusher, m, log)
+			}
+		}
+		c.JSON(201, gin.H{"messages": out})
+	})
+
+	// GET /api/messages/:id/after?limit=N — return up to N messages with seq
+	// strictly greater than the given message's seq, same channel. Replaces
+	// mattermost csesapi /posts/getPostsAfterFromSegment. limit defaults to
+	// 50, capped at 200 in the service to bound memory.
+	authed.GET("/messages/:id/after", func(c *gin.Context) {
+		uid, ok := userIDFromCtx(c)
+		if !ok {
+			return
+		}
+		messageID, ok := pathInt64(c, "id")
+		if !ok {
+			return
+		}
+		limit := parseLimit(c.Query("limit"))
+		msgs, err := svc.MessagesAfter(c.Request.Context(), messageID, uid, limit)
+		switch {
+		case errors.Is(err, service.ErrSourceNotFound):
+			c.JSON(404, gin.H{"error": "message not found"})
+		case errors.Is(err, service.ErrSourceNotMember):
+			c.JSON(403, gin.H{"error": "not a member of the channel"})
+		case err != nil:
+			log.Error("messages after", "error", err, "user_id", uid)
+			c.JSON(500, gin.H{"error": "internal error"})
+		default:
+			if msgs == nil {
+				msgs = []repo.Message{}
+			}
+			c.JSON(200, fetchMessagesResp{Messages: msgs})
+		}
+	})
 }
 
 // pushToMembers fans out a push notification to all online channel members.

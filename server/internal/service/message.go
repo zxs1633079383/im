@@ -174,6 +174,93 @@ func (s *MessageService) MarkRead(ctx context.Context, channelID int64, callerID
 	return ch.Seq, nil
 }
 
+// BatchSendParams is the input to MessageService.BatchSendMessages — same
+// content fan out to N channels. Mirrors mattermost csesapi createPosts
+// (Posts + ChannelIds) but with simpler body shape (the same Content +
+// MsgType across all channels).
+type BatchSendParams struct {
+	ChannelIDs  []int64
+	SenderID    string
+	TeamID      *string
+	Content     string
+	MsgType     int16
+	ClientMsgID string // applied as-is to each row; clients pass distinct values per channel if needed
+}
+
+// BatchSendMessages persists one new message per target channel where the
+// caller is a member. Targets where the caller is NOT a member are skipped
+// silently — same defensive shape as ForwardMessages so partial broadcast
+// degrades to per-channel best-effort. Returns the messages that succeeded
+// in send order; caller can compare len(returned) vs len(ChannelIDs) to
+// decide if a retry is required.
+func (s *MessageService) BatchSendMessages(ctx context.Context, p BatchSendParams) ([]*repo.Message, error) {
+	ctx, span := tracer.Start(ctx, "MessageService.BatchSendMessages")
+	defer span.End()
+
+	if len(p.ChannelIDs) == 0 || p.Content == "" {
+		return nil, fmt.Errorf("batch send: channel_ids and content required")
+	}
+	msgType := p.MsgType
+	if msgType == 0 {
+		msgType = repo.MsgTypeText
+	}
+	out := make([]*repo.Message, 0, len(p.ChannelIDs))
+	for _, channelID := range p.ChannelIDs {
+		if _, err := s.channels.GetMember(ctx, channelID, p.SenderID); err != nil {
+			continue // skip non-member channels silently
+		}
+		teamID := p.TeamID
+		if teamID == nil {
+			if ch, err := s.channels.GetByID(ctx, channelID); err == nil && ch != nil {
+				teamID = ch.TeamID
+			}
+		}
+		msg := &repo.Message{
+			ChannelID:   channelID,
+			SenderID:    p.SenderID,
+			TeamID:      teamID,
+			MsgType:     msgType,
+			Content:     p.Content,
+			ClientMsgID: p.ClientMsgID,
+		}
+		if err := s.messages.Send(ctx, msg); err != nil {
+			continue
+		}
+		out = append(out, msg)
+	}
+	return out, nil
+}
+
+// MessagesAfter returns messages with seq strictly greater than the given
+// message's seq, in the same channel, up to limit. Composes
+// MessageRepo.GetByID + FetchForUser so the caller can pass a known
+// message id without first looking up its seq client-side. Maps
+// repo.ErrNotFound to ErrSourceNotFound; non-member to ErrSourceNotMember
+// so the HTTP layer can surface 404 / 403 cleanly. Replaces the mattermost
+// csesapi /posts/getPostsAfterFromSegment wire shape.
+func (s *MessageService) MessagesAfter(ctx context.Context, messageID int64, callerID string, limit int) ([]repo.Message, error) {
+	ctx, span := tracer.Start(ctx, "MessageService.MessagesAfter")
+	defer span.End()
+
+	src, err := s.messages.GetByID(ctx, messageID)
+	switch {
+	case errors.Is(err, repo.ErrNotFound):
+		return nil, ErrSourceNotFound
+	case err != nil:
+		return nil, fmt.Errorf("get source: %w", err)
+	}
+	if _, err := s.channels.GetMember(ctx, src.ChannelID, callerID); err != nil {
+		if errors.Is(err, repo.ErrNotFound) {
+			return nil, ErrSourceNotMember
+		}
+		return nil, fmt.Errorf("get member: %w", err)
+	}
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	return s.messages.FetchForUser(ctx, src.ChannelID, callerID, src.Seq, limit)
+}
+
 // ForwardMessages copies the source message into each target channel.
 func (s *MessageService) ForwardMessages(ctx context.Context, callerID string, p ForwardParams) ([]*repo.Message, error) {
 	ctx, span := tracer.Start(ctx, "MessageService.ForwardMessages")
