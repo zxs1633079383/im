@@ -9,9 +9,30 @@ Last updated: 2026-04-27（**M4 GA + pre 部署完成**：spec / migration 014 /
 
 ## 0. 下次会话一句话启动 ⭐
 
-**复制粘贴这句话开新会话即可**（v0.7.0 后端缺口闭环 + Java 配置就绪，下一步前端 F1 全量迁移）：
+**复制粘贴这句话开新会话即可**（三仓库代码全推 origin、配置就绪，下一步 Tauri 客户端联调）：
 
-> 继续 v0.7.1：① 在 cses-client `message.service.ts` 把 30 个 imHttp.post('/...') 调用按方法切到 `ImApiAdapter`（apiFlavor==='im' 路由），分批：消息(send/fetch/sync/markRead/edit/delete/forward/revoke/replies/branch) / 公告(list/save/delete/read) / 紧急(send/confirm) / 收藏(create/delete/load) / 频道(create/changeDisplayName/leave/close/onlineStatus) / 子群聊(makeTopic) — 共 25 个稳定方法；② reaction (`/posts/quickReply` → ImApiAdapter.addReaction/removeReaction) + segment (`/posts/getPostsAfterFromSegment` → messagesAfter) + batch (`/posts/createPosts` → batchSend) — 8 个新方法；③ 频道治理（notice/purpose/orient/permission/top）走 PATCH，is_top 走 member-level PATCH；④ 投票/搜索/平均分维持走 cses（不迁）；⑤ 待 Java 部署 imGatewayEnabled=true 后联调 → 跑 fullchain（HTTP+WS 长连联合）；⑥ 客户端发版前跑 e2e-pre-m4 + v070-smoke + ws-smoke-zhanglichao 三件套全绿。打 tag v0.7.1-cses-fullclient-cutover。
+> 继续 v0.7.2 联调：im-server pre-7g 已部署 (`im-v2/im-gateway` NodePort 30880)，Java cses Feature-new-im `20e750bea` push 后本地 `196.168.1.177:3399/User/login` 已下发 `imGatewayHttp` + `imGatewayWebSocket` 两个字段（值都是 `192.168.6.41:30880`）。cses-client `im-backend-switch` HEAD `7c8a0c972` 已删完所有 mattermost 死代码。**操作：** ① 进 `/Users/mac28/workspace/angular/cses-client`，`git pull origin im-backend-switch`，`yarn start`（= `tauri:dev`，**无需 cargo / 无需改 environment.ts**，src-tauri/ 0 改动）；② 用 `17692704771/123456` 登录；③ DevTools console 期待看到 `🔀 [MessageHttpService] apiFlavor: mattermost → im` + `🔄 [LOGIN] reconnectMainWs ... routedToIm: true`；④ Network 验：`imHttp.*` 全部打 `http://192.168.6.41:30880/api/...`，`this.http.*`（vote/Im/search/average）继续走 `196.168.1.177:3399/api/cses/...`；⑤ 联调中如果 console 报红 `ImEndpointNotMappedError: <method> <endpoint>` 把 endpoint 名贴给我，5 分钟补 route-table；⑥ 全跑通后跑 ws-smoke-zhanglichao + v070-smoke + v072-smoke 三件套确认基线，打 tag `v0.7.3-client-verified`。
+
+### 三仓库 origin 状态（联调依赖）
+| 仓库 | branch | HEAD | 验证 |
+|---|---|---|---|
+| im (go) | `main` | `594b341` | tag `v0.7.2-no-mattermost`, pre-7g 部署 |
+| cses (java) | `Feature-new-im` | `20e750bea` | XPA-12 `imGatewayEnabled: true`, 本地 196.168.1.177 已下发字段 |
+| cses-client (angular) | `im-backend-switch` | `7c8a0c972` | tsc 干净, 已删 mattermost 死代码 |
+
+### 联调 cheatsheet（不需要 cargo / tauri build）
+```bash
+cd /Users/mac28/workspace/angular/cses-client
+git pull origin im-backend-switch     # 拉最新 7c8a0c972
+yarn start                             # = tauri:dev，自动起 Angular + Tauri
+# 不需要：cargo build / npm run tauri:build / 改 environment.ts
+# (本期 7 个 commit 全在 src/*.ts，src-tauri/ Rust 代码 0 改动)
+```
+
+### 联调出问题第一时间看
+- `apiFlavor: mattermost → mattermost` 没切 → cses 没下发 imGatewayHttp，看 XPA-12.yaml `imGatewayEnabled: true`
+- WS upgrade 401 → cookieId 没在 cses Redis，`redis-cli -h <host> HGET User '"<cookieId>"'`
+- `ImEndpointNotMappedError` 红色 → 漏网 imHttp 调用，告诉新 session 我，补 route-table.ts
 
 ### v0.6.1 已经做掉的（不要重做）
 - ✅ Step ① migration 014 dev DB dry-run + im_pre 实落（force 13 清 dirty → up to 14）
@@ -154,7 +175,7 @@ e0ecb32 fix(gateway): push_consumer 走 PushTopicFor 与发送侧对齐
 - **`v0.6.2-m4-perf-baseline`** — M4.5 全量闭环。OTel cookie_cache.{hit,miss,size} 指标 + Prometheus /metrics pull endpoint + cookie-auth k6 tooling + Grafana panel + cookie-auth e2e harness。pre-7d k6 测得 send P95 = **211ms** + cookie cache hit_rate=97.78%。
 - **`v0.6.3-m4-ws-cookie`** — WS 鉴权切到 cookieId。pre-7e 部署 ws-smoke 5/5 / e2e-pre-m4 12/13。
 - `v0.7.0-cses-cutover` — cses-client 全量迁移后端缺口（reactions / batch / messages-after / is_top / governance extras）pre-7f。
-- **`v0.7.2-no-mattermost`** — **当前 HEAD**：用户决策"全面下掉 mattermost"完整闭环。Migration 016 复刻 mattermost.modules 表（6 行 seed）。新增 2 个端点：`GET /api/modules` + `GET /api/channels/online-status?channel_ids=...&include_users=true`（真批量 pipelined LookupBatch）。前端：ImApiAdapter `dispatch / useIm` + `route-table.ts` 30+ URI 翻译表 + `ws-normalizer.ts`（push_msg/msg_updated/msg_deleted/reaction_*/read_sync/channel_event/friend_event 9 种事件）。messageHttp.service.ts apiFlavor 由 auth.imGatewayHttp 自动 flip；route 命中不到 throw ImEndpointNotMappedError 不再 fallback。pre-7g `74a51aa8402e` 部署 ✅；ws-smoke 5/5 + v070-smoke 11/12 + v072-smoke 7/7 全绿。Java cses Feature-new-im 已 commit `20e750bea` push origin。
+- **`v0.7.2-no-mattermost`** — **当前 HEAD**：用户决策"全面下掉 mattermost"完整闭环。Migration 016 复刻 mattermost.modules 表（6 行 seed）。新增 2 个端点：`GET /api/modules` + `GET /api/channels/online-status?channel_ids=...&include_users=true`（真批量 pipelined LookupBatch）。前端：ImApiAdapter `dispatch / useIm` + `route-table.ts` 30+ URI 翻译表 + `ws-normalizer.ts`（push_msg/msg_updated/msg_deleted/reaction_*/read_sync/channel_event/friend_event 9 种事件）。messageHttp.service.ts apiFlavor 由 auth.imGatewayHttp 自动 flip；route 命中不到 throw ImEndpointNotMappedError 不再 fallback。pre-7g `74a51aa8402e` 部署 ✅；ws-smoke 5/5 + v070-smoke 11/12 + v072-smoke 7/7 全绿。Java cses Feature-new-im 已 commit `20e750bea` push origin。**用户后续追加**（cses-client `7c8a0c972`）：彻底删 mattermost 死代码 stub —— 删 message.service.ts 三个方法 (queryMembersSnapshot / closeDialog / templateReceived) + chat-settings 关闭群聊按钮 + loadMembersSnapshot/saveMembersSnapshotToDb 数据加载链路 (-138 行净删)。route-table 不留 `/healthz` 占位，未翻译端点 throw ImEndpointNotMappedError 强制后续清理。
 
 ### 回归基线
 - **v0.5.1**：build + vet + unit + race + 集成 71 PASS / 0 FAIL / 1 SKIP；e2e 13/13；pod 0 restart / 0 panic（详见 `server/docs/regression/2026-04-27-v0.5.1.md`）
