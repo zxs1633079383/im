@@ -9,9 +9,9 @@ Last updated: 2026-04-27（**M4 GA + pre 部署完成**：spec / migration 014 /
 
 ## 0. 下次会话一句话启动 ⭐
 
-**复制粘贴这句话开新会话即可**（v0.6.3 WS cookie 化已落，下一步把 cses-client 真接到我们 + 跨 pod 验证）：
+**复制粘贴这句话开新会话即可**（v0.7.0 后端缺口闭环 + Java 配置就绪，下一步前端 F1 全量迁移）：
 
-> 继续 v0.6.4：① 后端 auth/login 响应里加 `imGatewayWs` 字段下发（im-v2 namespace svc DNS 或 NodePort），让前端 `ImApiAdapter.wsUrl(true)` 真正路由到我们；② 把 e2e-pre-m4.mjs 的 WS 事件断言（G2 read_sync / G3 msg_deleted / G4 msg_updated / G7-G9 channel + friend events）从 ws-smoke 迁过来，凑齐 13/13 + 6 ws；③ 跑 fullchain-load.js 让 v4-load-m4.js 同时持有 WS 长连接，验证跨 pod Pulsar fan-out 走 cookie 路径无 regression；④ HPA `maxReplicas 20→30 minReplicas 3→6` 准备测 VU=1500 真实上限；⑤ cses-client `message.service.ts` 37 处 mattermost URI 切到 ImApiAdapter（M4 sender_id 字符串路径已通）；⑥ scripts/e2e-teardown.sh 切到 im-only lite 版本（只 TRUNCATE im_pre）。打 tag v0.6.4-m4-client-cutover。
+> 继续 v0.7.1：① 在 cses-client `message.service.ts` 把 30 个 imHttp.post('/...') 调用按方法切到 `ImApiAdapter`（apiFlavor==='im' 路由），分批：消息(send/fetch/sync/markRead/edit/delete/forward/revoke/replies/branch) / 公告(list/save/delete/read) / 紧急(send/confirm) / 收藏(create/delete/load) / 频道(create/changeDisplayName/leave/close/onlineStatus) / 子群聊(makeTopic) — 共 25 个稳定方法；② reaction (`/posts/quickReply` → ImApiAdapter.addReaction/removeReaction) + segment (`/posts/getPostsAfterFromSegment` → messagesAfter) + batch (`/posts/createPosts` → batchSend) — 8 个新方法；③ 频道治理（notice/purpose/orient/permission/top）走 PATCH，is_top 走 member-level PATCH；④ 投票/搜索/平均分维持走 cses（不迁）；⑤ 待 Java 部署 imGatewayEnabled=true 后联调 → 跑 fullchain（HTTP+WS 长连联合）；⑥ 客户端发版前跑 e2e-pre-m4 + v070-smoke + ws-smoke-zhanglichao 三件套全绿。打 tag v0.7.1-cses-fullclient-cutover。
 
 ### v0.6.1 已经做掉的（不要重做）
 - ✅ Step ① migration 014 dev DB dry-run + im_pre 实落（force 13 清 dirty → up to 14）
@@ -152,7 +152,8 @@ e0ecb32 fix(gateway): push_consumer 走 PushTopicFor 与发送侧对齐
 - **`v0.6.0-m4-cookie-id-native`** — M4 GA 代码闭环 commit 标签。
 - **`v0.6.1-m4-pre-deployed`** — pre 集群 v1.0.0-pre-7b 镜像 + im_pre 014 migration + 张立超 cookie 冒烟 200 / no-cookie 401。
 - **`v0.6.2-m4-perf-baseline`** — M4.5 全量闭环。OTel cookie_cache.{hit,miss,size} 指标 + Prometheus /metrics pull endpoint + cookie-auth k6 tooling + Grafana panel + cookie-auth e2e harness。pre-7d k6 测得 send P95 = **211ms** + cookie cache hit_rate=97.78%。
-- **`v0.6.3-m4-ws-cookie`** — **当前 HEAD**：WS 鉴权切到 cookieId（替换 ?token=jwt 死路径）。后端 `WsHandler.WithCookieAuth(rdb)` 三优先级解析（Header CookieId → query ?cookieId= / ?cookie_id= → JWT fallback）；前端 `ImApiAdapter.wsUrl(true)` 在 `auth.imGatewayWs` 下发时把 reconnectMainWs 切到我们的 /ws。pre-7e 部署 ✅；ws-smoke-m4 5/5 PASS（Header / Query / 无 auth 401 / 跨 conn push_msg fan-out）；e2e-pre-m4 12/13 PASS（G6 唯一失败是 im_pre 库累积态干扰，非回归）。测试计划落档 server/docs/v0.6.3-test-plan.md。
+- **`v0.6.3-m4-ws-cookie`** — WS 鉴权切到 cookieId。pre-7e 部署 ws-smoke 5/5 / e2e-pre-m4 12/13。
+- **`v0.7.0-cses-cutover`** — **当前 HEAD**：cses-client 全量迁移所需的后端缺口闭环。Migration 015：`message_reactions` 表 + `channel_members.is_top`。新增 7 个端点：reaction add/list/remove、`POST /api/messages/batch`（替代 csesapi createPosts）、`GET /api/messages/:id/after`（替代 getPostsAfterFromSegment）、`PATCH /api/channels/:id/members/:user_id { is_top }` per-user 置顶（self-only 403）。WS 事件类型扩 4 种：reaction_added/removed/channel_top_updated/channel_info_updated。pre-7f 部署 ✅；v070-smoke 11/12 + 旧 ws-smoke 5/5 + e2e-pre-m4 12/13 全绿。Java 侧 imGatewayEnabled 配置开关 + Fields.ImGatewayHttp/ImGatewayWebSocket 已落（待用户 cses 部署）。
 
 ### 回归基线
 - **v0.5.1**：build + vet + unit + race + 集成 71 PASS / 0 FAIL / 1 SKIP；e2e 13/13；pod 0 restart / 0 panic（详见 `server/docs/regression/2026-04-27-v0.5.1.md`）
@@ -166,7 +167,8 @@ e0ecb32 fix(gateway): push_consumer 走 PushTopicFor 与发送侧对齐
 - pre-7b — no-cache rebuild + 改 tag 强制 IfNotPresent 重拉（v0.6.1 部署候选）
 - pre-7c — 加 OTel cookie_cache.{hit,miss,size} 指标（v0.6.2-rc1）
 - pre-7d — 加 Prometheus pull /metrics 端点（v0.6.2 部署）
-- **pre-7e** — 加 WS cookieId 鉴权（**当前生产候选**，v0.6.3 部署）
+- pre-7e — 加 WS cookieId 鉴权（v0.6.3 部署）
+- **pre-7f** — 加 v0.7.0 端点（reactions / batch / messages-after / per-user is_top / channel governance extras）。**当前生产候选**
 
 ---
 
