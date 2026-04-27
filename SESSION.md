@@ -165,7 +165,8 @@ e0ecb32 fix(gateway): push_consumer 走 PushTopicFor 与发送侧对齐
 - pre-7 — M4 首次 build（**BuildKit 缓存命中假绿二进制**，废弃）
 - pre-7b — no-cache rebuild + 改 tag 强制 IfNotPresent 重拉（v0.6.1 部署候选）
 - pre-7c — 加 OTel cookie_cache.{hit,miss,size} 指标（v0.6.2-rc1）
-- **pre-7d** — 加 Prometheus pull /metrics 端点（**当前生产候选**，v0.6.2 部署）
+- pre-7d — 加 Prometheus pull /metrics 端点（v0.6.2 部署）
+- **pre-7e** — 加 WS cookieId 鉴权（**当前生产候选**，v0.6.3 部署）
 
 ---
 
