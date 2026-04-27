@@ -181,6 +181,11 @@ func run() int {
 	profileSvc := service.NewProfileService(userRepo)
 	settingsSvc := service.NewSettingsService(userSettingsRepo)
 	authedAPI := engine.Group("/api")
+	// Mattermost cookieId bridge runs BEFORE the JWT check: callers that
+	// still send the legacy header get their *MattermostUser injected into
+	// the request context (via MMUserFromCtx) without affecting JWT-only
+	// callers. The middleware is silent on missing header / Redis miss.
+	authedAPI.Use(middleware.MattermostCookieAuth(rdb, log))
 	authedAPI.Use(middleware.JWTGin(cfg.Gateway.JWTSecret))
 	imhttp.RegisterProfileRoutes(authedAPI, profileSvc)
 	imhttp.RegisterSettingsRoutes(authedAPI, settingsSvc)

@@ -91,8 +91,14 @@ spec:
               value: "__REDIS_CLUSTER__"
             # OTel collector endpoint; override per-env. Setting empty
             # disables via OTEL_DISABLED=true.
+            # 2026-04-27: pre 集群没装 otel-collector, 直接打到
+            # jaeger-cses ns 的 jaeger-v2-collector OTLP gRPC 入口。
+            # OTLP gRPC exporter 要 URL 形式; scheme 仅作 hint, host:port
+            # 才是实际 dial target. 跨 ns FQDN 在 K8s DNS 里稳定可达。
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
-              value: "http://otel-collector:4317"
+              value: "http://jaeger-v2-collector.jaeger-cses.svc.cluster.local:4317"
+            - name: OTEL_EXPORTER_OTLP_INSECURE
+              value: "true"
             - name: OTEL_SERVICE_NAME
               value: "im-gateway"
           resources:
