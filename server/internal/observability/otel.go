@@ -6,18 +6,26 @@ package observability
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.opentelemetry.io/contrib/instrumentation/runtime"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+	otelprom "go.opentelemetry.io/otel/exporters/prometheus"
 	"go.opentelemetry.io/otel/propagation"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
 )
+
+// PrometheusHandler exposes the Prometheus pull endpoint Init wired up.
+// Mount on /metrics via the gateway's HTTP engine. Nil if Init returned
+// an error or was Disabled.
+var PrometheusHandler http.Handler
 
 // Config configures the OpenTelemetry SDK.
 // SampleRatio defaults to 1.0 if zero. Disabled returns a noop shutdown.
@@ -71,12 +79,21 @@ func Init(ctx context.Context, cfg Config) (ShutdownFunc, error) {
 	if err != nil {
 		return nil, fmt.Errorf("metric exporter: %w", err)
 	}
+	// Prometheus pull reader — exposes a /metrics endpoint Prometheus can
+	// scrape directly. Required because the OTLP push to jaeger-cses
+	// drops metric payloads (jaeger-v2 only accepts traces).
+	promReader, err := otelprom.New()
+	if err != nil {
+		return nil, fmt.Errorf("prometheus exporter: %w", err)
+	}
 	mp := sdkmetric.NewMeterProvider(
 		sdkmetric.WithResource(res),
 		sdkmetric.WithReader(sdkmetric.NewPeriodicReader(metricExp,
 			sdkmetric.WithInterval(15*time.Second))),
+		sdkmetric.WithReader(promReader),
 	)
 	otel.SetMeterProvider(mp)
+	PrometheusHandler = promhttp.Handler()
 
 	if err := runtime.Start(runtime.WithMinimumReadMemStatsInterval(time.Second)); err != nil {
 		return nil, fmt.Errorf("runtime metrics: %w", err)

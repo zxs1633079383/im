@@ -173,6 +173,13 @@ func run() int {
 		Mode:        gin.ReleaseMode,
 	})
 
+	// Prometheus pull endpoint — Prometheus scrape annotations on the
+	// Deployment expect /metrics on :8080. Empty (404) when OTel was
+	// disabled at startup, so the scrape returns nothing harmful.
+	if observability.PrometheusHandler != nil {
+		engine.GET("/metrics", gin.WrapH(observability.PrometheusHandler))
+	}
+
 	// M4 cut-over: auth surface is cookie-only. POST /register and /login
 	// are 410 Gone; GET /me echoes the resolved MattermostUser.
 	imhttp.RegisterAuthRoutes(engine, middleware.MattermostCookieResolve(rdb, log))
