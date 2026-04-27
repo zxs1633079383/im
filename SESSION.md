@@ -3,15 +3,22 @@
 > 这份文档是"会话快照"：每次会话结束前更新一次，下次会话开局只要先读它 + `docs/GOAL.md` + `CLAUDE.md` 就能无缝接着干。
 > **更新原则**：事实先写（分支/tag/commit），决策次之，待办最后。过时信息必须删除，不留历史沉积。
 
-Last updated: 2026-04-27（**M4 GA — 用户身份模型重构完整闭环**：spec / migration 014 / cookie 单栈 / LRU / repo+service+handler+gateway 全量级联 / 单测重建。tag `v0.6.0-m4-cookie-id-native`）
+Last updated: 2026-04-27（**M4 GA + pre 部署完成**：spec / migration 014 / cookie 单栈 / LRU / repo+service+handler+gateway 全量级联 / 单测重建 / dev-DB dry-run / 6 个 happy-path 集成测试 / pre-7 镜像部署 + im_pre migration + 张立超 cookie 冒烟 200。tag `v0.6.1-m4-pre-deployed`）
 
 ---
 
 ## 0. 下次会话一句话启动 ⭐
 
-**复制粘贴这句话开新会话即可**：
+**复制粘贴这句话开新会话即可**（v0.6.1 已落 pre，下一步收口性能基线 + 指标）：
 
-> 继续 M4 收尾，按 SESSION.md §0 checklist 顺序跑：① migration 014 在 dev DB 跑通并 verify schema；② 重建 5-7 个 happy-path 集成测试（用 testutil.CookieFixture）；③ 出 pre-7 image + 张立超 cookie 冒烟 + k6 对比 pre-6 + 打 v0.6.1 tag。每步 commit + push origin。
+> 继续 M4.5：① 写 `scripts/seed-mm-cookies-bulk.sh` 批量灌 N 个 cookie 到 pre Redis；② 写 `scripts/v4-load-m4.js` 用 cookieId header 替代 JWT，VU 流程用 DM 创建 + 发消息 + sync 拉回；③ 跑 VU=300 对比 pre-6 baseline（send P95 ≤ 400ms 容差 25ms）；④ 给 middleware/mattermost_cookie.go 埋 OTel `im.auth.cookie_cache.{hit,miss,size}` counter+gauge；⑤ Grafana panel 加 cookie cache hit_rate + size，hit_rate ≥ 90% 才算合格；⑥ 跑 e2e-pre.mjs（M3 era harness 也要 cookie 化适配）。每步 commit + push origin。打 tag v0.6.2-m4-perf-baseline。
+
+### v0.6.1 已经做掉的（不要重做）
+- ✅ Step ① migration 014 dev DB dry-run + im_pre 实落（force 13 清 dirty → up to 14）
+- ✅ Step ② 6 个 happy-path 集成测试（`tests/integration/m4_*_test.go`）
+- ✅ Step ③ pre-7b image deploy + 张立超 cookie 冒烟 + tag `v0.6.1-m4-pre-deployed`
+
+下面 §0 残留指令是 M4.5 视角下的预留模板（可删），保留主要是踩坑记录：
 
 ### Step ① — migration 014 dry-run（≤ 30 min）
 ```bash
@@ -142,14 +149,16 @@ e0ecb32 fix(gateway): push_consumer 走 PushTopicFor 与发送侧对齐
 - **`v0.5.0-config-consul`** — Consul KV 配置中心 + 本地 `make run-dev` 直连 pre 中间件 + cookie 缺失 warn
 - **`v0.5.1-cookie-auth`** — 纯 cookie 也通过鉴权（lazy-upsert shadow user + JWTOrCookie 双栈），**生产候选**（pre image: `v1.0.0-pre-11`）。
 - **`v0.5.2-m4-foundation`** — M4 Foundation phase（spec + migration 014 + Cookie 单栈 + LRU + 测试 fixture）
-- **`v0.6.0-m4-cookie-id-native`** — **当前 HEAD**：M4 GA。repo/service/handler/gateway 全部 int64 → string；删除 users 表与 lazy-upsert；新增 channels.team_id / messages.team_id；Cookie 单栈 + LRU；m4 sanity 单测全绿。**未 deploy / 未 push**；下次会话先决定 pre 部署时机 + m4_*_test 全量补完。
+- **`v0.6.0-m4-cookie-id-native`** — M4 GA 代码闭环 commit 标签。
+- **`v0.6.1-m4-pre-deployed`** — **当前 HEAD**：pre 集群 v1.0.0-pre-7b 镜像滚出 ✅；im_pre 库 014 migration 已落 ✅；张立超 cookie HGet → /api/auth/me 200 ✅；no-cookie → 401 ✅。**未 deploy / 未 push 的延后项**：cookie-auth k6 baseline（M3 era plumbing 需重写）；OTel `im.auth.cookie_cache.{hit,miss,size}` 指标埋点（spec 已锁，code 未写）；Grafana panel（依赖前者）。这三件挪到 v0.6.2 / M4.5。
 
 ### 回归基线
 - **v0.5.1**：build + vet + unit + race + 集成 71 PASS / 0 FAIL / 1 SKIP；e2e 13/13；pod 0 restart / 0 panic（详见 `server/docs/regression/2026-04-27-v0.5.1.md`）
-- **v0.6.0-m4-cookie-id-native**：`go build ./... ✅`；`go test -count=1 ./... ✅` 全绿（auth / middleware / repo / service / http / gateway / testutil / config / observability）；migration 014 **dev DB 跑通** ✅（im_dev 库 13 → 14 → 13 → 14 互逆 sanity；schema 4 项验通过：messages.sender_id TEXT NOT NULL / team_id TEXT NULL / visible_to TEXT[] / users 表已删 / channels.team_id+creator_id TEXT；TestConnKeyPrefix PASS）；**testcontainers 集成测试已重建** ✅（6 个 happy-path：m4_auth_smoke / m4_channel_dm / m4_channel_group / m4_message_sync / m4_friend / m4_topic；`go test -tags=integration -race ./tests/integration/...` 全绿，~16s）；e2e-pre.mjs **未跑**；性能基线 **未复测**
+- **v0.6.0-m4-cookie-id-native**：`go build ./... ✅`；`go test -count=1 ./... ✅` 全绿（auth / middleware / repo / service / http / gateway / testutil / config / observability）；migration 014 **dev DB 跑通** ✅；**testcontainers 集成测试已重建** ✅（6 个 happy-path）。
+- **v0.6.1-m4-pre-deployed**：pre-7 镜像 build + push ✅（digest `0d942c0e2480...`，重要踩坑：node 已缓存 v1.0.0-pre-7 旧 image，IfNotPresent 不重拉，必须改 tag 为 pre-7b 才生效）；`kubectl apply` 3/3 Running RESTARTS=0 ✅；`im_pre` 跑 014 ✅（先 force version=13 清 v12 dirty 状态再 up）；张立超 cookie 冒烟：`/api/auth/me` 200 + 完整 mm user JSON ✅；no-cookie → 401 "missing auth: cookieId header required" ✅。e2e-pre.mjs **未跑**；性能基线 **延后到 M4.5**（k6 plumbing 待 cookie-auth 重写）。
 
 ### 镜像演进
-`harbor.jinqidongli.com/x9-go/im/im-gateway:v1.0.0-pre-{2,3,4,5,6}` — 每轮性能调优一个 tag，pre-6 是最新。
+`harbor.jinqidongli.com/x9-go/im/im-gateway:v1.0.0-pre-{2,3,4,5,6,7,7b}` — pre-6 是 M3 GA 性能优化里程碑；pre-7 是 M4 首次 build（**注意：第一次 build 命中 BuildKit 缓存出了"假绿"二进制**）；**pre-7b 是当前生产候选**（no-cache rebuild 后重 tag）。
 
 ---
 
