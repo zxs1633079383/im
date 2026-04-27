@@ -146,7 +146,7 @@ e0ecb32 fix(gateway): push_consumer 走 PushTopicFor 与发送侧对齐
 
 ### 回归基线
 - **v0.5.1**：build + vet + unit + race + 集成 71 PASS / 0 FAIL / 1 SKIP；e2e 13/13；pod 0 restart / 0 panic（详见 `server/docs/regression/2026-04-27-v0.5.1.md`）
-- **v0.6.0-m4-cookie-id-native**：`go build ./... ✅`；`go test -count=1 ./... ✅` 全绿（auth / middleware / repo / service / http / gateway / testutil / config / observability）；migration 014 **dev DB 跑通** ✅（im_dev 库 13 → 14 → 13 → 14 互逆 sanity；schema 4 项验通过：messages.sender_id TEXT NOT NULL / team_id TEXT NULL / visible_to TEXT[] / users 表已删 / channels.team_id+creator_id TEXT；TestConnKeyPrefix PASS）；testcontainers 集成测试 **删除待重建**；e2e-pre.mjs **未跑**；性能基线 **未复测**
+- **v0.6.0-m4-cookie-id-native**：`go build ./... ✅`；`go test -count=1 ./... ✅` 全绿（auth / middleware / repo / service / http / gateway / testutil / config / observability）；migration 014 **dev DB 跑通** ✅（im_dev 库 13 → 14 → 13 → 14 互逆 sanity；schema 4 项验通过：messages.sender_id TEXT NOT NULL / team_id TEXT NULL / visible_to TEXT[] / users 表已删 / channels.team_id+creator_id TEXT；TestConnKeyPrefix PASS）；**testcontainers 集成测试已重建** ✅（6 个 happy-path：m4_auth_smoke / m4_channel_dm / m4_channel_group / m4_message_sync / m4_friend / m4_topic；`go test -tags=integration -race ./tests/integration/...` 全绿，~16s）；e2e-pre.mjs **未跑**；性能基线 **未复测**
 
 ### 镜像演进
 `harbor.jinqidongli.com/x9-go/im/im-gateway:v1.0.0-pre-{2,3,4,5,6}` — 每轮性能调优一个 tag，pre-6 是最新。
