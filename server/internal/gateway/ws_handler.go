@@ -179,15 +179,22 @@ func (h *WsHandler) authenticate(r *http.Request) (string, error) {
 }
 
 // readCookieID returns the cookieId carried by either the upgrade Header
-// (CookieId / cookieId — message-v3 sends the former) or the cookie_id
-// query param (browser fallback). Empty string when neither is set.
+// (CookieId / cookieId — message-v3 sends the former) or a query param
+// (?cookieId= per message-v3 wire shape, ?cookie_id= as snake_case
+// alternative). Empty string when none is set.
 func readCookieID(r *http.Request) string {
 	for _, h := range []string{"CookieId", "cookieId", "Cookieid"} {
 		if v := strings.TrimSpace(r.Header.Get(h)); v != "" {
 			return v
 		}
 	}
-	return strings.TrimSpace(r.URL.Query().Get("cookie_id"))
+	q := r.URL.Query()
+	for _, k := range []string{"cookieId", "cookie_id"} {
+		if v := strings.TrimSpace(q.Get(k)); v != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 // readPump reads inbound frames from the WebSocket and dispatches them.

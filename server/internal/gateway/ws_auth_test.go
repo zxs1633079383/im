@@ -91,7 +91,9 @@ func TestWsAuth_LowercaseCookieHeader(t *testing.T) {
 }
 
 // TestWsAuth_CookieQuery_Resolves — browsers cannot set custom upgrade
-// headers, so /ws?cookie_id=... is the documented fallback.
+// headers, so a query param is the documented fallback. Both
+// ?cookieId= (camelCase, message-v3 wire shape) and ?cookie_id=
+// (snake_case alternative) must work.
 func TestWsAuth_CookieQuery_Resolves(t *testing.T) {
 	const cookie = "ws6847ade6614b70055ea2c8"
 	const user = "ws6847ade6614b70055ea2c9"
@@ -100,10 +102,12 @@ func TestWsAuth_CookieQuery_Resolves(t *testing.T) {
 	}}
 	h := newAuthHandler(t, rdb)
 
-	req := httptest.NewRequest("GET", "/ws?cookie_id="+cookie, nil)
-	uid, err := h.authenticate(req)
-	require.NoError(t, err)
-	require.Equal(t, user, uid)
+	for _, q := range []string{"cookieId", "cookie_id"} {
+		req := httptest.NewRequest("GET", "/ws?"+q+"="+cookie, nil)
+		uid, err := h.authenticate(req)
+		require.NoError(t, err, "param %q", q)
+		require.Equal(t, user, uid, "param %q", q)
+	}
 }
 
 // TestWsAuth_StaleCookie_Refused — when a cookieId is supplied but Redis
