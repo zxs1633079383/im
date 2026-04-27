@@ -153,7 +153,8 @@ e0ecb32 fix(gateway): push_consumer 走 PushTopicFor 与发送侧对齐
 - **`v0.6.1-m4-pre-deployed`** — pre 集群 v1.0.0-pre-7b 镜像 + im_pre 014 migration + 张立超 cookie 冒烟 200 / no-cookie 401。
 - **`v0.6.2-m4-perf-baseline`** — M4.5 全量闭环。OTel cookie_cache.{hit,miss,size} 指标 + Prometheus /metrics pull endpoint + cookie-auth k6 tooling + Grafana panel + cookie-auth e2e harness。pre-7d k6 测得 send P95 = **211ms** + cookie cache hit_rate=97.78%。
 - **`v0.6.3-m4-ws-cookie`** — WS 鉴权切到 cookieId。pre-7e 部署 ws-smoke 5/5 / e2e-pre-m4 12/13。
-- **`v0.7.0-cses-cutover`** — **当前 HEAD**：cses-client 全量迁移所需的后端缺口闭环。Migration 015：`message_reactions` 表 + `channel_members.is_top`。新增 7 个端点：reaction add/list/remove、`POST /api/messages/batch`（替代 csesapi createPosts）、`GET /api/messages/:id/after`（替代 getPostsAfterFromSegment）、`PATCH /api/channels/:id/members/:user_id { is_top }` per-user 置顶（self-only 403）。WS 事件类型扩 4 种：reaction_added/removed/channel_top_updated/channel_info_updated。pre-7f 部署 ✅；v070-smoke 11/12 + 旧 ws-smoke 5/5 + e2e-pre-m4 12/13 全绿。Java 侧 imGatewayEnabled 配置开关 + Fields.ImGatewayHttp/ImGatewayWebSocket 已落（待用户 cses 部署）。
+- `v0.7.0-cses-cutover` — cses-client 全量迁移后端缺口（reactions / batch / messages-after / is_top / governance extras）pre-7f。
+- **`v0.7.2-no-mattermost`** — **当前 HEAD**：用户决策"全面下掉 mattermost"完整闭环。Migration 016 复刻 mattermost.modules 表（6 行 seed）。新增 2 个端点：`GET /api/modules` + `GET /api/channels/online-status?channel_ids=...&include_users=true`（真批量 pipelined LookupBatch）。前端：ImApiAdapter `dispatch / useIm` + `route-table.ts` 30+ URI 翻译表 + `ws-normalizer.ts`（push_msg/msg_updated/msg_deleted/reaction_*/read_sync/channel_event/friend_event 9 种事件）。messageHttp.service.ts apiFlavor 由 auth.imGatewayHttp 自动 flip；route 命中不到 throw ImEndpointNotMappedError 不再 fallback。pre-7g `74a51aa8402e` 部署 ✅；ws-smoke 5/5 + v070-smoke 11/12 + v072-smoke 7/7 全绿。Java cses Feature-new-im 已 commit `20e750bea` push origin。
 
 ### 回归基线
 - **v0.5.1**：build + vet + unit + race + 集成 71 PASS / 0 FAIL / 1 SKIP；e2e 13/13；pod 0 restart / 0 panic（详见 `server/docs/regression/2026-04-27-v0.5.1.md`）
@@ -168,7 +169,8 @@ e0ecb32 fix(gateway): push_consumer 走 PushTopicFor 与发送侧对齐
 - pre-7c — 加 OTel cookie_cache.{hit,miss,size} 指标（v0.6.2-rc1）
 - pre-7d — 加 Prometheus pull /metrics 端点（v0.6.2 部署）
 - pre-7e — 加 WS cookieId 鉴权（v0.6.3 部署）
-- **pre-7f** — 加 v0.7.0 端点（reactions / batch / messages-after / per-user is_top / channel governance extras）。**当前生产候选**
+- pre-7f — v0.7.0 端点（reactions / batch / messages-after / is_top / governance）
+- **pre-7g** — v0.7.2 端点（modules + online-status batch）。**当前生产候选**
 
 ---
 
