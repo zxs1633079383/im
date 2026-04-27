@@ -48,39 +48,35 @@ redis_args=(-h "${REDIS_HOST%:*}" -p "${REDIS_HOST##*:}")
 pad_hex_23() { printf '%023x' "$1"; }
 
 START=$(date +%s)
-: > "$OUT"
 echo "==> seeding $N cookies into $REDIS_HOST db=$REDIS_DB"
 echo "    prefix=$PREFIX company_id=$COMPANY_ID out=$OUT"
 
-# Build a single batched MULTI/EXEC pipeline so one TCP RTT covers all N
-# HSets (vs. N round-trips when looped). 3-7× faster on remote pre cluster.
-{
-    for ((i=1; i<=N; i++)); do
-        hex=$(pad_hex_23 "$i")
-        cookie_id="${PREFIX}${hex}"
-        # Different leading char keeps userId distinct from cookieId in case
-        # both end up in the same lookup namespace. 'b' is also valid hex.
-        user_id="b${hex}"
-        printf '%s,%s\n' "$cookie_id" "$user_id" >> "$OUT"
-        # JSON quoted field key — matches Mattermost Java writer shape.
-        field="\"$cookie_id\""
-        # Compose payload inline; only the fields handlers actually read
-        # (UserID / CompanyID / Name / UserName) need to be set.
-        body="{\"id\":\"$user_id\",\"userId\":\"$user_id\",\"userName\":\"k6-$cookie_id\",\"name\":\"k6-$cookie_id\",\"companyId\":\"$COMPANY_ID\",\"orgId\":\"$COMPANY_ID\",\"roles\":[\"Member\"],\"orgRole\":\"Member\"}"
-        printf 'HSET User %s %s\n' "$field" "$(printf '%q' "$body")"
-    done
-} | redis-cli "${redis_args[@]}" --pipe-mode >/dev/null 2>&1 || {
-    # --pipe-mode is fast but very strict; fall back to a per-line loop
-    # if the cluster rejects the multi-line stream (Cluster prefers
-    # single-key pipelining).
-    while IFS=, read -r cookie_id user_id; do
-        body="{\"id\":\"$user_id\",\"userId\":\"$user_id\",\"userName\":\"k6-$cookie_id\",\"name\":\"k6-$cookie_id\",\"companyId\":\"$COMPANY_ID\",\"orgId\":\"$COMPANY_ID\",\"roles\":[\"Member\"],\"orgRole\":\"Member\"}"
-        redis-cli "${redis_args[@]}" HSET User "\"$cookie_id\"" "$body" >/dev/null
-    done < "$OUT"
-}
+# Pass 1 — write the full CSV first. Decoupling CSV from Redis I/O makes
+# the script idempotent against Redis flakes (SIGPIPE from a rejected
+# pipe-mode no longer truncates the CSV mid-loop).
+: > "$OUT"
+for ((i=1; i<=N; i++)); do
+    hex=$(pad_hex_23 "$i")
+    printf '%s%s,b%s\n' "$PREFIX" "$hex" "$hex" >> "$OUT"
+done
+
+# Pass 2 — replay the CSV into Redis. Single key (HASH "User") so a
+# pipelined HSET stream stays on one Cluster slot. Use redis-cli's TX
+# friendly mode by sending one command per line on stdin; --pipe is
+# strictest about RESP framing, so feed inline commands instead.
+echo "==> replaying CSV → HSet User"
+seed_count=0
+while IFS=, read -r cookie_id user_id; do
+    body="{\"id\":\"$user_id\",\"userId\":\"$user_id\",\"userName\":\"k6-$cookie_id\",\"name\":\"k6-$cookie_id\",\"companyId\":\"$COMPANY_ID\",\"orgId\":\"$COMPANY_ID\",\"roles\":[\"Member\"],\"orgRole\":\"Member\"}"
+    redis-cli "${redis_args[@]}" HSET User "\"$cookie_id\"" "$body" >/dev/null
+    seed_count=$((seed_count + 1))
+    if (( seed_count % 100 == 0 )); then
+        echo "    ... $seed_count / $N seeded"
+    fi
+done < "$OUT"
 
 END=$(date +%s)
-echo "==> seeded $N cookies in $((END-START))s"
+echo "==> seeded $seed_count cookies in $((END-START))s"
 echo "    csv → $OUT (cookieId,userId per line)"
 echo
 echo "verify any one entry with:"
