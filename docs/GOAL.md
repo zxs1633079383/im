@@ -43,7 +43,7 @@ cd server && make verify-all   # ≈ 90 min
 | M1 | 核心消息与同步 | auth / channel / message / sync / WS / 跨 pod 推送骨架 | ✅ 完成，tag `v0.1.0-m1-complete` |
 | M2 | 企业协作 | 公告 / 治理 / 紧急 / 审批 / 通知 / 定时 / 快捷回复 | ✅ 完成，tag `v0.2.0-m2-complete` |
 | M3 | cses-client 切换 + 后端稳定性 + V4 集群韧性 | Topic 子群聊 + Presence；Redis Cluster + 9 OTel metric；Conn.Push race fix + PG 池对齐 HikariCP + FindDM 反向索引；HPA 3→17 pod 弹性 + E2E 13/13；`ImApiAdapter` M1 完整覆盖 | ✅ 全链路 100% 可靠基线（tag `v0.3.2-m3-dm-index`）；client `message.service.ts` 37 URI 切换 backlog（M4 完工后再切，避免双重改造）|
-| M4 | **用户身份模型重构** — 删 users 表 / 全部 user FK 改 mm UserID (TEXT) / 加 team_id 列 / 鉴权只信 cookieId | spec + migration 014 + Cookie 单栈 + LRU 缓存 + 测试 fixture（**Foundation phase 完成**）；repo / service / handler / test 全量级联（**进行中**）| 🟡 Foundation 落地 tag `v0.5.2-m4-foundation`；P3-P6 cascade 待下次会话续 |
+| M4 | **用户身份模型重构** — 删 users 表 / 全部 user FK 改 mm UserID (TEXT) / 加 team_id 列 / 鉴权只信 cookieId | spec + migration 014 + Cookie 单栈 + LRU 缓存 + repo/service/handler/gateway 全量级联 + auth 410 Gone + 单测重建 | ✅ tag `v0.6.0-m4-cookie-id-native`；本地 build + go test ./... 全绿；migration 014 / 集成 testcontainers / e2e-pre / 性能基线 仍待跑（详见 SESSION.md §3）|
 | M5 | 历史数据 ETL | `migration_sort_key` 算法已冻结，迁移脚本待写 | 🗓 TODO（M4 完成后开） |
 | M6 | 下线 Mattermost / csesapi | 全量切换 + 监控观察期 | 🔜 M5 后启动 |
 
@@ -76,7 +76,7 @@ cd server && make verify-all   # ≈ 90 min
 - Backend 功能覆盖率 ≈ **csesapi 的 75%**（剩下 25% = Bot/Agent/Webhook + Templates/Organization + 外部 vote/search/file-chunking）。
 - 76 endpoints 全部有集成测试；9 类 WS 事件全部有 fan-out 断言。M4 完工后将增至每端点 5 case + 96 WS 用例。
 - CI: M3 main 分支绿；M4 foundation 分支单测绿（auth / middleware / testutil），cascade 进行中。
-- tag：`v0.1.0-m1-verified` / `v0.1.0-m1-complete` / `v0.2.0-m2-complete` / `v1.0.0` / `v0.3.0-m3-pre-deployed` / `v0.3.1-m3-racefix-pool300` / `v0.3.2-m3-dm-index` / `v0.4.0-m3-sysmsg-broadcast` / `v0.4.1-m3-markoffline-cleanup` / `v0.4.2-m3-mm-cookie-bridge` / `v0.5.0-config-consul` / `v0.5.1-cookie-auth` / `v0.5.2-m4-foundation`。
-- 下个 tag：`v0.6.0-m4-cookie-id-native`（M4 cascade 全绿后）。
+- tag：`v0.1.0-m1-verified` / `v0.1.0-m1-complete` / `v0.2.0-m2-complete` / `v1.0.0` / `v0.3.0-m3-pre-deployed` / `v0.3.1-m3-racefix-pool300` / `v0.3.2-m3-dm-index` / `v0.4.0-m3-sysmsg-broadcast` / `v0.4.1-m3-markoffline-cleanup` / `v0.4.2-m3-mm-cookie-bridge` / `v0.5.0-config-consul` / `v0.5.1-cookie-auth` / `v0.5.2-m4-foundation` / **`v0.6.0-m4-cookie-id-native`**（当前 HEAD）。
+- 下个 tag：`v0.6.1-m4-pre-deployed`（migration 014 跑通 + pre-7 image + e2e 13/13）。
 
 动态信息请看 `SESSION.md`。
