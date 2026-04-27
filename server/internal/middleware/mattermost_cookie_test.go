@@ -111,7 +111,7 @@ func TestMattermostCookieAuth_HitInjectsUser(t *testing.T) {
 	}}
 
 	r := gin.New()
-	r.Use(MattermostCookieAuth(rdb, nil))
+	r.Use(MattermostCookieAuth(rdb, nil, nil))
 	var seen *MattermostUser
 	r.GET("/test", func(c *gin.Context) {
 		seen = MMUserFromCtx(c)
@@ -140,7 +140,7 @@ func TestMattermostCookieAuth_NoHeaderIsNoOp(t *testing.T) {
 	}}
 
 	r := gin.New()
-	r.Use(MattermostCookieAuth(rdb, nil))
+	r.Use(MattermostCookieAuth(rdb, nil, nil))
 	var seen *MattermostUser
 	called := false
 	r.GET("/test", func(c *gin.Context) {
@@ -168,7 +168,7 @@ func TestMattermostCookieAuth_RedisMissDoesNotAbort(t *testing.T) {
 	}}
 
 	r := gin.New()
-	r.Use(MattermostCookieAuth(rdb, nil))
+	r.Use(MattermostCookieAuth(rdb, nil, nil))
 	called := false
 	r.GET("/test", func(c *gin.Context) {
 		called = true

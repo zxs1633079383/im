@@ -99,6 +99,11 @@ func LoadFromConsulOrFile(filePath string) (*Config, string, error) {
 		return nil, "", fmt.Errorf("config load consul %s/%s: %w", consulURL, key, err)
 	}
 	applyDefaults(cfg)
+	// Same env override path as file-loaded configs (IM_JWT_SECRET,
+	// IM_REDIS_*, IM_PULSAR_URL, IM_GATEWAY_HTTP_ADDR, HOSTNAME). K8s
+	// deployments inject secrets via env, not Consul KV — so this hook
+	// must run regardless of source.
+	applyEnvOverrides(cfg)
 	return cfg, fmt.Sprintf("consul:%s:%s", env, key), nil
 }
 

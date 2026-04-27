@@ -177,7 +177,9 @@ func run() int {
 	// Phase 6 cut-over: auth endpoints now run on Gin, in front of the legacy
 	// mux fallthrough. /api/auth/{register,login,me} are served by Gin.
 	authSvc := service.NewAuthService(userRepo, cfg.Gateway.JWTSecret)
-	imhttp.RegisterAuthRoutes(engine, authSvc, userRepo, cfg.Gateway.JWTSecret)
+	// authed /me path also accepts cookieId via the Mattermost bridge.
+	imhttp.RegisterAuthRoutes(engine, authSvc, userRepo, cfg.Gateway.JWTSecret,
+		middleware.MattermostCookieAuth(rdb, userRepo, log))
 
 	// Phase 7.1 cut-over: profile + settings endpoints. These share a single
 	// JWT-protected /api group so the middleware is constructed once.
@@ -188,8 +190,8 @@ func run() int {
 	// still send the legacy header get their *MattermostUser injected into
 	// the request context (via MMUserFromCtx) without affecting JWT-only
 	// callers. The middleware is silent on missing header / Redis miss.
-	authedAPI.Use(middleware.MattermostCookieAuth(rdb, log))
-	authedAPI.Use(middleware.JWTGin(cfg.Gateway.JWTSecret))
+	authedAPI.Use(middleware.MattermostCookieAuth(rdb, userRepo, log))
+	authedAPI.Use(middleware.JWTOrCookie(cfg.Gateway.JWTSecret))
 	imhttp.RegisterProfileRoutes(authedAPI, profileSvc)
 	imhttp.RegisterSettingsRoutes(authedAPI, settingsSvc)
 

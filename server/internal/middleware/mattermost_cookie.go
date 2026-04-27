@@ -10,6 +10,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
+
+	"im-server/internal/repo"
 )
 
 // MMCookieHeader is the legacy Mattermost auth header that carries the user's
@@ -70,18 +72,22 @@ type MattermostUser struct {
 }
 
 // MattermostCookieAuth returns Gin middleware that resolves a Mattermost
-// cookieId header into a *MattermostUser and stashes it on the request
-// context. Designed to coexist with the JWT middleware:
+// cookieId header into a *MattermostUser AND lazily upserts the matching
+// im users row so the cookie call can pass JWTOrCookie auth on its own.
 //
-//   - missing header → no-op, handler chain continues
-//   - Redis lookup miss / parse error → no-op, error logged at WARN
-//   - hit → c.Set(mmUserCtxKey, *MattermostUser); handler reads via
-//     MMUserFromCtx
+// Behaviour:
+//   - missing header → warn log + no-op; downstream JWTOrCookie may still
+//     accept a Bearer JWT
+//   - Redis miss / parse error → no-op, error logged at WARN
+//   - hit → c.Set(mmUserCtxKey, *MattermostUser); also upserts the shadow
+//     row in im users (UpsertByMattermostID) and sets UserIDKey /
+//     UsernameKey on the context — JWT middleware sees them already set
+//     and (in JWTOrCookie wrapper) skips its own check.
 //
-// Never aborts the request — the Mattermost cookie is supplemental data
-// (audit / dual-stack identity), and handlers that depend on im-native JWT
-// auth still get rejected by the JWT middleware downstream.
-func MattermostCookieAuth(rdb redis.UniversalClient, log *slog.Logger) gin.HandlerFunc {
+// users is the UserRepo shim for the lazy upsert. nil disables im-side
+// upsert (older tests that only care about the *MattermostUser injection
+// pass nil).
+func MattermostCookieAuth(rdb redis.UniversalClient, users repo.UserRepo, log *slog.Logger) gin.HandlerFunc {
 	if log == nil {
 		log = slog.Default()
 	}
@@ -105,18 +111,50 @@ func MattermostCookieAuth(rdb redis.UniversalClient, log *slog.Logger) gin.Handl
 			c.Next()
 			return
 		}
-		user, err := lookupMattermostUser(c.Request.Context(), rdb, cookieID)
+		mmUser, err := lookupMattermostUser(c.Request.Context(), rdb, cookieID)
 		switch {
 		case err == nil:
-			c.Set(mmUserCtxKey, user)
+			c.Set(mmUserCtxKey, mmUser)
+			injectIMIdentity(c, users, mmUser, log)
 		case errors.Is(err, redis.Nil), errors.Is(err, errMMUserNotFound):
-			// Cold miss — no log line, this is expected for unknown cookieIds.
+			// Cold miss — no log line, expected for unknown cookieIds.
 		default:
 			log.Warn("mm cookie auth: lookup failed",
 				"error", err, "cookie_len", len(cookieID))
 		}
 		c.Next()
 	}
+}
+
+// injectIMIdentity upserts the shadow im users row for mmUser and sets the
+// canonical UserIDKey / UsernameKey on the request context so JWTOrCookie
+// downstream can accept the request without a Bearer JWT. nil users repo
+// (tests) skips the upsert silently.
+func injectIMIdentity(c *gin.Context, users repo.UserRepo, mmUser *MattermostUser, log *slog.Logger) {
+	if users == nil || mmUser == nil {
+		return
+	}
+	mmID := mmUser.UserID
+	if mmID == "" {
+		mmID = mmUser.ID
+	}
+	if mmID == "" {
+		log.Warn("mm cookie auth: payload has no user id", "cookie", mmUser.CookieID)
+		return
+	}
+	imUser, err := users.UpsertByMattermostID(c.Request.Context(), repo.MattermostUpsertParams{
+		MattermostUserID: mmID,
+		Username:         mmUser.UserName,
+		Email:            mmUser.Email,
+		DisplayName:      mmUser.Name,
+	})
+	if err != nil {
+		log.Warn("mm cookie auth: upsert failed",
+			"error", err, "mm_user_id", mmID)
+		return
+	}
+	c.Set(UserIDKey, imUser.ID)
+	c.Set(UsernameKey, imUser.Username)
 }
 
 // errMMUserNotFound flags a clean Redis miss as distinct from a transport /

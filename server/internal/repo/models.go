@@ -17,6 +17,10 @@ type User struct {
 	Status       int16     `gorm:"not null;default:1"                                      json:"status"`
 	CreatedAt    time.Time `gorm:"column:created_at;not null;default:now()"                json:"created_at"`
 	UpdatedAt    time.Time `gorm:"column:updated_at;not null;default:now()"                json:"updated_at"`
+	// MattermostUserID is the shadow mapping from the Mattermost / Java user
+	// ID (24-char hex UUID) to this row's int64 PK. Populated on demand by
+	// MattermostCookieAuth — JWT-native users keep it NULL.
+	MattermostUserID *string `gorm:"column:mm_user_id;type:text;uniqueIndex:idx_users_mm_user_id,where:mm_user_id IS NOT NULL" json:"mm_user_id,omitempty"`
 }
 
 // TableName pins the GORM-derived table name to the migration.

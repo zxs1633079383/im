@@ -39,7 +39,11 @@ type authResponse struct {
 //
 // jwtSecret is needed both by the service (token signing) and the /me
 // middleware. userRepo is needed by /me to look up the current user record.
-func RegisterAuthRoutes(r *gin.Engine, svc *service.AuthService, userRepo repo.UserRepo, jwtSecret string) {
+//
+// authedExtra (optional) lets the caller pre-attach middlewares to the /me
+// route — typically MattermostCookieAuth so cookie-only callers can resolve
+// /api/auth/me without a Bearer JWT. Pass nil to keep JWT-only behaviour.
+func RegisterAuthRoutes(r *gin.Engine, svc *service.AuthService, userRepo repo.UserRepo, jwtSecret string, authedExtra ...gin.HandlerFunc) {
 	pub := r.Group("/api/auth")
 
 	pub.POST("/register", func(c *gin.Context) {
@@ -79,8 +83,13 @@ func RegisterAuthRoutes(r *gin.Engine, svc *service.AuthService, userRepo repo.U
 	})
 
 	// Authenticated /me — Gin JWT middleware sets UserIDKey on the context.
+	// Cookie middleware (when supplied via authedExtra) runs first so it can
+	// inject UserIDKey, then JWTOrCookie accepts either path.
 	authed := r.Group("/api/auth")
-	authed.Use(middleware.JWTGin(jwtSecret))
+	for _, mw := range authedExtra {
+		authed.Use(mw)
+	}
+	authed.Use(middleware.JWTOrCookie(jwtSecret))
 	authed.GET("/me", func(c *gin.Context) {
 		uidAny, ok := c.Get(middleware.UserIDKey)
 		if !ok {

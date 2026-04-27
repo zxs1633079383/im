@@ -367,6 +367,65 @@ func (_c *UserRepoMock_UpdateProfile_Call) RunAndReturn(run func(context.Context
 	return _c
 }
 
+// UpsertByMattermostID provides a mock function with given fields: ctx, params
+func (_m *UserRepoMock) UpsertByMattermostID(ctx context.Context, params repo.MattermostUpsertParams) (*repo.User, error) {
+	ret := _m.Called(ctx, params)
+
+	if len(ret) == 0 {
+		panic("no return value specified for UpsertByMattermostID")
+	}
+
+	var r0 *repo.User
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, repo.MattermostUpsertParams) (*repo.User, error)); ok {
+		return rf(ctx, params)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, repo.MattermostUpsertParams) *repo.User); ok {
+		r0 = rf(ctx, params)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*repo.User)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, repo.MattermostUpsertParams) error); ok {
+		r1 = rf(ctx, params)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// UserRepoMock_UpsertByMattermostID_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'UpsertByMattermostID'
+type UserRepoMock_UpsertByMattermostID_Call struct {
+	*mock.Call
+}
+
+// UpsertByMattermostID is a helper method to define mock.On call
+//   - ctx context.Context
+//   - params repo.MattermostUpsertParams
+func (_e *UserRepoMock_Expecter) UpsertByMattermostID(ctx interface{}, params interface{}) *UserRepoMock_UpsertByMattermostID_Call {
+	return &UserRepoMock_UpsertByMattermostID_Call{Call: _e.mock.On("UpsertByMattermostID", ctx, params)}
+}
+
+func (_c *UserRepoMock_UpsertByMattermostID_Call) Run(run func(ctx context.Context, params repo.MattermostUpsertParams)) *UserRepoMock_UpsertByMattermostID_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(repo.MattermostUpsertParams))
+	})
+	return _c
+}
+
+func (_c *UserRepoMock_UpsertByMattermostID_Call) Return(_a0 *repo.User, _a1 error) *UserRepoMock_UpsertByMattermostID_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *UserRepoMock_UpsertByMattermostID_Call) RunAndReturn(run func(context.Context, repo.MattermostUpsertParams) (*repo.User, error)) *UserRepoMock_UpsertByMattermostID_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // NewUserRepoMock creates a new instance of UserRepoMock. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
 // The first argument is typically a *testing.T value.
 func NewUserRepoMock(t interface {
