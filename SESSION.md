@@ -7,6 +7,100 @@ Last updated: 2026-04-27（**M4 GA — 用户身份模型重构完整闭环**：
 
 ---
 
+## 0. 下次会话一句话启动 ⭐
+
+**复制粘贴这句话开新会话即可**：
+
+> 继续 M4 收尾，按 SESSION.md §0 checklist 顺序跑：① migration 014 在 dev DB 跑通并 verify schema；② 重建 5-7 个 happy-path 集成测试（用 testutil.CookieFixture）；③ 出 pre-7 image + 张立超 cookie 冒烟 + k6 对比 pre-6 + 打 v0.6.1 tag。每步 commit + push origin。
+
+### Step ① — migration 014 dry-run（≤ 30 min）
+```bash
+# 前提：本地 / port-forward 一个 dev PG（im_dev 库）
+export IM_DEV_DSN="postgres://postgres:postgres@localhost:5432/im_dev?sslmode=disable"
+
+# down → up 互逆 sanity；先确认能从 v0.5.1 schema 干净跳到 v0.6.0
+cd /Users/mac28/workspace/golangProject/im/server
+migrate -path migrations -database "$IM_DEV_DSN" version       # 应该是 013
+migrate -path migrations -database "$IM_DEV_DSN" up            # 跑到 014
+psql "$IM_DEV_DSN" -c "\d+ messages"                            # 验 sender_id TEXT NOT NULL / team_id TEXT NULL / visible_to TEXT[]
+psql "$IM_DEV_DSN" -c "\dt users"                               # 应 'relation does not exist'
+psql "$IM_DEV_DSN" -c "\d+ channels" | grep -E 'team_id|creator_id'   # 验 TEXT
+migrate -path migrations -database "$IM_DEV_DSN" down 1         # 回 013
+migrate -path migrations -database "$IM_DEV_DSN" up             # 再到 014（互逆）
+
+# 验 routing key prefix 没变（生产 contract）
+go test -count=1 -run TestConnKeyPrefix ./internal/repo/...
+```
+**Done 标志**：014 up/down 互逆跑得通；schema 验证 4 条全过；commit `chore(migrate): 014 dry-run on im_dev verified` + 写一行进 §1 回归基线。
+
+### Step ② — 重建 5-7 个 happy-path 集成测试（半天）
+**目标**：覆盖 M3-era 主链路在 M4 cookie + team_id 模型下不回归。**不**做 spec §7 全量 76 × 5 case（那是双周冲刺，挪到 M4.5）。
+
+挑这 7 个 happy-path（覆盖 80% 业务流）：
+1. `tests/integration/m4_auth_smoke_test.go` — `MattermostCookieResolve` + `CookieRequired` + `/api/auth/me` 端到端（用 testcontainers redis + CookieFixture）
+2. `m4_channel_create_dm_test.go` — DM 创建 + team_id denormalize 到 channel
+3. `m4_channel_create_group_test.go` — Group 创建 + addMember + 校验 channel_members.user_id TEXT
+4. `m4_message_send_sync_test.go` — POST /messages → /sync 拉回；验 sender_id / team_id / visible_to TEXT[]
+5. `m4_friend_request_test.go` — friends/request → accept；验 friendships.{requester,addressee}_id TEXT
+6. `m4_topic_test.go` — POST /channels/:id/topics 用 mm UserID memberIDs
+7. `m4_ws_send_test.go` — WS handshake + send → 收 push_msg；验 SenderID 是 24-hex string
+
+**模板**：
+```go
+func TestMxxxHappyPath(t *testing.T) {
+    pg := containers.PG(t)        // testcontainers postgres
+    rdb := containers.Redis(t)    // testcontainers redis
+    cookie := testutil.CookieFixture(t, rdb,
+        testutil.RealCookieID, testutil.RealUserID, testutil.RealCompanyID)
+    expect := testutil.NewExpect(t, buildHandler(t, pg, rdb))
+    expect.GET("/api/auth/me").
+        WithHeader(middleware.MMCookieHeader, cookie).
+        Expect().Status(200).JSON().Object().
+        Value("userId").IsEqual(testutil.RealUserID)
+}
+```
+**Done 标志**：7 个 test 全绿；commit `test(m4): 重建 7 个 happy-path 集成测试`；§3 已知债务里把"集成 testcontainers 删除待重建"改 ✅。
+
+### Step ③ — pre 部署 + 性能基线 + tag（1 天）
+```bash
+# 1. 镜像
+source scripts/pre-env.sh
+IMAGE_TAG=v1.0.0-pre-7 scripts/v4-prepare.sh
+kubectl apply -f deploy/k8s/rendered/
+kubectl -n im-v2 rollout status deploy/im-gateway
+
+# 2. migration 在 im_pre 库跑（pre 部署前必须）
+kubectl -n postgres-cses port-forward svc/postgresql-cses-pre-cnpg-rw 25432:5432 &
+IM_PRE_DSN="postgres://postgres:one.2013@localhost:25432/im_pre?sslmode=disable"
+migrate -path server/migrations -database "$IM_PRE_DSN" up
+
+# 3. 张立超 cookie 灌 pre redis
+kubectl -n redis-cses port-forward svc/redis-cses-pre-redis-cluster-headless 26379:6379 &
+IM_REDIS=localhost:26379 server/scripts/seed-mm-cookies.sh
+
+# 4. 冒烟
+kubectl -n im-v2 port-forward svc/im-gateway 38080:8080 &
+curl -H 'cookieId: 69eec6dbe6876865ff98945a' http://localhost:38080/api/auth/me
+# 应返回张立超 JSON
+
+# 5. k6 压测对比 pre-6 baseline（spec §11.5 标准）
+TARGET_VUS=300 scripts/apply-k6.sh
+kubectl -n im-v2 logs -f job/im-k6-load
+# 验：action_ok ≥ 99% / send P95 ≤ 400ms（pre-6 是 375ms，留 25ms 给 LRU lookup 多 1 次 hop）
+# 留档：server/docs/benchmark/$(date +%Y-%m-%d-%H%M)-pre-7-summary.md
+
+# 6. Grafana panel
+# 加 im.auth.cookie_cache.hit_rate gauge（target ≥ 90%）
+# 加 im.auth.cookie_cache.size gauge（不爬升 OOM）
+
+# 7. tag + push
+git tag v0.6.1-m4-pre-deployed
+git push origin main --tags
+```
+**Done 标志**：pre 3/3 Running pre-7；`/api/auth/me` 200 + 张立超 JSON；k6 send P95 ≤ 400ms；tag `v0.6.1-m4-pre-deployed`；origin/main = local main + 39 commits。
+
+---
+
 ## 1. 当前分支 & Tag 全景
 
 | 分支 | 用途 | 最新 commit | 状态 |
