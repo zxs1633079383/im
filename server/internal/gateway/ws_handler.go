@@ -41,7 +41,7 @@ type WsSendStore interface {
 // WsMemberLister lists channel members for push fan-out on WS send.
 type WsMemberLister interface {
 	ListMembers(ctx context.Context, channelID int64) ([]repo.ChannelMember, error)
-	GetMember(ctx context.Context, channelID, userID int64) (*repo.ChannelMember, error)
+	GetMember(ctx context.Context, channelID int64, userID string) (*repo.ChannelMember, error)
 }
 
 // WsHandler handles WebSocket upgrade requests.
@@ -202,7 +202,7 @@ func (h *WsHandler) handlePushACK(conn *Conn, payload json.RawMessage) {
 	_, span := wsTracer.Start(context.Background(), "ws.push_ack",
 		trace.WithSpanKind(trace.SpanKindServer),
 		trace.WithAttributes(
-			attribute.Int64("user_id", conn.UserID),
+			attribute.String("user_id", conn.UserID),
 			attribute.String("device_id", conn.DeviceID),
 		))
 	defer span.End()
@@ -225,7 +225,7 @@ func (h *WsHandler) handleSend(conn *Conn, payload json.RawMessage) {
 	ctx, span := wsTracer.Start(context.Background(), "ws.send",
 		trace.WithSpanKind(trace.SpanKindServer),
 		trace.WithAttributes(
-			attribute.Int64("user_id", conn.UserID),
+			attribute.String("user_id", conn.UserID),
 			attribute.String("device_id", conn.DeviceID),
 		))
 	defer span.End()
@@ -267,7 +267,7 @@ func (h *WsHandler) handleSend(conn *Conn, payload json.RawMessage) {
 		ClientMsgID: sp.ClientMsgID,
 		MsgType:     msgType,
 		Content:     sp.Content,
-		VisibleTo:   pq.Int64Array(sp.VisibleTo),
+		VisibleTo:   pq.StringArray(sp.VisibleTo),
 	}
 
 	if err := h.msgStore.Send(ctx, msg); err != nil {

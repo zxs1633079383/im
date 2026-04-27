@@ -6,52 +6,38 @@ import (
 	"github.com/lib/pq"
 )
 
-// User maps the users table.
-type User struct {
-	ID           int64     `gorm:"primaryKey;autoIncrement"                                json:"id"`
-	Username     string    `gorm:"size:50;uniqueIndex;not null"                            json:"username"`
-	Email        string    `gorm:"size:255;uniqueIndex;not null"                           json:"email"`
-	PasswordHash string    `gorm:"column:password_hash;size:255;not null"                  json:"-"`
-	DisplayName  string    `gorm:"column:display_name;size:100;not null;default:''"        json:"display_name"`
-	AvatarURL    string    `gorm:"column:avatar_url;not null;default:''"                   json:"avatar_url"`
-	Status       int16     `gorm:"not null;default:1"                                      json:"status"`
-	CreatedAt    time.Time `gorm:"column:created_at;not null;default:now()"                json:"created_at"`
-	UpdatedAt    time.Time `gorm:"column:updated_at;not null;default:now()"                json:"updated_at"`
-	// MattermostUserID is the shadow mapping from the Mattermost / Java user
-	// ID (24-char hex UUID) to this row's int64 PK. Populated on demand by
-	// MattermostCookieAuth — JWT-native users keep it NULL.
-	MattermostUserID *string `gorm:"column:mm_user_id;type:text;uniqueIndex:idx_users_mm_user_id,where:mm_user_id IS NOT NULL" json:"mm_user_id,omitempty"`
-}
-
-// TableName pins the GORM-derived table name to the migration.
-func (User) TableName() string { return "users" }
-
-// Channel maps the channels table. CreatorID is nullable per the schema.
+// Channel maps the channels table.
+//
+// M4: CreatorID is now a non-nullable mm UserID (24-hex) string. TeamID is a
+// nullable team scope identifier (mm CompanyID, with OrgID fallback) frozen
+// at channel creation; NULL means "no org" / public-pool channel.
 //
 // M2 fine-grained fields (Mattermost /channel/change/* alignment):
 //   - Notice/Purpose/PictureURL: descriptive text
-//   - Props: JSONB blob for arbitrary custom props (stored as a raw string
-//     so callers decide whether to json.RawMessage / map / struct-decode it)
+//   - Props: JSONB blob for arbitrary custom props (raw string; callers
+//     decide whether to json.RawMessage / map / struct-decode it)
 //   - Orient: small tag (0=default / 1=left / 2=right ... callers define)
 //   - Permission: 0=open 1=approval 2=closed
-//   - IsTop: channel pin/priority flag
+//   - IsTop: channel pin / priority flag
+//
+// M3 Topic fields: RootID points at the parent channel; non-nil = child
+// (topic / sub-channel). RootMessageID points at the message the topic was
+// branched from. Members & messages share the parent's tables + seq.
 type Channel struct {
-	ID         int64     `gorm:"primaryKey;autoIncrement"                                json:"id"`
-	Type       int16     `gorm:"not null"                                                json:"type"`
-	Name       string    `gorm:"size:100;not null;default:''"                            json:"name"`
-	AvatarURL  string    `gorm:"column:avatar_url;not null;default:''"                   json:"avatar_url"`
-	Seq        int64     `gorm:"not null;default:0"                                      json:"seq"`
-	CreatorID  *int64    `gorm:"column:creator_id"                                       json:"creator_id"`
-	Notice     string    `gorm:"column:notice;not null;default:''"                       json:"notice"`
-	Purpose    string    `gorm:"column:purpose;not null;default:''"                      json:"purpose"`
-	PictureURL string    `gorm:"column:picture_url;not null;default:''"                  json:"picture_url"`
-	Props      string    `gorm:"column:props;type:jsonb;not null;default:'{}'"           json:"props"`
-	Orient     int16     `gorm:"column:orient;not null;default:0"                        json:"orient"`
-	Permission int16     `gorm:"column:permission;not null;default:0"                    json:"permission"`
-	IsTop      bool      `gorm:"column:is_top;not null;default:false"                    json:"is_top"`
-	// M3-A Topic 支持。RootID 指向父 channel；非 nil 即 topic (子群聊)。
-	// RootMessageID 指向从哪条消息右击创建的 topic。消息与普通 channel 共用
-	// messages 表 + seq，成员共用 channel_members。
+	ID            int64     `gorm:"primaryKey;autoIncrement"                                json:"id"`
+	Type          int16     `gorm:"not null"                                                json:"type"`
+	Name          string    `gorm:"size:100;not null;default:''"                            json:"name"`
+	AvatarURL     string    `gorm:"column:avatar_url;not null;default:''"                   json:"avatar_url"`
+	Seq           int64     `gorm:"not null;default:0"                                      json:"seq"`
+	CreatorID     string    `gorm:"column:creator_id;type:text;not null"                    json:"creator_id"`
+	TeamID        *string   `gorm:"column:team_id;type:text"                                json:"team_id,omitempty"`
+	Notice        string    `gorm:"column:notice;not null;default:''"                       json:"notice"`
+	Purpose       string    `gorm:"column:purpose;not null;default:''"                      json:"purpose"`
+	PictureURL    string    `gorm:"column:picture_url;not null;default:''"                  json:"picture_url"`
+	Props         string    `gorm:"column:props;type:jsonb;not null;default:'{}'"           json:"props"`
+	Orient        int16     `gorm:"column:orient;not null;default:0"                        json:"orient"`
+	Permission    int16     `gorm:"column:permission;not null;default:0"                    json:"permission"`
+	IsTop         bool      `gorm:"column:is_top;not null;default:false"                    json:"is_top"`
 	RootID        *int64    `gorm:"column:root_id"                                          json:"root_id,omitempty"`
 	RootMessageID *int64    `gorm:"column:root_message_id"                                  json:"root_message_id,omitempty"`
 	CreatedAt     time.Time `gorm:"column:created_at;not null;default:now()"                json:"created_at"`
@@ -66,8 +52,10 @@ func (Channel) TableName() string { return "channels" }
 //
 // M2: NotifyPref is 0=all 1=mentions 2=none; used by the broadcaster to
 // decide whether to deliver a given message/event to this member.
+//
+// M4: UserID is now mm UserID (24-hex string).
 type ChannelMember struct {
-	UserID        int64     `gorm:"column:user_id;primaryKey"                               json:"user_id"`
+	UserID        string    `gorm:"column:user_id;type:text;primaryKey"                     json:"user_id"`
 	ChannelID     int64     `gorm:"column:channel_id;primaryKey"                            json:"channel_id"`
 	Role          int16     `gorm:"not null;default:1"                                      json:"role"`
 	LastReadSeq   int64     `gorm:"column:last_read_seq;not null;default:0"                 json:"last_read_seq"`
@@ -81,30 +69,36 @@ type ChannelMember struct {
 func (ChannelMember) TableName() string { return "channel_members" }
 
 // Message maps the messages table. ClientMsgID, ReplyTo, ForwardedFrom are
-// nullable; VisibleTo is a Postgres BIGINT[] handled by pq.Int64Array.
+// nullable; VisibleTo is a Postgres TEXT[] handled by pq.StringArray.
 //
 // Deleted/DeletedAt track soft-delete (M1 revoke); UpdatedAt tracks edit (M1 edit).
+//
+// M4: SenderID is mm UserID (24-hex string). TeamID is the message's team
+// scope, denormalised from channels.team_id at write time (frozen — even if
+// the sender's team or the channel's team changes later, the historical row
+// keeps the original value). VisibleTo holds mm UserIDs.
 type Message struct {
-	ID            int64         `gorm:"primaryKey;autoIncrement"                                json:"id"`
-	ChannelID     int64         `gorm:"column:channel_id;not null"                              json:"channel_id"`
-	Seq           int64         `gorm:"not null"                                                json:"seq"`
-	ClientMsgID   string        `gorm:"column:client_msg_id;size:36"                            json:"client_msg_id,omitempty"`
-	SenderID      int64         `gorm:"column:sender_id;not null"                               json:"sender_id"`
-	MsgType       int16         `gorm:"column:msg_type;not null;default:1"                      json:"msg_type"`
-	Content       string        `gorm:"not null;default:''"                                     json:"content"`
-	VisibleTo     pq.Int64Array `gorm:"column:visible_to;type:bigint[]"                         json:"visible_to,omitempty"`
-	ReplyTo       *int64        `gorm:"column:reply_to"                                         json:"reply_to,omitempty"`
-	ForwardedFrom *int64        `gorm:"column:forwarded_from"                                   json:"forwarded_from,omitempty"`
-	CreatedAt     time.Time     `gorm:"column:created_at;not null;default:now()"                json:"created_at"`
-	UpdatedAt     *time.Time    `gorm:"column:updated_at"                                       json:"updated_at,omitempty"`
-	Deleted       bool          `gorm:"column:deleted;not null;default:false"                   json:"deleted,omitempty"`
-	DeletedAt     *time.Time    `gorm:"column:deleted_at"                                       json:"deleted_at,omitempty"`
-	IsUrgent      bool          `gorm:"column:is_urgent;not null;default:false"                 json:"is_urgent,omitempty"`
+	ID            int64           `gorm:"primaryKey;autoIncrement"                                json:"id"`
+	ChannelID     int64           `gorm:"column:channel_id;not null"                              json:"channel_id"`
+	Seq           int64           `gorm:"not null"                                                json:"seq"`
+	ClientMsgID   string          `gorm:"column:client_msg_id;size:36"                            json:"client_msg_id,omitempty"`
+	SenderID      string          `gorm:"column:sender_id;type:text;not null"                     json:"sender_id"`
+	TeamID        *string         `gorm:"column:team_id;type:text"                                json:"team_id,omitempty"`
+	MsgType       int16           `gorm:"column:msg_type;not null;default:1"                      json:"msg_type"`
+	Content       string          `gorm:"not null;default:''"                                     json:"content"`
+	VisibleTo     pq.StringArray  `gorm:"column:visible_to;type:text[]"                           json:"visible_to,omitempty"`
+	ReplyTo       *int64          `gorm:"column:reply_to"                                         json:"reply_to,omitempty"`
+	ForwardedFrom *int64          `gorm:"column:forwarded_from"                                   json:"forwarded_from,omitempty"`
+	CreatedAt     time.Time       `gorm:"column:created_at;not null;default:now()"                json:"created_at"`
+	UpdatedAt     *time.Time      `gorm:"column:updated_at"                                       json:"updated_at,omitempty"`
+	Deleted       bool            `gorm:"column:deleted;not null;default:false"                   json:"deleted,omitempty"`
+	DeletedAt     *time.Time      `gorm:"column:deleted_at"                                       json:"deleted_at,omitempty"`
+	IsUrgent      bool            `gorm:"column:is_urgent;not null;default:false"                 json:"is_urgent,omitempty"`
 	// Props is a nullable JSONB payload used by system messages (msg_type=4)
-	// to describe what happened — e.g. {"sys_type":"member_joined","actor_id":1,"target_id":9}.
+	// to describe what happened — e.g. {"sys_type":"member_joined","actor_id":"<24hex>","target_id":"<24hex>"}.
 	// Stored as a string so GORM stays decoupled from any JSONB helper type;
 	// callers json.Unmarshal into their own struct shape.
-	Props         *string       `gorm:"column:props;type:jsonb"                                 json:"props,omitempty"`
+	Props *string `gorm:"column:props;type:jsonb"                                 json:"props,omitempty"`
 }
 
 // TableName pins the GORM-derived table name to the migration.
@@ -113,7 +107,7 @@ func (Message) TableName() string { return "messages" }
 // IsVisibleTo reports whether userID can see this message. Broadcast messages
 // (VisibleTo == nil) are visible to all members; directed messages are visible
 // only to the listed user IDs.
-func (m *Message) IsVisibleTo(userID int64) bool {
+func (m *Message) IsVisibleTo(userID string) bool {
 	if m.VisibleTo == nil {
 		return true
 	}
@@ -134,30 +128,28 @@ const (
 	MsgTypePhantom int16 = 99
 )
 
-// User status constants (mirror internal/model.UserStatus).
-const (
-	UserStatusActive   int16 = 1
-	UserStatusDisabled int16 = 2
-)
-
 // Friendship maps the friendships table. The PK is the surrogate id; the
 // (requester_id, addressee_id) pair carries a unique constraint.
+//
+// M4: requester / addressee are mm UserIDs (24-hex string).
 type Friendship struct {
-	ID          int64     `gorm:"primaryKey;autoIncrement"                                                          json:"id"`
-	RequesterID int64     `gorm:"column:requester_id;not null;uniqueIndex:uq_friendships_pair,priority:1"           json:"requester_id"`
-	AddresseeID int64     `gorm:"column:addressee_id;not null;uniqueIndex:uq_friendships_pair,priority:2"           json:"addressee_id"`
-	Status      int16     `gorm:"not null;default:1"                                                                json:"status"`
-	CreatedAt   time.Time `gorm:"column:created_at;not null;default:now()"                                          json:"created_at"`
-	UpdatedAt   time.Time `gorm:"column:updated_at;not null;default:now()"                                          json:"updated_at"`
+	ID          int64     `gorm:"primaryKey;autoIncrement"                                                                            json:"id"`
+	RequesterID string    `gorm:"column:requester_id;type:text;not null;uniqueIndex:uq_friendships_pair,priority:1"                   json:"requester_id"`
+	AddresseeID string    `gorm:"column:addressee_id;type:text;not null;uniqueIndex:uq_friendships_pair,priority:2"                   json:"addressee_id"`
+	Status      int16     `gorm:"not null;default:1"                                                                                  json:"status"`
+	CreatedAt   time.Time `gorm:"column:created_at;not null;default:now()"                                                            json:"created_at"`
+	UpdatedAt   time.Time `gorm:"column:updated_at;not null;default:now()"                                                            json:"updated_at"`
 }
 
 // TableName pins the GORM-derived table name to the migration.
 func (Friendship) TableName() string { return "friendships" }
 
 // File maps the files table.
+//
+// M4: UploaderID is mm UserID (24-hex string).
 type File struct {
 	ID            int64     `gorm:"primaryKey;autoIncrement"                                json:"id"`
-	UploaderID    int64     `gorm:"column:uploader_id;not null"                             json:"uploader_id"`
+	UploaderID    string    `gorm:"column:uploader_id;type:text;not null"                   json:"uploader_id"`
 	FileName      string    `gorm:"column:file_name;size:255;not null"                      json:"file_name"`
 	FileSize      int64     `gorm:"column:file_size;not null"                               json:"file_size"`
 	MimeType      string    `gorm:"column:mime_type;size:100;not null;default:''"           json:"mime_type"`
@@ -179,8 +171,10 @@ type MessageAttachment struct {
 func (MessageAttachment) TableName() string { return "message_attachments" }
 
 // MessageFavorite maps the message_favorites join table (composite PK).
+//
+// M4: UserID is mm UserID (24-hex string).
 type MessageFavorite struct {
-	UserID    int64     `gorm:"column:user_id;primaryKey"                                 json:"user_id"`
+	UserID    string    `gorm:"column:user_id;type:text;primaryKey"                       json:"user_id"`
 	MessageID int64     `gorm:"column:message_id;primaryKey"                              json:"message_id"`
 	CreatedAt time.Time `gorm:"column:created_at;not null;default:now()"                  json:"created_at"`
 }
@@ -191,10 +185,12 @@ func (MessageFavorite) TableName() string { return "message_favorites" }
 // ChannelManager maps the channel_managers table — fine-grained manager
 // rights on a channel. A manager has admin rights beyond "member" but less
 // than "owner" (only owners can add/remove managers).
+//
+// M4: UserID / AddedBy are mm UserIDs (24-hex string).
 type ChannelManager struct {
 	ChannelID int64     `gorm:"column:channel_id;primaryKey"                              json:"channel_id"`
-	UserID    int64     `gorm:"column:user_id;primaryKey"                                 json:"user_id"`
-	AddedBy   int64     `gorm:"column:added_by;not null"                                  json:"added_by"`
+	UserID    string    `gorm:"column:user_id;type:text;primaryKey"                       json:"user_id"`
+	AddedBy   string    `gorm:"column:added_by;type:text;not null"                        json:"added_by"`
 	AddedAt   time.Time `gorm:"column:added_at;not null;default:now()"                    json:"added_at"`
 }
 
@@ -203,10 +199,12 @@ func (ChannelManager) TableName() string { return "channel_managers" }
 
 // ChannelPinnedMessage maps channel_pinned_messages — a channel-scoped pin
 // table. Composite PK on (channel_id, message_id).
+//
+// M4: PinnedBy is a mm UserID (24-hex string).
 type ChannelPinnedMessage struct {
 	ChannelID int64     `gorm:"column:channel_id;primaryKey"                              json:"channel_id"`
 	MessageID int64     `gorm:"column:message_id;primaryKey"                              json:"message_id"`
-	PinnedBy  int64     `gorm:"column:pinned_by;not null"                                 json:"pinned_by"`
+	PinnedBy  string    `gorm:"column:pinned_by;type:text;not null"                       json:"pinned_by"`
 	PinnedAt  time.Time `gorm:"column:pinned_at;not null;default:now()"                   json:"pinned_at"`
 }
 
@@ -229,8 +227,10 @@ const (
 
 // UserSettings maps the user_settings table. SettingsJSON is stored opaquely
 // as a JSONB string — callers marshal/unmarshal at the boundary.
+//
+// M4: UserID is mm UserID (24-hex string) primary key.
 type UserSettings struct {
-	UserID              int64     `gorm:"column:user_id;primaryKey"                            json:"user_id"`
+	UserID              string    `gorm:"column:user_id;type:text;primaryKey"                  json:"user_id"`
 	NotificationEnabled bool      `gorm:"column:notification_enabled;not null;default:true"    json:"notification_enabled"`
 	Theme               string    `gorm:"size:20;not null;default:'light'"                     json:"theme"`
 	Language            string    `gorm:"size:10;not null;default:'zh-CN'"                     json:"language"`

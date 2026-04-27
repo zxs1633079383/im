@@ -23,7 +23,7 @@ func (_m *SearchRepoMock) EXPECT() *SearchRepoMock_Expecter {
 }
 
 // SearchChannels provides a mock function with given fields: ctx, q, callerID, limit
-func (_m *SearchRepoMock) SearchChannels(ctx context.Context, q string, callerID int64, limit int) ([]repo.Channel, error) {
+func (_m *SearchRepoMock) SearchChannels(ctx context.Context, q string, callerID string, limit int) ([]repo.Channel, error) {
 	ret := _m.Called(ctx, q, callerID, limit)
 
 	if len(ret) == 0 {
@@ -32,10 +32,10 @@ func (_m *SearchRepoMock) SearchChannels(ctx context.Context, q string, callerID
 
 	var r0 []repo.Channel
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, string, int64, int) ([]repo.Channel, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, int) ([]repo.Channel, error)); ok {
 		return rf(ctx, q, callerID, limit)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, string, int64, int) []repo.Channel); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, int) []repo.Channel); ok {
 		r0 = rf(ctx, q, callerID, limit)
 	} else {
 		if ret.Get(0) != nil {
@@ -43,7 +43,7 @@ func (_m *SearchRepoMock) SearchChannels(ctx context.Context, q string, callerID
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, string, int64, int) error); ok {
+	if rf, ok := ret.Get(1).(func(context.Context, string, string, int) error); ok {
 		r1 = rf(ctx, q, callerID, limit)
 	} else {
 		r1 = ret.Error(1)
@@ -60,15 +60,15 @@ type SearchRepoMock_SearchChannels_Call struct {
 // SearchChannels is a helper method to define mock.On call
 //   - ctx context.Context
 //   - q string
-//   - callerID int64
+//   - callerID string
 //   - limit int
 func (_e *SearchRepoMock_Expecter) SearchChannels(ctx interface{}, q interface{}, callerID interface{}, limit interface{}) *SearchRepoMock_SearchChannels_Call {
 	return &SearchRepoMock_SearchChannels_Call{Call: _e.mock.On("SearchChannels", ctx, q, callerID, limit)}
 }
 
-func (_c *SearchRepoMock_SearchChannels_Call) Run(run func(ctx context.Context, q string, callerID int64, limit int)) *SearchRepoMock_SearchChannels_Call {
+func (_c *SearchRepoMock_SearchChannels_Call) Run(run func(ctx context.Context, q string, callerID string, limit int)) *SearchRepoMock_SearchChannels_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(string), args[2].(int64), args[3].(int))
+		run(args[0].(context.Context), args[1].(string), args[2].(string), args[3].(int))
 	})
 	return _c
 }
@@ -78,13 +78,13 @@ func (_c *SearchRepoMock_SearchChannels_Call) Return(_a0 []repo.Channel, _a1 err
 	return _c
 }
 
-func (_c *SearchRepoMock_SearchChannels_Call) RunAndReturn(run func(context.Context, string, int64, int) ([]repo.Channel, error)) *SearchRepoMock_SearchChannels_Call {
+func (_c *SearchRepoMock_SearchChannels_Call) RunAndReturn(run func(context.Context, string, string, int) ([]repo.Channel, error)) *SearchRepoMock_SearchChannels_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // SearchMessages provides a mock function with given fields: ctx, q, userID, channelID, limit
-func (_m *SearchRepoMock) SearchMessages(ctx context.Context, q string, userID int64, channelID int64, limit int) ([]repo.MessageSearchResult, error) {
+func (_m *SearchRepoMock) SearchMessages(ctx context.Context, q string, userID string, channelID int64, limit int) ([]repo.MessageSearchResult, error) {
 	ret := _m.Called(ctx, q, userID, channelID, limit)
 
 	if len(ret) == 0 {
@@ -93,10 +93,10 @@ func (_m *SearchRepoMock) SearchMessages(ctx context.Context, q string, userID i
 
 	var r0 []repo.MessageSearchResult
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, string, int64, int64, int) ([]repo.MessageSearchResult, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, int64, int) ([]repo.MessageSearchResult, error)); ok {
 		return rf(ctx, q, userID, channelID, limit)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, string, int64, int64, int) []repo.MessageSearchResult); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, int64, int) []repo.MessageSearchResult); ok {
 		r0 = rf(ctx, q, userID, channelID, limit)
 	} else {
 		if ret.Get(0) != nil {
@@ -104,7 +104,7 @@ func (_m *SearchRepoMock) SearchMessages(ctx context.Context, q string, userID i
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, string, int64, int64, int) error); ok {
+	if rf, ok := ret.Get(1).(func(context.Context, string, string, int64, int) error); ok {
 		r1 = rf(ctx, q, userID, channelID, limit)
 	} else {
 		r1 = ret.Error(1)
@@ -121,16 +121,16 @@ type SearchRepoMock_SearchMessages_Call struct {
 // SearchMessages is a helper method to define mock.On call
 //   - ctx context.Context
 //   - q string
-//   - userID int64
+//   - userID string
 //   - channelID int64
 //   - limit int
 func (_e *SearchRepoMock_Expecter) SearchMessages(ctx interface{}, q interface{}, userID interface{}, channelID interface{}, limit interface{}) *SearchRepoMock_SearchMessages_Call {
 	return &SearchRepoMock_SearchMessages_Call{Call: _e.mock.On("SearchMessages", ctx, q, userID, channelID, limit)}
 }
 
-func (_c *SearchRepoMock_SearchMessages_Call) Run(run func(ctx context.Context, q string, userID int64, channelID int64, limit int)) *SearchRepoMock_SearchMessages_Call {
+func (_c *SearchRepoMock_SearchMessages_Call) Run(run func(ctx context.Context, q string, userID string, channelID int64, limit int)) *SearchRepoMock_SearchMessages_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(string), args[2].(int64), args[3].(int64), args[4].(int))
+		run(args[0].(context.Context), args[1].(string), args[2].(string), args[3].(int64), args[4].(int))
 	})
 	return _c
 }
@@ -140,68 +140,7 @@ func (_c *SearchRepoMock_SearchMessages_Call) Return(_a0 []repo.MessageSearchRes
 	return _c
 }
 
-func (_c *SearchRepoMock_SearchMessages_Call) RunAndReturn(run func(context.Context, string, int64, int64, int) ([]repo.MessageSearchResult, error)) *SearchRepoMock_SearchMessages_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
-// SearchUsers provides a mock function with given fields: ctx, q, callerID, limit
-func (_m *SearchRepoMock) SearchUsers(ctx context.Context, q string, callerID int64, limit int) ([]repo.User, error) {
-	ret := _m.Called(ctx, q, callerID, limit)
-
-	if len(ret) == 0 {
-		panic("no return value specified for SearchUsers")
-	}
-
-	var r0 []repo.User
-	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, string, int64, int) ([]repo.User, error)); ok {
-		return rf(ctx, q, callerID, limit)
-	}
-	if rf, ok := ret.Get(0).(func(context.Context, string, int64, int) []repo.User); ok {
-		r0 = rf(ctx, q, callerID, limit)
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]repo.User)
-		}
-	}
-
-	if rf, ok := ret.Get(1).(func(context.Context, string, int64, int) error); ok {
-		r1 = rf(ctx, q, callerID, limit)
-	} else {
-		r1 = ret.Error(1)
-	}
-
-	return r0, r1
-}
-
-// SearchRepoMock_SearchUsers_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SearchUsers'
-type SearchRepoMock_SearchUsers_Call struct {
-	*mock.Call
-}
-
-// SearchUsers is a helper method to define mock.On call
-//   - ctx context.Context
-//   - q string
-//   - callerID int64
-//   - limit int
-func (_e *SearchRepoMock_Expecter) SearchUsers(ctx interface{}, q interface{}, callerID interface{}, limit interface{}) *SearchRepoMock_SearchUsers_Call {
-	return &SearchRepoMock_SearchUsers_Call{Call: _e.mock.On("SearchUsers", ctx, q, callerID, limit)}
-}
-
-func (_c *SearchRepoMock_SearchUsers_Call) Run(run func(ctx context.Context, q string, callerID int64, limit int)) *SearchRepoMock_SearchUsers_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(string), args[2].(int64), args[3].(int))
-	})
-	return _c
-}
-
-func (_c *SearchRepoMock_SearchUsers_Call) Return(_a0 []repo.User, _a1 error) *SearchRepoMock_SearchUsers_Call {
-	_c.Call.Return(_a0, _a1)
-	return _c
-}
-
-func (_c *SearchRepoMock_SearchUsers_Call) RunAndReturn(run func(context.Context, string, int64, int) ([]repo.User, error)) *SearchRepoMock_SearchUsers_Call {
+func (_c *SearchRepoMock_SearchMessages_Call) RunAndReturn(run func(context.Context, string, string, int64, int) ([]repo.MessageSearchResult, error)) *SearchRepoMock_SearchMessages_Call {
 	_c.Call.Return(run)
 	return _c
 }

@@ -10,17 +10,13 @@ import (
 )
 
 // FriendEventPusher pushes friend events (request/accept/reject) to online
-// users via the gateway hub. Mirrors the legacy handler.FriendEventPusher
-// contract: nil = no real-time notifications (the integration / unit tests
-// don't need a live hub).
+// users via the gateway hub. M4: ids are mm UserIDs (24-hex strings).
 type FriendEventPusher interface {
-	PushFriendEvent(targetUserID int64, eventType string, fromUserID int64)
+	PushFriendEvent(targetUserID, eventType, fromUserID string)
 }
 
-// Request bodies. Field names + JSON tags match the legacy handler exactly so
-// existing clients continue to work after the cut-over.
 type sendFriendRequestReq struct {
-	AddresseeID int64 `json:"addressee_id"`
+	AddresseeID string `json:"addressee_id"`
 }
 
 type friendshipIDReq struct {
@@ -28,17 +24,13 @@ type friendshipIDReq struct {
 }
 
 type blockReq struct {
-	UserID int64 `json:"user_id"`
+	UserID string `json:"user_id"`
 }
 
-// RegisterFriendRoutes wires the seven friend + user-search endpoints onto
-// authed. authed must already have JWT middleware applied (see
-// RegisterProfileRoutes for the contract).
+// RegisterFriendRoutes wires the seven friend + user-search endpoints.
 //
-// pusher is optional; pass nil to disable the real-time WebSocket push that
-// notifies the addressee on a new friend request. The legacy handler exposed
-// the same WithEventPusher hook — preserving it keeps gateway/main.go's
-// hubFriendEventPusher wiring unchanged.
+// M4: user search has been retired (no local users table); the endpoint now
+// returns an empty list. Clients should query cses-side directories.
 func RegisterFriendRoutes(authed *gin.RouterGroup, svc *service.FriendService, pusher FriendEventPusher) {
 	authed.POST("/friends/request", func(c *gin.Context) {
 		uid, ok := userIDFromCtx(c)
@@ -50,7 +42,7 @@ func RegisterFriendRoutes(authed *gin.RouterGroup, svc *service.FriendService, p
 			c.JSON(400, gin.H{"error": "invalid JSON"})
 			return
 		}
-		if in.AddresseeID == 0 {
+		if in.AddresseeID == "" {
 			c.JSON(422, gin.H{"error": "addressee_id is required"})
 			return
 		}
@@ -89,8 +81,6 @@ func RegisterFriendRoutes(authed *gin.RouterGroup, svc *service.FriendService, p
 		case err != nil:
 			c.JSON(500, gin.H{"error": "internal error"})
 		default:
-			// Notify the original requester that their invite has been
-			// accepted — target is the requester, from_user is the accepter.
 			if pusher != nil {
 				pusher.PushFriendEvent(requesterID, "accepted", uid)
 			}
@@ -119,9 +109,6 @@ func RegisterFriendRoutes(authed *gin.RouterGroup, svc *service.FriendService, p
 		case err != nil:
 			c.JSON(500, gin.H{"error": "internal error"})
 		default:
-			// Mirror accept: target is the requester, from_user is the
-			// rejecter. Clients use this to drop the outgoing request from
-			// the user's pending list in real time.
 			if pusher != nil {
 				pusher.PushFriendEvent(requesterID, "rejected", uid)
 			}
@@ -140,7 +127,7 @@ func RegisterFriendRoutes(authed *gin.RouterGroup, svc *service.FriendService, p
 			return
 		}
 		if friends == nil {
-			friends = []repo.User{}
+			friends = []string{}
 		}
 		c.JSON(200, friends)
 	})
@@ -171,7 +158,7 @@ func RegisterFriendRoutes(authed *gin.RouterGroup, svc *service.FriendService, p
 			c.JSON(400, gin.H{"error": "invalid JSON"})
 			return
 		}
-		if in.UserID == 0 {
+		if in.UserID == "" {
 			c.JSON(422, gin.H{"error": "user_id is required"})
 			return
 		}
@@ -182,20 +169,13 @@ func RegisterFriendRoutes(authed *gin.RouterGroup, svc *service.FriendService, p
 		c.JSON(200, gin.H{"status": "blocked"})
 	})
 
+	// M4: User search retired — cses owns the user directory. Returns an
+	// empty list with the same wire shape so v0.5.x clients keep working.
 	authed.GET("/users/search", func(c *gin.Context) {
-		uid, ok := userIDFromCtx(c)
+		_, ok := userIDFromCtx(c)
 		if !ok {
 			return
 		}
-		q := c.Query("q")
-		users, err := svc.SearchUsers(c.Request.Context(), q, uid)
-		if err != nil {
-			c.JSON(500, gin.H{"error": "internal error"})
-			return
-		}
-		if users == nil {
-			users = []repo.User{}
-		}
-		c.JSON(200, users)
+		c.JSON(200, []string{})
 	})
 }

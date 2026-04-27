@@ -12,80 +12,64 @@ import (
 
 // Channel-service sentinels. The HTTP transport maps these to status codes:
 //
-//   - ErrNotMember      → 403 Forbidden ("not a member of this channel")
-//   - ErrForbidden      → 403 Forbidden (admin-or-owner / owner-cannot-leave)
-//   - ErrSelfDM         → 422 Unprocessable Entity ("cannot DM yourself")
+//   - ErrNotMember         → 403 Forbidden ("not a member of this channel")
+//   - ErrForbidden         → 403 Forbidden (admin-or-owner / owner-cannot-leave)
+//   - ErrSelfDM            → 422 Unprocessable Entity ("cannot DM yourself")
 //   - ErrCannotRemoveOwner → 403 Forbidden ("cannot remove the owner")
-//   - repo.ErrNotFound  → 404 Not Found (channel/member missing)
-//
-// Keeping these in service/ instead of leaking driver-style errors keeps the
-// transport layer decoupled from gorm/postgres specifics — same pattern as
-// service.ErrAlreadyExists in friend.go.
+//   - repo.ErrNotFound     → 404 Not Found (channel/member missing)
 var (
-	ErrNotMember          = errors.New("not a member of this channel")
-	ErrForbidden          = errors.New("forbidden")
-	ErrSelfDM             = errors.New("cannot DM yourself")
-	ErrCannotRemoveOwner  = errors.New("cannot remove the owner")
-	ErrOwnerCannotLeave   = errors.New("owner cannot leave; transfer ownership first")
+	ErrNotMember         = errors.New("not a member of this channel")
+	ErrForbidden         = errors.New("forbidden")
+	ErrSelfDM            = errors.New("cannot DM yourself")
+	ErrCannotRemoveOwner = errors.New("cannot remove the owner")
+	ErrOwnerCannotLeave  = errors.New("owner cannot leave; transfer ownership first")
 )
 
 // ChannelService bundles channel + member queries and mutations on top of
-// repo.ChannelRepo and repo.UserRepo. Validation (zero IDs, empty names) is
-// the transport layer's responsibility; this service enforces *semantic*
-// rules — membership, role gating, owner-protection — and returns stable
-// sentinels.
+// repo.ChannelRepo. M4: there is no longer a UserRepo dependency — the caller
+// supplies team_id from the resolved Mattermost user on the request context,
+// and member listings return mm UserIDs only (clients fetch profile data
+// from the cses Redis "User" hash).
 type ChannelService struct {
 	channels repo.ChannelRepo
-	users    repo.UserRepo
 	// messages is optional. When non-nil, membership / metadata mutations
 	// (Update / AddMember / RemoveMember / LeaveChannel / CreateGroup) emit a
 	// system message (MsgType=System) carrying a typed props payload so
 	// clients receive the event through the normal push_msg + /api/sync pipe.
-	// Passing nil turns off system-message emission — used by unit tests that
-	// don't care about the side channel.
 	messages repo.MessageRepo
 }
 
 // NewChannelService wires the supplied repos. messages may be nil — when nil,
-// system-message emission is disabled (handy for older tests). Production
-// wires repo.MessageRepo so channel events land in the message stream.
-func NewChannelService(channels repo.ChannelRepo, users repo.UserRepo, messages repo.MessageRepo) *ChannelService {
-	return &ChannelService{channels: channels, users: users, messages: messages}
+// system-message emission is disabled (handy for older tests).
+func NewChannelService(channels repo.ChannelRepo, messages repo.MessageRepo) *ChannelService {
+	return &ChannelService{channels: channels, messages: messages}
 }
 
-// MemberWithUser is a ChannelMember enriched with basic user profile fields.
-// Mirrors the legacy handler.MemberWithUser shape so existing clients see no
-// change after the cut-over.
+// MemberWithUser is a thin wrapper around ChannelMember kept for transport
+// shape compatibility. M4 drops the joined username/display/avatar fields —
+// clients resolve those via the cses Redis "User" hash by mm UserID.
 type MemberWithUser struct {
 	repo.ChannelMember
-	Username    string `json:"username"`
-	DisplayName string `json:"display_name"`
-	AvatarURL   string `json:"avatar_url"`
 }
 
 // AddedMember is returned by CreateGroup for each non-creator added during the
-// initial member fan-out. The transport layer uses this to drive the
-// "added" event push without re-querying the repo.
+// initial member fan-out.
 type AddedMember struct {
-	UserID int64
+	UserID string
 }
 
 // CreateGroup creates a Group channel, adds creatorID as owner, then adds the
-// remaining memberIDs as plain members. The caller (transport) owns the
-// post-success event-push fan-out — it receives the list of newly added
-// members back so the pusher can fire one event per user.
-//
-// The semantics mirror the legacy handler exactly: skip the creator if it
-// appears in memberIDs; tolerate per-member AddMember failures (log + skip)
-// rather than rolling back the whole channel.
-func (s *ChannelService) CreateGroup(ctx context.Context, creatorID int64, name string, memberIDs []int64) (*repo.Channel, []AddedMember, error) {
+// remaining memberIDs as plain members. teamID denormalises onto the channel
+// row (frozen at creation); empty string stores SQL NULL ("public pool").
+func (s *ChannelService) CreateGroup(ctx context.Context, creatorID, teamID, name string, memberIDs []string) (*repo.Channel, []AddedMember, error) {
 	ctx, span := tracer.Start(ctx, "ChannelService.CreateGroup")
 	defer span.End()
 
 	ch := &repo.Channel{
 		Type:      repo.ChannelTypeGroup,
 		Name:      name,
-		CreatorID: &creatorID,
+		CreatorID: creatorID,
+		TeamID:    nullIfEmpty(teamID),
 	}
 	if err := s.channels.Create(ctx, ch); err != nil {
 		return nil, nil, fmt.Errorf("create group: %w", err)
@@ -96,10 +80,9 @@ func (s *ChannelService) CreateGroup(ctx context.Context, creatorID int64, name 
 
 	added := make([]AddedMember, 0, len(memberIDs))
 	for _, uid := range memberIDs {
-		if uid == creatorID {
-			continue // already added as owner
+		if uid == "" || uid == creatorID {
+			continue
 		}
-		// Per-member failures are non-fatal — preserve legacy log-and-skip.
 		if err := s.channels.AddMember(ctx, ch.ID, uid, repo.MemberRoleMember); err != nil {
 			continue
 		}
@@ -108,20 +91,18 @@ func (s *ChannelService) CreateGroup(ctx context.Context, creatorID int64, name 
 
 	// Anchor system messages so /api/sync replays the channel's history
 	// symmetrically: one channel_created at seq=1 and a member_joined per
-	// non-creator member, in the same order AddMember returned. Best-effort —
-	// the channel + members are already in place, so losing a marker is
-	// preferable to failing the whole request.
-	_ = s.postSys(ctx, nil, ch.ID, creatorID, channelCreatedProps(creatorID, ch.Name))
+	// non-creator member.
+	_ = s.postSys(ctx, nil, ch.ID, creatorID, ch.TeamID, channelCreatedProps(creatorID, ch.Name))
 	for _, m := range added {
-		_ = s.postSys(ctx, nil, ch.ID, creatorID, memberJoinedProps(creatorID, m.UserID))
+		_ = s.postSys(ctx, nil, ch.ID, creatorID, ch.TeamID, memberJoinedProps(creatorID, m.UserID))
 	}
 	return ch, added, nil
 }
 
 // CreateOrGetDM returns the existing DM between callerID and otherUserID, or
-// creates a fresh one. The bool indicates whether a new channel was created
-// (true) so the transport can return 201 vs 200 to match the legacy shape.
-func (s *ChannelService) CreateOrGetDM(ctx context.Context, callerID, otherUserID int64) (*repo.Channel, bool, error) {
+// creates a fresh one. teamID is the caller's team scope, frozen onto the
+// channel row.
+func (s *ChannelService) CreateOrGetDM(ctx context.Context, callerID, otherUserID, teamID string) (*repo.Channel, bool, error) {
 	ctx, span := tracer.Start(ctx, "ChannelService.CreateOrGetDM")
 	defer span.End()
 
@@ -137,7 +118,11 @@ func (s *ChannelService) CreateOrGetDM(ctx context.Context, callerID, otherUserI
 		return nil, false, fmt.Errorf("find dm: %w", err)
 	}
 
-	ch := &repo.Channel{Type: repo.ChannelTypeDM}
+	ch := &repo.Channel{
+		Type:      repo.ChannelTypeDM,
+		CreatorID: callerID,
+		TeamID:    nullIfEmpty(teamID),
+	}
 	if err := s.channels.Create(ctx, ch); err != nil {
 		return nil, false, fmt.Errorf("create dm: %w", err)
 	}
@@ -151,16 +136,15 @@ func (s *ChannelService) CreateOrGetDM(ctx context.Context, callerID, otherUserI
 }
 
 // ListByUser returns the channel previews (last-msg + unread) for userID.
-func (s *ChannelService) ListByUser(ctx context.Context, userID int64) ([]repo.ChannelWithPreview, error) {
+func (s *ChannelService) ListByUser(ctx context.Context, userID string) ([]repo.ChannelWithPreview, error) {
 	ctx, span := tracer.Start(ctx, "ChannelService.ListByUser")
 	defer span.End()
 
 	return s.channels.ListByUserWithPreview(ctx, userID)
 }
 
-// GetByID returns the channel only if callerID is a member. Non-members get
-// ErrNotMember (→ 403). Missing channels get repo.ErrNotFound (→ 404).
-func (s *ChannelService) GetByID(ctx context.Context, channelID, callerID int64) (*repo.Channel, error) {
+// GetByID returns the channel only if callerID is a member.
+func (s *ChannelService) GetByID(ctx context.Context, channelID int64, callerID string) (*repo.Channel, error) {
 	if _, err := s.channels.GetMember(ctx, channelID, callerID); err != nil {
 		if errors.Is(err, repo.ErrNotFound) {
 			return nil, ErrNotMember
@@ -171,10 +155,7 @@ func (s *ChannelService) GetByID(ctx context.Context, channelID, callerID int64)
 }
 
 // Update applies name/avatar to channelID. Requires admin or owner role.
-// Returns the post-update channel for the response body. On success emits a
-// channel_updated system message so online members see the change through
-// push_msg (and offline members via /api/sync).
-func (s *ChannelService) Update(ctx context.Context, channelID, callerID int64, name, avatarURL string) (*repo.Channel, error) {
+func (s *ChannelService) Update(ctx context.Context, channelID int64, callerID, name, avatarURL string) (*repo.Channel, error) {
 	if err := s.requireAdminOrOwner(ctx, channelID, callerID); err != nil {
 		return nil, err
 	}
@@ -185,21 +166,12 @@ func (s *ChannelService) Update(ctx context.Context, channelID, callerID int64, 
 	if err != nil {
 		return nil, err
 	}
-	// Best-effort: the rename already committed; losing the system message
-	// is recoverable by the next /api/channels list refresh.
-	_ = s.postSys(ctx, nil, channelID, callerID, channelUpdatedProps(callerID, ch.Name, ch.AvatarURL))
+	_ = s.postSys(ctx, nil, channelID, callerID, ch.TeamID, channelUpdatedProps(callerID, ch.Name, ch.AvatarURL))
 	return ch, nil
 }
 
-// AddMember inserts newUserID into channelID. Requires caller to be admin or
-// owner. The legacy handler always added the new member with the plain
-// Member role — preserve that.
-//
-// Returns the channel's display name on success so the transport layer can
-// fire a real-time channel_event "added" to the new member (mirrors the
-// post-CreateGroup fan-out). An empty string is returned alongside any
-// non-nil error.
-func (s *ChannelService) AddMember(ctx context.Context, channelID, callerID, newUserID int64) (string, error) {
+// AddMember inserts newUserID into channelID. Requires caller admin/owner.
+func (s *ChannelService) AddMember(ctx context.Context, channelID int64, callerID, newUserID string) (string, error) {
 	ctx, span := tracer.Start(ctx, "ChannelService.AddMember")
 	defer span.End()
 
@@ -209,25 +181,20 @@ func (s *ChannelService) AddMember(ctx context.Context, channelID, callerID, new
 	if err := s.channels.AddMember(ctx, channelID, newUserID, repo.MemberRoleMember); err != nil {
 		return "", err
 	}
-	// Best-effort system message so existing members' already-read/unread
-	// ratios stay consistent (the new member count changes immediately).
-	_ = s.postSys(ctx, nil, channelID, callerID, memberJoinedProps(callerID, newUserID))
-	// Best-effort: fetch the channel name for the push payload. A lookup
-	// miss shouldn't fail the request — the membership row is already in
-	// place. Transport fires the push with an empty name in that unlikely
-	// case.
-	ch, err := s.channels.GetByID(ctx, channelID)
-	if err != nil || ch == nil {
+	ch, _ := s.channels.GetByID(ctx, channelID)
+	var teamID *string
+	if ch != nil {
+		teamID = ch.TeamID
+	}
+	_ = s.postSys(ctx, nil, channelID, callerID, teamID, memberJoinedProps(callerID, newUserID))
+	if ch == nil {
 		return "", nil
 	}
 	return ch.Name, nil
 }
 
 // RemoveMember deletes targetUserID from channelID. Requires admin or owner.
-// Refuses to remove the channel's owner. Emits a member_removed system message
-// BEFORE the DELETE inside the same transaction so the target still counts as
-// a channel member when push fan-out runs (otherwise the event misses them).
-func (s *ChannelService) RemoveMember(ctx context.Context, channelID, callerID, targetUserID int64) error {
+func (s *ChannelService) RemoveMember(ctx context.Context, channelID int64, callerID, targetUserID string) error {
 	ctx, span := tracer.Start(ctx, "ChannelService.RemoveMember")
 	defer span.End()
 
@@ -236,7 +203,7 @@ func (s *ChannelService) RemoveMember(ctx context.Context, channelID, callerID, 
 	}
 	target, err := s.channels.GetMember(ctx, channelID, targetUserID)
 	if err != nil {
-		return err // repo.ErrNotFound surfaces as 404
+		return err
 	}
 	if target.Role == repo.MemberRoleOwner {
 		return ErrCannotRemoveOwner
@@ -244,24 +211,27 @@ func (s *ChannelService) RemoveMember(ctx context.Context, channelID, callerID, 
 	return s.removeMemberAtomic(ctx, channelID, callerID, targetUserID)
 }
 
-// removeMemberAtomic runs "post system message → DELETE channel_members" in a
-// single transaction when s.messages is wired. When messages is nil (tests),
-// it falls back to the existing non-tx DELETE to keep older tests green.
-func (s *ChannelService) removeMemberAtomic(ctx context.Context, channelID, actorID, targetID int64) error {
+func (s *ChannelService) removeMemberAtomic(ctx context.Context, channelID int64, actorID, targetID string) error {
 	if s.messages == nil {
 		return s.channels.RemoveMember(ctx, channelID, targetID)
 	}
+	ch, _ := s.channels.GetByID(ctx, channelID)
+	var teamID *string
+	if ch != nil {
+		teamID = ch.TeamID
+	}
 	return s.channels.WithinTx(ctx, func(tx *gorm.DB) error {
-		if err := s.postSys(ctx, tx, channelID, actorID, memberRemovedProps(actorID, targetID)); err != nil {
+		if err := s.postSys(ctx, tx, channelID, actorID, teamID, memberRemovedProps(actorID, targetID)); err != nil {
 			return err
 		}
 		return s.channels.RemoveMemberTx(ctx, tx, channelID, targetID)
 	})
 }
 
-// ListMembers returns all members of channelID enriched with basic user info.
-// Caller must be a member.
-func (s *ChannelService) ListMembers(ctx context.Context, channelID, callerID int64) ([]MemberWithUser, error) {
+// ListMembers returns all members of channelID. Caller must be a member.
+// M4: profile data is no longer joined; clients resolve user_id → profile
+// via the cses Redis "User" hash.
+func (s *ChannelService) ListMembers(ctx context.Context, channelID int64, callerID string) ([]MemberWithUser, error) {
 	if _, err := s.channels.GetMember(ctx, channelID, callerID); err != nil {
 		if errors.Is(err, repo.ErrNotFound) {
 			return nil, ErrNotMember
@@ -272,27 +242,15 @@ func (s *ChannelService) ListMembers(ctx context.Context, channelID, callerID in
 	if err != nil {
 		return nil, err
 	}
-	out := make([]MemberWithUser, 0, len(members))
-	for _, m := range members {
-		mwu := MemberWithUser{ChannelMember: m}
-		// Best-effort enrichment — missing user rows are tolerated (matches
-		// legacy: a member whose user row is missing still appears in the
-		// list with empty profile fields).
-		if u, err := s.users.GetByID(ctx, m.UserID); err == nil && u != nil {
-			mwu.Username = u.Username
-			mwu.DisplayName = u.DisplayName
-			mwu.AvatarURL = u.AvatarURL
-		}
-		out = append(out, mwu)
+	out := make([]MemberWithUser, len(members))
+	for i, m := range members {
+		out[i] = MemberWithUser{ChannelMember: m}
 	}
 	return out, nil
 }
 
-// LeaveChannel removes callerID from channelID. Owners cannot leave (they
-// must transfer ownership first — preserved from the legacy handler). Emits a
-// member_left system message BEFORE the DELETE in the same transaction so
-// remaining members see the event in real time.
-func (s *ChannelService) LeaveChannel(ctx context.Context, channelID, callerID int64) error {
+// LeaveChannel removes callerID from channelID. Owners cannot leave.
+func (s *ChannelService) LeaveChannel(ctx context.Context, channelID int64, callerID string) error {
 	m, err := s.channels.GetMember(ctx, channelID, callerID)
 	if err != nil {
 		if errors.Is(err, repo.ErrNotFound) {
@@ -306,24 +264,24 @@ func (s *ChannelService) LeaveChannel(ctx context.Context, channelID, callerID i
 	return s.leaveChannelAtomic(ctx, channelID, callerID)
 }
 
-// leaveChannelAtomic mirrors removeMemberAtomic but uses member_left props so
-// clients can render "X left" vs "X was removed".
-func (s *ChannelService) leaveChannelAtomic(ctx context.Context, channelID, callerID int64) error {
+func (s *ChannelService) leaveChannelAtomic(ctx context.Context, channelID int64, callerID string) error {
 	if s.messages == nil {
 		return s.channels.RemoveMember(ctx, channelID, callerID)
 	}
+	ch, _ := s.channels.GetByID(ctx, channelID)
+	var teamID *string
+	if ch != nil {
+		teamID = ch.TeamID
+	}
 	return s.channels.WithinTx(ctx, func(tx *gorm.DB) error {
-		if err := s.postSys(ctx, tx, channelID, callerID, memberLeftProps(callerID)); err != nil {
+		if err := s.postSys(ctx, tx, channelID, callerID, teamID, memberLeftProps(callerID)); err != nil {
 			return err
 		}
 		return s.channels.RemoveMemberTx(ctx, tx, channelID, callerID)
 	})
 }
 
-// requireAdminOrOwner returns nil iff callerID is a member of channelID with
-// Role >= Admin. ErrNotMember when not a member, ErrForbidden when role is
-// insufficient. Mirrors handler.requireAdminOrOwner exactly.
-func (s *ChannelService) requireAdminOrOwner(ctx context.Context, channelID, callerID int64) error {
+func (s *ChannelService) requireAdminOrOwner(ctx context.Context, channelID int64, callerID string) error {
 	m, err := s.channels.GetMember(ctx, channelID, callerID)
 	if err != nil {
 		if errors.Is(err, repo.ErrNotFound) {
@@ -335,4 +293,14 @@ func (s *ChannelService) requireAdminOrOwner(ctx context.Context, channelID, cal
 		return ErrForbidden
 	}
 	return nil
+}
+
+// nullIfEmpty wraps non-empty s in a pointer, returning nil for "". Used to
+// land "" team_id values as SQL NULL rather than empty-string TEXT — matches
+// the migration's `team_id TEXT NULL` semantics.
+func nullIfEmpty(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
 }

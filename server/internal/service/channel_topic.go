@@ -9,23 +9,22 @@ import (
 )
 
 // CreateTopicRequest groups CreateTopic args so the method stays within the
-// 5-arg limit. CallerID must be a member of ParentID; MemberIDs must be a
-// subset of ParentID's members.
+// 5-arg limit. CallerID is the requesting mm UserID; MemberIDs are the
+// initial topic members (must be a subset of parent's members). TeamID is
+// the team scope inherited from the parent channel.
 type CreateTopicRequest struct {
-	CallerID      int64
+	CallerID      string
+	TeamID        *string
 	ParentID      int64
 	RootMessageID int64
 	Name          string
-	MemberIDs     []int64
+	MemberIDs     []string
 }
 
 // CreateTopic creates a topic channel (子群聊) under req.ParentID, enforcing
 // authorization rules:
 //   - caller must be a member of parent
-//   - every requested MemberID must be a member of parent (topic members are
-//     a subset of the parent channel)
-//
-// Authentication + name validation are the transport layer's responsibility.
+//   - every requested MemberID must be a member of parent
 func (s *ChannelService) CreateTopic(ctx context.Context, req CreateTopicRequest) (*repo.Channel, error) {
 	ctx, span := tracer.Start(ctx, "ChannelService.CreateTopic")
 	defer span.End()
@@ -44,13 +43,14 @@ func (s *ChannelService) CreateTopic(ctx context.Context, req CreateTopicRequest
 		RootMessageID: req.RootMessageID,
 		Name:          req.Name,
 		CreatorID:     req.CallerID,
+		TeamID:        req.TeamID,
 		MemberIDs:     req.MemberIDs,
 	})
 }
 
 // ensureMembersSubset rejects with a clear error if any memberID is not a
-// parent-channel member. Keeps CreateTopic small and easy to read.
-func (s *ChannelService) ensureMembersSubset(ctx context.Context, parentID int64, memberIDs []int64) error {
+// parent-channel member.
+func (s *ChannelService) ensureMembersSubset(ctx context.Context, parentID int64, memberIDs []string) error {
 	if len(memberIDs) == 0 {
 		return nil
 	}
@@ -58,21 +58,20 @@ func (s *ChannelService) ensureMembersSubset(ctx context.Context, parentID int64
 	if err != nil {
 		return err
 	}
-	inParent := make(map[int64]struct{}, len(parentMembers))
+	inParent := make(map[string]struct{}, len(parentMembers))
 	for _, m := range parentMembers {
 		inParent[m.UserID] = struct{}{}
 	}
 	for _, uid := range memberIDs {
 		if _, ok := inParent[uid]; !ok {
-			return fmt.Errorf("user %d not a member of parent channel %d", uid, parentID)
+			return fmt.Errorf("user %s not a member of parent channel %d", uid, parentID)
 		}
 	}
 	return nil
 }
 
 // ListTopics returns all topic channels under parentID for the caller.
-// Caller must be a member of parent; returns ErrNotMember otherwise.
-func (s *ChannelService) ListTopics(ctx context.Context, callerID, parentID int64) ([]repo.Channel, error) {
+func (s *ChannelService) ListTopics(ctx context.Context, callerID string, parentID int64) ([]repo.Channel, error) {
 	ctx, span := tracer.Start(ctx, "ChannelService.ListTopics")
 	defer span.End()
 

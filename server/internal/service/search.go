@@ -10,26 +10,22 @@ import (
 // Search tunables — preserved verbatim from the legacy SearchHandler so the
 // per-type result budget is identical after the cut-over.
 const (
-	// SearchDefaultLimit is the per-type result count when the caller omits
-	// (or supplies an invalid) limit query parameter.
 	SearchDefaultLimit = 20
-	// SearchMaxLimit caps the per-type result count requested by callers.
-	SearchMaxLimit = 50
+	SearchMaxLimit     = 50
 )
 
 // SearchStore is the subset of repo.SearchRepo SearchService consumes.
-// Defined consumer-side (Go's "accept small interfaces" idiom) so the service
-// surface is documented at the call site. The production binding is
-// repo.SearchRepo — one repo backing all three lookups.
+//
+// M4: User search is gone — cses owns the user directory and im no longer
+// keeps a local users table. The transport layer documents the change as
+// "search type=users now returns an empty list; query the cses /search/user
+// endpoint instead".
 type SearchStore interface {
-	SearchMessages(ctx context.Context, q string, userID, channelID int64, limit int) ([]repo.MessageSearchResult, error)
-	SearchUsers(ctx context.Context, q string, callerID int64, limit int) ([]repo.User, error)
-	SearchChannels(ctx context.Context, q string, callerID int64, limit int) ([]repo.Channel, error)
+	SearchMessages(ctx context.Context, q string, userID string, channelID int64, limit int) ([]repo.MessageSearchResult, error)
+	SearchChannels(ctx context.Context, q string, callerID string, limit int) ([]repo.Channel, error)
 }
 
-// Search "type" filter values. Empty string means "all three" — match the
-// legacy handler exactly so existing clients continue to work after the
-// cut-over.
+// Search "type" filter values.
 const (
 	SearchTypeAll      = ""
 	SearchTypeMessages = "messages"
@@ -37,11 +33,7 @@ const (
 	SearchTypeChannels = "channels"
 )
 
-// SearchParams is the input to SearchService.Search. The transport layer is
-// responsible for query-string parsing; the service consumes typed values.
-//
-// Type "" means search every category. ChannelID > 0 restricts the messages
-// search to that channel — ignored for users/channels lookups (legacy parity).
+// SearchParams is the input to SearchService.Search.
 type SearchParams struct {
 	Query     string
 	Type      string
@@ -49,43 +41,30 @@ type SearchParams struct {
 	Limit     int
 }
 
-// SearchResult bundles the per-type lookup outcomes. A nil slice means "the
-// caller did not request this category" — distinct from "requested but no
-// matches" (empty non-nil slice). The transport layer relies on this
-// distinction to decide whether a key is emitted (`omitempty`-ish) in the
-// JSON envelope, matching the legacy SearchHandler wire format.
+// SearchResult bundles the per-type lookup outcomes.
+//
+// M4: Users is always nil — the JSON envelope still emits the key (legacy
+// clients that switch on `result.users === undefined` work unchanged) but it
+// resolves to an empty list at the wire boundary.
 type SearchResult struct {
 	Messages []repo.MessageSearchResult
-	Users    []repo.User
+	Users    []string // empty in M4 — kept for wire-shape compat
 	Channels []repo.Channel
 }
 
 // SearchService runs the multi-type search algorithm on top of SearchStore.
-// The fan-out + per-type budgeting is preserved verbatim from the legacy
-// handler.SearchHandler — see Search below for the decision matrix.
 type SearchService struct {
 	store SearchStore
 }
 
-// NewSearchService wires the supplied store. Production passes
-// repo.SearchRepo, which satisfies SearchStore by construction.
+// NewSearchService wires the supplied store.
 func NewSearchService(store SearchStore) *SearchService {
 	return &SearchService{store: store}
 }
 
 // Search runs the three lookups gated by p.Type and returns the per-type
 // results.
-//
-// Algorithm (preserved from the legacy handler):
-//  1. Validate the query string (non-empty after the transport's Get).
-//  2. Clamp limit to [1, SearchMaxLimit]; default to SearchDefaultLimit.
-//  3. For each requested type (all three when p.Type == ""), call the
-//     corresponding store method. A nil store result is normalised to an
-//     empty (but non-nil) slice — the transport layer uses non-nil to
-//     decide whether to emit the JSON key.
-//  4. Per-type errors abort the whole call (legacy log-and-500 behaviour);
-//     the transport wraps the error in a 500.
-func (s *SearchService) Search(ctx context.Context, callerID int64, p SearchParams) (SearchResult, error) {
+func (s *SearchService) Search(ctx context.Context, callerID string, p SearchParams) (SearchResult, error) {
 	ctx, span := tracer.Start(ctx, "SearchService.Search")
 	defer span.End()
 
@@ -115,14 +94,9 @@ func (s *SearchService) Search(ctx context.Context, callerID int64, p SearchPara
 	}
 
 	if p.Type == SearchTypeAll || p.Type == SearchTypeUsers {
-		users, err := s.store.SearchUsers(ctx, p.Query, callerID, limit)
-		if err != nil {
-			return SearchResult{}, fmt.Errorf("search users: %w", err)
-		}
-		if users == nil {
-			users = []repo.User{}
-		}
-		out.Users = users
+		// M4: no local users — return an empty slice so the JSON envelope
+		// still emits the key with the same shape.
+		out.Users = []string{}
 	}
 
 	if p.Type == SearchTypeAll || p.Type == SearchTypeChannels {

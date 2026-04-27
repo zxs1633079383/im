@@ -80,13 +80,13 @@ func NewRouting(rdb redis.UniversalClient, gatewayID string) *Routing {
 // connKey returns the Redis hash key holding userID's (deviceID → gatewayID)
 // map. All Lua scripts below must target this single key so Cluster routing
 // by hash slot stays correct.
-func connKey(userID int64) string {
-	return fmt.Sprintf("%s:user:%d", routingKeyPrefix, userID)
+func connKey(userID string) string {
+	return fmt.Sprintf("%s:user:%s", routingKeyPrefix, userID)
 }
 
 // Register records that deviceID for userID is connected to this gateway.
 // Sets a TTL on the hash key so stale entries expire automatically.
-func (r *Routing) Register(ctx context.Context, userID int64, deviceID string) error {
+func (r *Routing) Register(ctx context.Context, userID, deviceID string) error {
 	key := connKey(userID)
 	pipe := r.rdb.TxPipeline()
 	pipe.HSet(ctx, key, deviceID, r.gatewayID)
@@ -97,14 +97,14 @@ func (r *Routing) Register(ctx context.Context, userID int64, deviceID string) e
 }
 
 // Deregister removes the deviceID entry for userID.
-func (r *Routing) Deregister(ctx context.Context, userID int64, deviceID string) error {
+func (r *Routing) Deregister(ctx context.Context, userID, deviceID string) error {
 	err := r.rdb.HDel(ctx, connKey(userID), deviceID).Err()
 	recordRoutingOp(ctx, "deregister", err)
 	return err
 }
 
 // RefreshTTL resets the expiry of the routing key (call on each heartbeat).
-func (r *Routing) RefreshTTL(ctx context.Context, userID int64) error {
+func (r *Routing) RefreshTTL(ctx context.Context, userID string) error {
 	err := r.rdb.Expire(ctx, connKey(userID), connKeyTTL).Err()
 	recordRoutingOp(ctx, "expire", err)
 	return err
@@ -117,7 +117,7 @@ func (r *Routing) RefreshTTL(ctx context.Context, userID int64) error {
 // The gatewayID argument is authoritative — if the caller's bound gateway
 // (r.gatewayID) differs from the gatewayID argument, the argument wins so
 // Refresh stays usable in tests / future multi-gateway code paths.
-func (r *Routing) Refresh(ctx context.Context, userID int64, gatewayID string, connID string) error {
+func (r *Routing) Refresh(ctx context.Context, userID, gatewayID string, connID string) error {
 	key := connKey(userID)
 	_, err := refreshScript.Run(ctx, r.rdb,
 		[]string{key},
@@ -132,13 +132,13 @@ func (r *Routing) Refresh(ctx context.Context, userID int64, gatewayID string, c
 
 // Lookup returns the distinct gateway IDs that userID is currently connected to.
 // It is an alias for GatewayIDsForUser that matches the BACKEND.md naming.
-func (r *Routing) Lookup(ctx context.Context, userID int64) ([]string, error) {
+func (r *Routing) Lookup(ctx context.Context, userID string) ([]string, error) {
 	return r.GatewayIDsForUser(ctx, userID)
 }
 
 // GatewayIDsForUser returns the set of distinct gateway IDs that userID is connected to.
 // Returns an empty slice if the user has no active connections.
-func (r *Routing) GatewayIDsForUser(ctx context.Context, userID int64) ([]string, error) {
+func (r *Routing) GatewayIDsForUser(ctx context.Context, userID string) ([]string, error) {
 	m, err := r.rdb.HGetAll(ctx, connKey(userID)).Result()
 	recordRoutingOp(ctx, "lookup", err)
 	if err != nil {
@@ -156,7 +156,7 @@ func (r *Routing) GatewayIDsForUser(ctx context.Context, userID int64) ([]string
 }
 
 // DevicesForUser returns all device_id → gateway_id entries for userID.
-func (r *Routing) DevicesForUser(ctx context.Context, userID int64) (map[string]string, error) {
+func (r *Routing) DevicesForUser(ctx context.Context, userID string) (map[string]string, error) {
 	out, err := r.rdb.HGetAll(ctx, connKey(userID)).Result()
 	recordRoutingOp(ctx, "devices", err)
 	return out, err
@@ -170,7 +170,7 @@ func (r *Routing) DevicesForUser(ctx context.Context, userID int64) (map[string]
 // failures for a given gwID, so it tells routing to evict every device still
 // pointing there. The routing key itself stays if the user has other devices
 // on healthy pods.
-func (r *Routing) MarkOffline(ctx context.Context, userID int64, gatewayID string) (int, error) {
+func (r *Routing) MarkOffline(ctx context.Context, userID, gatewayID string) (int, error) {
 	if gatewayID == "" {
 		return 0, fmt.Errorf("routing mark offline: empty gatewayID")
 	}
@@ -191,14 +191,14 @@ func (r *Routing) MarkOffline(ctx context.Context, userID int64, gatewayID strin
 //
 // A single Redis error aborts — there is no partial result. Callers with
 // fallback needs should fan out to Lookup individually.
-func (r *Routing) LookupBatch(ctx context.Context, userIDs []int64) (map[int64][]string, error) {
-	out := make(map[int64][]string, len(userIDs))
+func (r *Routing) LookupBatch(ctx context.Context, userIDs []string) (map[string][]string, error) {
+	out := make(map[string][]string, len(userIDs))
 	if len(userIDs) == 0 {
 		return out, nil
 	}
 
 	pipe := r.rdb.Pipeline()
-	cmds := make(map[int64]*redis.MapStringStringCmd, len(userIDs))
+	cmds := make(map[string]*redis.MapStringStringCmd, len(userIDs))
 	for _, uid := range userIDs {
 		cmds[uid] = pipe.HGetAll(ctx, connKey(uid))
 	}

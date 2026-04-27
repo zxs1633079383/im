@@ -27,7 +27,7 @@ func NewQuickReplyService(replies repo.QuickReplyRepo) *QuickReplyService {
 
 // CreateQuickReplyParams is the input to Create.
 type CreateQuickReplyParams struct {
-	UserID    int64
+	UserID    string
 	Label     string
 	Content   string
 	SortOrder int
@@ -57,7 +57,7 @@ func (s *QuickReplyService) Create(ctx context.Context, p CreateQuickReplyParams
 }
 
 // List returns the caller's quick replies.
-func (s *QuickReplyService) List(ctx context.Context, callerID int64) ([]repo.QuickReply, error) {
+func (s *QuickReplyService) List(ctx context.Context, callerID string) ([]repo.QuickReply, error) {
 	ctx, span := tracer.Start(ctx, "QuickReplyService.List")
 	defer span.End()
 
@@ -65,7 +65,7 @@ func (s *QuickReplyService) List(ctx context.Context, callerID int64) ([]repo.Qu
 }
 
 // Update patches fields on a quick reply. Caller must be the owner.
-func (s *QuickReplyService) Update(ctx context.Context, id, callerID int64, patch repo.QuickReplyPatch) (*repo.QuickReply, error) {
+func (s *QuickReplyService) Update(ctx context.Context, id int64, callerID string, patch repo.QuickReplyPatch) (*repo.QuickReply, error) {
 	ctx, span := tracer.Start(ctx, "QuickReplyService.Update")
 	defer span.End()
 
@@ -83,7 +83,7 @@ func (s *QuickReplyService) Update(ctx context.Context, id, callerID int64, patc
 }
 
 // Delete removes a quick reply. Caller must be the owner.
-func (s *QuickReplyService) Delete(ctx context.Context, id, callerID int64) error {
+func (s *QuickReplyService) Delete(ctx context.Context, id int64, callerID string) error {
 	ctx, span := tracer.Start(ctx, "QuickReplyService.Delete")
 	defer span.End()
 

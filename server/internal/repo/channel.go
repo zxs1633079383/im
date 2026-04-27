@@ -26,8 +26,14 @@ const (
 
 // ChannelWithPreview is a Channel enriched with last-message info and unread
 // count for the calling user. Used to render channel lists in the UI.
+//
+// M4: PeerUserID replaces the joined display_name; for DM channels it carries
+// the mm UserID of the OTHER party so the front-end can fetch the profile
+// from the cses Redis. For group channels PeerUserID is empty and the
+// channel's own Name applies.
 type ChannelWithPreview struct {
 	Channel
+	PeerUserID     string    `gorm:"column:peer_user_id" json:"peer_user_id,omitempty"`
 	LastMsgContent string    `json:"last_msg_content"`
 	LastMsgAt      time.Time `json:"last_msg_at"`
 	UnreadCount    int64     `json:"unread_count"`
@@ -43,16 +49,16 @@ type ChannelRepo interface {
 	GetByID(ctx context.Context, id int64) (*Channel, error)
 	Update(ctx context.Context, channelID int64, name, avatarURL string) error
 	IncrementSeq(ctx context.Context, tx *gorm.DB, channelID int64) (int64, error)
-	AddMember(ctx context.Context, channelID, userID int64, role int16) error
-	RemoveMember(ctx context.Context, channelID, userID int64) error
-	GetMember(ctx context.Context, channelID, userID int64) (*ChannelMember, error)
+	AddMember(ctx context.Context, channelID int64, userID string, role int16) error
+	RemoveMember(ctx context.Context, channelID int64, userID string) error
+	GetMember(ctx context.Context, channelID int64, userID string) (*ChannelMember, error)
 	ListMembers(ctx context.Context, channelID int64) ([]ChannelMember, error)
-	ListByUser(ctx context.Context, userID int64) ([]Channel, error)
-	MarkRead(ctx context.Context, channelID, userID, seq int64) error
-	IncrementPhantomCount(ctx context.Context, tx *gorm.DB, channelID int64, excludeUserIDs []int64) error
-	FindDM(ctx context.Context, userA, userB int64) (*Channel, error)
-	ListByUserWithPreview(ctx context.Context, userID int64) ([]ChannelWithPreview, error)
-	GetMemberChannelSeqs(ctx context.Context, userID int64) (map[int64]int64, error)
+	ListByUser(ctx context.Context, userID string) ([]Channel, error)
+	MarkRead(ctx context.Context, channelID int64, userID string, seq int64) error
+	IncrementPhantomCount(ctx context.Context, tx *gorm.DB, channelID int64, excludeUserIDs []string) error
+	FindDM(ctx context.Context, userA, userB string) (*Channel, error)
+	ListByUserWithPreview(ctx context.Context, userID string) ([]ChannelWithPreview, error)
+	GetMemberChannelSeqs(ctx context.Context, userID string) (map[int64]int64, error)
 
 	// M3-A Topic (子群聊) 能力。CreateTopic 原子地创建 topic channel + 批量
 	// 注册成员；ListTopics 返回 parentID 下所有 topic（按 id 排序）。
@@ -61,17 +67,13 @@ type ChannelRepo interface {
 
 	// AddMemberTx / RemoveMemberTx are tx-aware siblings of AddMember /
 	// RemoveMember. They exist so service-layer code can compose a system
-	// message insert + the membership mutation inside a single transaction —
-	// required when the system message must fan out BEFORE the membership
-	// change takes effect (e.g. "member_removed" needs to reach the target
-	// while it is still a member of the channel).
-	AddMemberTx(ctx context.Context, tx *gorm.DB, channelID, userID int64, role int16) error
-	RemoveMemberTx(ctx context.Context, tx *gorm.DB, channelID, userID int64) error
+	// message insert + the membership mutation inside a single transaction.
+	AddMemberTx(ctx context.Context, tx *gorm.DB, channelID int64, userID string, role int16) error
+	RemoveMemberTx(ctx context.Context, tx *gorm.DB, channelID int64, userID string) error
 
 	// WithinTx runs fn inside a gorm transaction, exposing the tx handle so
 	// the caller can thread it through AddMemberTx / RemoveMemberTx /
-	// MessageRepo.AllocSeqAndInsert. The callback either returns nil (commit)
-	// or any error (rollback). Nested transactions reuse the outer one.
+	// MessageRepo.AllocSeqAndInsert.
 	WithinTx(ctx context.Context, fn func(tx *gorm.DB) error) error
 }
 
@@ -138,7 +140,7 @@ func (r *gormChannelRepo) IncrementSeq(ctx context.Context, tx *gorm.DB, channel
 	return seq, nil
 }
 
-func (r *gormChannelRepo) AddMember(ctx context.Context, channelID, userID int64, role int16) error {
+func (r *gormChannelRepo) AddMember(ctx context.Context, channelID int64, userID string, role int16) error {
 	return r.AddMemberTx(ctx, nil, channelID, userID, role)
 }
 
@@ -146,7 +148,7 @@ func (r *gormChannelRepo) AddMember(ctx context.Context, channelID, userID int64
 // back to the repo's own connection; otherwise the INSERT runs inside the
 // caller's transaction so membership changes can be atomic with sibling
 // writes (see ChannelService.AddMember → system message).
-func (r *gormChannelRepo) AddMemberTx(ctx context.Context, tx *gorm.DB, channelID, userID int64, role int16) error {
+func (r *gormChannelRepo) AddMemberTx(ctx context.Context, tx *gorm.DB, channelID int64, userID string, role int16) error {
 	m := &ChannelMember{
 		UserID:    userID,
 		ChannelID: channelID,
@@ -162,13 +164,13 @@ func (r *gormChannelRepo) AddMemberTx(ctx context.Context, tx *gorm.DB, channelI
 	return nil
 }
 
-func (r *gormChannelRepo) RemoveMember(ctx context.Context, channelID, userID int64) error {
+func (r *gormChannelRepo) RemoveMember(ctx context.Context, channelID int64, userID string) error {
 	return r.RemoveMemberTx(ctx, nil, channelID, userID)
 }
 
 // RemoveMemberTx is the tx-aware variant of RemoveMember. DELETE is idempotent
 // — zero rows matched is not an error, matching the existing pgx semantics.
-func (r *gormChannelRepo) RemoveMemberTx(ctx context.Context, tx *gorm.DB, channelID, userID int64) error {
+func (r *gormChannelRepo) RemoveMemberTx(ctx context.Context, tx *gorm.DB, channelID int64, userID string) error {
 	err := r.dbOr(ctx, tx).
 		Where("user_id = ? AND channel_id = ?", userID, channelID).
 		Delete(&ChannelMember{}).Error
@@ -178,15 +180,12 @@ func (r *gormChannelRepo) RemoveMemberTx(ctx context.Context, tx *gorm.DB, chann
 	return nil
 }
 
-// WithinTx runs fn inside a GORM transaction. The callback's return value
-// decides commit (nil) vs rollback (non-nil). Exposed on the repo so
-// service-layer code can thread the tx through AddMemberTx / RemoveMemberTx /
-// MessageRepo.AllocSeqAndInsert without depending on *gorm.DB directly.
+// WithinTx runs fn inside a GORM transaction.
 func (r *gormChannelRepo) WithinTx(ctx context.Context, fn func(tx *gorm.DB) error) error {
 	return r.db.WithContext(ctx).Transaction(fn)
 }
 
-func (r *gormChannelRepo) GetMember(ctx context.Context, channelID, userID int64) (*ChannelMember, error) {
+func (r *gormChannelRepo) GetMember(ctx context.Context, channelID int64, userID string) (*ChannelMember, error) {
 	var m ChannelMember
 	err := r.db.WithContext(ctx).
 		Where("user_id = ? AND channel_id = ?", userID, channelID).
@@ -211,10 +210,10 @@ func (r *gormChannelRepo) ListMembers(ctx context.Context, channelID int64) ([]C
 	return members, nil
 }
 
-func (r *gormChannelRepo) ListByUser(ctx context.Context, userID int64) ([]Channel, error) {
+func (r *gormChannelRepo) ListByUser(ctx context.Context, userID string) ([]Channel, error) {
 	var channels []Channel
 	err := r.db.WithContext(ctx).Raw(
-		`SELECT c.id, c.type, c.name, c.avatar_url, c.seq, c.creator_id, c.created_at, c.updated_at
+		`SELECT c.id, c.type, c.name, c.avatar_url, c.seq, c.creator_id, c.team_id, c.created_at, c.updated_at
 		 FROM channels c
 		 JOIN channel_members cm ON cm.channel_id = c.id
 		 WHERE cm.user_id = ?
@@ -227,7 +226,7 @@ func (r *gormChannelRepo) ListByUser(ctx context.Context, userID int64) ([]Chann
 	return channels, nil
 }
 
-func (r *gormChannelRepo) MarkRead(ctx context.Context, channelID, userID, seq int64) error {
+func (r *gormChannelRepo) MarkRead(ctx context.Context, channelID int64, userID string, seq int64) error {
 	err := r.db.WithContext(ctx).Exec(
 		`UPDATE channel_members
 		 SET last_read_seq = ?, phantom_at_read = phantom_count
@@ -243,17 +242,17 @@ func (r *gormChannelRepo) MarkRead(ctx context.Context, channelID, userID, seq i
 // IncrementPhantomCount bumps phantom_count for every member of channelID
 // EXCEPT the users in excludeUserIDs. excludeUserIDs may be empty/nil.
 // If tx is nil, runs against the repo's own connection.
-func (r *gormChannelRepo) IncrementPhantomCount(ctx context.Context, tx *gorm.DB, channelID int64, excludeUserIDs []int64) error {
-	// Normalise nil → empty slice so pq sends '{}'::bigint[] (not NULL).
+func (r *gormChannelRepo) IncrementPhantomCount(ctx context.Context, tx *gorm.DB, channelID int64, excludeUserIDs []string) error {
+	// Normalise nil → empty slice so pq sends '{}'::text[] (not NULL).
 	// `user_id != ALL(NULL)` evaluates to NULL and matches no rows, breaking
 	// the "exclude nobody" case.
 	if excludeUserIDs == nil {
-		excludeUserIDs = []int64{}
+		excludeUserIDs = []string{}
 	}
 	err := r.dbOr(ctx, tx).Exec(
 		`UPDATE channel_members SET phantom_count = phantom_count + 1
 		 WHERE channel_id = ? AND user_id != ALL(?)`,
-		channelID, pq.Int64Array(excludeUserIDs),
+		channelID, pq.StringArray(excludeUserIDs),
 	).Error
 	if err != nil {
 		return fmt.Errorf("increment phantom count: %w", err)
@@ -266,13 +265,11 @@ func (r *gormChannelRepo) IncrementPhantomCount(ctx context.Context, tx *gorm.DB
 //
 // Query shape: drive from channel_members(user_id=A)[PK] → filter DM channel
 // → EXISTS lookup on channel_members(channel_id, user_id=B) via the M3-C
-// index idx_channel_members_channel_user. Replaces the double INNER JOIN
-// that Postgres planned as a bitmap scan + re-filter under load (slow-sql
-// 3s in the 2026-04-24 pre-5 benchmark).
-func (r *gormChannelRepo) FindDM(ctx context.Context, userA, userB int64) (*Channel, error) {
+// index idx_channel_members_channel_user.
+func (r *gormChannelRepo) FindDM(ctx context.Context, userA, userB string) (*Channel, error) {
 	var ch Channel
 	err := r.db.WithContext(ctx).Raw(
-		`SELECT c.id, c.type, c.name, c.avatar_url, c.seq, c.creator_id, c.created_at, c.updated_at
+		`SELECT c.id, c.type, c.name, c.avatar_url, c.seq, c.creator_id, c.team_id, c.created_at, c.updated_at
 		 FROM channel_members ma
 		 JOIN channels c ON c.id = ma.channel_id AND c.type = ?
 		 WHERE ma.user_id = ?
@@ -295,18 +292,21 @@ func (r *gormChannelRepo) FindDM(ctx context.Context, userA, userB int64) (*Chan
 // ListByUserWithPreview returns channels for userID enriched with the last
 // message preview and the caller's unread count. Channels are ordered by
 // last activity (last message time, falling back to channel created_at).
-func (r *gormChannelRepo) ListByUserWithPreview(ctx context.Context, userID int64) ([]ChannelWithPreview, error) {
+//
+// M4: For DM channels, peer_user_id is the OTHER member's mm UserID (the
+// caller resolves the display name from cses Redis). Group channels keep
+// their own name and peer_user_id is empty.
+func (r *gormChannelRepo) ListByUserWithPreview(ctx context.Context, userID string) ([]ChannelWithPreview, error) {
 	var result []ChannelWithPreview
 	err := r.db.WithContext(ctx).Raw(
 		`SELECT
-		    c.id, c.type,
+		    c.id, c.type, c.name, c.avatar_url, c.seq, c.creator_id, c.team_id,
+		    c.created_at, c.updated_at,
 		    CASE WHEN c.type = 1 THEN (
-		        SELECT u.display_name FROM users u
-		        JOIN channel_members peer_cm ON peer_cm.channel_id = c.id AND peer_cm.user_id = u.id
-		        WHERE u.id != ?
+		        SELECT peer_cm.user_id FROM channel_members peer_cm
+		        WHERE peer_cm.channel_id = c.id AND peer_cm.user_id != ?
 		        LIMIT 1
-		    ) ELSE c.name END AS name,
-		    c.avatar_url, c.seq, c.creator_id, c.created_at, c.updated_at,
+		    ) ELSE '' END                                   AS peer_user_id,
 		    COALESCE(m.content, '')                         AS last_msg_content,
 		    COALESCE(m.created_at, c.created_at)            AS last_msg_at,
 		    GREATEST(
@@ -333,7 +333,7 @@ func (r *gormChannelRepo) ListByUserWithPreview(ctx context.Context, userID int6
 
 // GetMemberChannelSeqs returns {channel_id: seq} for every channel the user
 // belongs to. Used by the heartbeat to compute the pong diff.
-func (r *gormChannelRepo) GetMemberChannelSeqs(ctx context.Context, userID int64) (map[int64]int64, error) {
+func (r *gormChannelRepo) GetMemberChannelSeqs(ctx context.Context, userID string) (map[int64]int64, error) {
 	type row struct {
 		ID  int64
 		Seq int64

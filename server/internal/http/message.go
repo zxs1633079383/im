@@ -22,13 +22,13 @@ import (
 // phantom stripping) invoke BroadcastMessage twice — once for visible users
 // with the real message, once for the phantom bucket with a stripped variant.
 type MessagePusher interface {
-	BroadcastMessage(channelID int64, userIDs []int64, msg *repo.Message)
+	BroadcastMessage(channelID int64, userIDs []string, msg *repo.Message)
 }
 
 // ReadSyncPusher pushes read-receipt sync events to other devices of the same
 // user. Mirrors handler.ReadSyncPusher.
 type ReadSyncPusher interface {
-	PushReadSync(userID int64, channelID int64, readSeq int64)
+	PushReadSync(userID string, channelID, readSeq int64)
 }
 
 // MessageEventType is a typed alias for WS event name strings. The http
@@ -77,7 +77,7 @@ type sendMessageReq struct {
 	Content     string  `json:"content"`
 	ClientMsgID string  `json:"client_msg_id"`
 	MsgType     int16   `json:"msg_type"`
-	VisibleTo   []int64 `json:"visible_to"`
+	VisibleTo   []string `json:"visible_to"`
 	ReplyTo     *int64  `json:"reply_to"`
 	FileIDs     []int64 `json:"file_ids"`
 }
@@ -139,9 +139,15 @@ func RegisterMessageRoutes(authed *gin.RouterGroup, svc *service.MessageService,
 			return
 		}
 
+		teamID := teamIDFromCtx(c)
+		var teamPtr *string
+		if teamID != "" {
+			teamPtr = &teamID
+		}
 		msg, err := svc.SendMessage(c.Request.Context(), service.SendParams{
 			ChannelID:   channelID,
 			SenderID:    uid,
+			TeamID:      teamPtr,
 			Content:     in.Content,
 			MsgType:     in.MsgType,
 			ClientMsgID: in.ClientMsgID,
@@ -307,7 +313,7 @@ func RegisterMessageRoutes(authed *gin.RouterGroup, svc *service.MessageService,
 			return
 		}
 		limit := parseLimit(c.Query("limit"))
-		cursor := parseInt64(c.Query("cursor"), 0)
+		cursor := c.Query("cursor")
 
 		readers, next, err := svc.GetReaders(c.Request.Context(), msgID, uid, limit, cursor)
 		switch {
@@ -323,7 +329,7 @@ func RegisterMessageRoutes(authed *gin.RouterGroup, svc *service.MessageService,
 			return
 		}
 		if readers == nil {
-			readers = []int64{}
+			readers = []string{}
 		}
 		c.JSON(200, gin.H{"readers": readers, "next_cursor": next})
 	})
@@ -518,9 +524,9 @@ func pushToMembers(ctx context.Context, svc *service.MessageService, pusher Mess
 	}
 }
 
-// extractMemberUIDs returns the user_ids of the given channel members.
-func extractMemberUIDs(members []repo.ChannelMember) []int64 {
-	out := make([]int64, 0, len(members))
+// extractMemberUIDs returns the mm UserIDs of the given channel members.
+func extractMemberUIDs(members []repo.ChannelMember) []string {
+	out := make([]string, 0, len(members))
 	for _, m := range members {
 		out = append(out, m.UserID)
 	}
@@ -530,7 +536,7 @@ func extractMemberUIDs(members []repo.ChannelMember) []int64 {
 // bucketByVisibility splits directed-message recipients into users who can
 // see the full content and users who only see a phantom placeholder. The
 // sender always lands in the visible bucket so they see their own message.
-func bucketByVisibility(members []repo.ChannelMember, msg *repo.Message) (visible, phantom []int64) {
+func bucketByVisibility(members []repo.ChannelMember, msg *repo.Message) (visible, phantom []string) {
 	for _, m := range members {
 		if msg.IsVisibleTo(m.UserID) || m.UserID == msg.SenderID {
 			visible = append(visible, m.UserID)

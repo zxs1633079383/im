@@ -14,9 +14,10 @@ const (
 	sendBufSize = 256
 )
 
-// Conn represents one authenticated WebSocket connection.
+// Conn represents one authenticated WebSocket connection. M4: UserID is the
+// resolved Mattermost user id (24-char hex string) carried on every push.
 type Conn struct {
-	UserID   int64
+	UserID   string
 	DeviceID string // e.g. "web-<uuid>" or from JWT claim
 
 	ws   *websocket.Conn
@@ -39,7 +40,7 @@ type Conn struct {
 }
 
 // NewConn creates a new Conn and starts its writePump goroutine.
-func NewConn(userID int64, deviceID string, ws *websocket.Conn, hub *Hub) *Conn {
+func NewConn(userID, deviceID string, ws *websocket.Conn, hub *Hub) *Conn {
 	c := &Conn{
 		UserID:   userID,
 		DeviceID: deviceID,

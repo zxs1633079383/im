@@ -28,14 +28,15 @@ func main() {
 // ---------- wire types ----------
 
 type incomingMessage struct {
-	GatewayID   string  `json:"gateway_id"`
-	ChannelID   int64   `json:"channel_id"`
-	SenderID    int64   `json:"sender_id"`
-	ClientMsgID string  `json:"client_msg_id"`
-	MsgType     int16   `json:"msg_type"`
-	Content     string  `json:"content"`
-	VisibleTo   []int64 `json:"visible_to,omitempty"`
-	ReplyTo     *int64  `json:"reply_to,omitempty"`
+	GatewayID   string   `json:"gateway_id"`
+	ChannelID   int64    `json:"channel_id"`
+	SenderID    string   `json:"sender_id"`
+	TeamID      *string  `json:"team_id,omitempty"`
+	ClientMsgID string   `json:"client_msg_id"`
+	MsgType     int16    `json:"msg_type"`
+	Content     string   `json:"content"`
+	VisibleTo   []string `json:"visible_to,omitempty"`
+	ReplyTo     *int64   `json:"reply_to,omitempty"`
 }
 
 type deliveryEvent struct {
@@ -43,7 +44,7 @@ type deliveryEvent struct {
 	ServerMsgID int64  `json:"server_msg_id"`
 	ChannelID   int64  `json:"channel_id"`
 	Seq         int64  `json:"seq"`
-	SenderID    int64  `json:"sender_id"`
+	SenderID    string `json:"sender_id"`
 }
 
 // (legacy pulsarPushEvent has been deleted — cmd/message now publishes via
@@ -84,10 +85,11 @@ func (svc *messageService) handle(ctx context.Context, data []byte) error {
 	msg := &repo.Message{
 		ChannelID:   in.ChannelID,
 		SenderID:    in.SenderID,
+		TeamID:      in.TeamID,
 		ClientMsgID: in.ClientMsgID,
 		MsgType:     msgType,
 		Content:     in.Content,
-		VisibleTo:   pq.Int64Array(in.VisibleTo),
+		VisibleTo:   pq.StringArray(in.VisibleTo),
 		ReplyTo:     in.ReplyTo,
 	}
 
@@ -111,7 +113,7 @@ func (svc *messageService) handle(ctx context.Context, data []byte) error {
 			SenderID:    msg.SenderID,
 		}
 		topic := "msg.deliver." + in.GatewayID
-		key := fmt.Sprintf("%d", msg.SenderID)
+		key := msg.SenderID
 		if err := svc.producer.Send(ctx, key, event); err != nil {
 			svc.log.Warn("publish delivery event failed", "topic", topic, "error", err)
 		}
@@ -154,7 +156,7 @@ func (svc *messageService) pushToMembers(ctx context.Context, msg *repo.Message)
 // routing.LookupBatch does one Redis round-trip for the whole set so we pay
 // O(1) network per call regardless of bucket size.
 func (svc *messageService) broadcastBucket(
-	ctx context.Context, msg *repo.Message, userIDs []int64, phantomVariant bool,
+	ctx context.Context, msg *repo.Message, userIDs []string, phantomVariant bool,
 ) {
 	payload := buildPushPayload(msg, phantomVariant)
 	rawPayload, err := json.Marshal(payload)
@@ -193,7 +195,7 @@ func (svc *messageService) broadcastBucket(
 // bucketByVisibility splits members into a visible bucket (sees real content)
 // and a phantom bucket (sees placeholder); the sender always lands in visible
 // so they see their own message.
-func bucketByVisibility(members []repo.ChannelMember, msg *repo.Message) (visible, phantom []int64) {
+func bucketByVisibility(members []repo.ChannelMember, msg *repo.Message) (visible, phantom []string) {
 	for _, m := range members {
 		if msg.VisibleTo == nil || msg.IsVisibleTo(m.UserID) || m.UserID == msg.SenderID {
 			visible = append(visible, m.UserID)
@@ -207,8 +209,8 @@ func bucketByVisibility(members []repo.ChannelMember, msg *repo.Message) (visibl
 // bucketByGateway groups (uid → gwID list) into (gwID → uid list) skipping
 // offline users (empty gwID list). De-duplicates per-uid multi-device entries
 // so the same envelope does not carry duplicate TargetUIDs.
-func bucketByGateway(gwMap map[int64][]string) map[string][]int64 {
-	out := make(map[string][]int64, len(gwMap))
+func bucketByGateway(gwMap map[string][]string) map[string][]string {
+	out := make(map[string][]string, len(gwMap))
 	for uid, gwIDs := range gwMap {
 		seen := make(map[string]struct{}, len(gwIDs))
 		for _, gw := range gwIDs {
@@ -247,7 +249,7 @@ func buildPushPayload(msg *repo.Message, phantomVariant bool) gateway.PushMsgPay
 		SenderID:  msg.SenderID,
 		Content:   msg.Content,
 		MsgType:   msg.MsgType,
-		VisibleTo: []int64(msg.VisibleTo),
+		VisibleTo: []string(msg.VisibleTo),
 		CreatedAt: msg.CreatedAt,
 	}
 }

@@ -14,24 +14,26 @@ import (
 // tx == nil runs on the repo's own connection; tx != nil reuses the caller's
 // transaction (required when the system message must be atomic with a sibling
 // mutation, e.g. RemoveMember).
+//
+// teamID denormalises onto messages.team_id; pass nil for "no team scope"
+// (matches NULL in PG).
 func (s *ChannelService) postSys(
 	ctx context.Context, tx *gorm.DB,
-	channelID, actorID int64, props map[string]any,
+	channelID int64, actorID string, teamID *string, props map[string]any,
 ) error {
 	if s.messages == nil {
 		return nil
 	}
-	if _, err := s.messages.PostSystemMessage(ctx, tx, channelID, actorID, props); err != nil {
+	if _, err := s.messages.PostSystemMessage(ctx, tx, channelID, actorID, teamID, props); err != nil {
 		return fmt.Errorf("post system message: %w", err)
 	}
 	return nil
 }
 
 // channelUpdatedProps builds the props payload for channel_updated events.
-// Empty fields are still included so clients can distinguish "cleared" from
-// "unchanged" if they ever need to (current wire shape: both name and avatar
-// are always sent, matching the PUT body).
-func channelUpdatedProps(actorID int64, name, avatarURL string) map[string]any {
+// actor_id / target_id are mm UserIDs (24-hex strings) so clients can resolve
+// them via the cses Redis "User" hash.
+func channelUpdatedProps(actorID, name, avatarURL string) map[string]any {
 	return map[string]any{
 		repo.SysTypeKey: repo.SysTypeChannelUpdated,
 		"actor_id":      actorID,
@@ -40,9 +42,7 @@ func channelUpdatedProps(actorID int64, name, avatarURL string) map[string]any {
 	}
 }
 
-// memberJoinedProps builds the props payload for member_joined events.
-// actorID is the user who performed the add (== target for self-add flows).
-func memberJoinedProps(actorID, targetID int64) map[string]any {
+func memberJoinedProps(actorID, targetID string) map[string]any {
 	return map[string]any{
 		repo.SysTypeKey: repo.SysTypeMemberJoined,
 		"actor_id":      actorID,
@@ -50,8 +50,7 @@ func memberJoinedProps(actorID, targetID int64) map[string]any {
 	}
 }
 
-// memberRemovedProps builds the props payload for member_removed events.
-func memberRemovedProps(actorID, targetID int64) map[string]any {
+func memberRemovedProps(actorID, targetID string) map[string]any {
 	return map[string]any{
 		repo.SysTypeKey: repo.SysTypeMemberRemoved,
 		"actor_id":      actorID,
@@ -59,20 +58,14 @@ func memberRemovedProps(actorID, targetID int64) map[string]any {
 	}
 }
 
-// memberLeftProps builds the props payload for voluntary member_left events.
-// Distinct from memberRemovedProps because clients render them differently
-// ("X left the channel" vs "X was removed by Y").
-func memberLeftProps(actorID int64) map[string]any {
+func memberLeftProps(actorID string) map[string]any {
 	return map[string]any{
 		repo.SysTypeKey: repo.SysTypeMemberLeft,
 		"actor_id":      actorID,
 	}
 }
 
-// channelCreatedProps builds the props payload for channel_created events.
-// Used once when a Group channel is first created so its member list has an
-// anchor system message at seq=1.
-func channelCreatedProps(actorID int64, name string) map[string]any {
+func channelCreatedProps(actorID, name string) map[string]any {
 	return map[string]any{
 		repo.SysTypeKey: repo.SysTypeChannelCreated,
 		"actor_id":      actorID,

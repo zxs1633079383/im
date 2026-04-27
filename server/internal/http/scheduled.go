@@ -16,7 +16,7 @@ type createScheduledReq struct {
 	ChannelID   int64     `json:"channel_id"`
 	Content     string    `json:"content"`
 	MsgType     int16     `json:"msg_type"`
-	VisibleTo   []int64   `json:"visible_to"`
+	VisibleTo   []string  `json:"visible_to"`
 	ReplyTo     *int64    `json:"reply_to"`
 	FileIDs     []int64   `json:"file_ids"`
 	ScheduledAt time.Time `json:"scheduled_at"`

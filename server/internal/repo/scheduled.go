@@ -21,20 +21,20 @@ const (
 // ScheduledMessage maps the scheduled_messages table. VisibleTo / FileIDs are
 // Postgres BIGINT[] carried as pq.Int64Array for zero-alloc roundtripping.
 type ScheduledMessage struct {
-	ID                 int64         `gorm:"primaryKey;autoIncrement"                      json:"id"`
-	ChannelID          int64         `gorm:"column:channel_id;not null"                    json:"channel_id"`
-	SenderID           int64         `gorm:"column:sender_id;not null"                     json:"sender_id"`
-	Content            string        `gorm:"not null"                                      json:"content"`
-	MsgType            int16         `gorm:"column:msg_type;not null;default:1"            json:"msg_type"`
-	VisibleTo          pq.Int64Array `gorm:"column:visible_to;type:bigint[]"               json:"visible_to,omitempty"`
-	ReplyTo            *int64        `gorm:"column:reply_to"                               json:"reply_to,omitempty"`
-	FileIDs            pq.Int64Array `gorm:"column:file_ids;type:bigint[]"                 json:"file_ids,omitempty"`
-	ScheduledAt        time.Time     `gorm:"column:scheduled_at;not null"                  json:"scheduled_at"`
-	Status             int16         `gorm:"not null;default:0"                            json:"status"`
-	DeliveredMessageID *int64        `gorm:"column:delivered_message_id"                   json:"delivered_message_id,omitempty"`
-	Error              string        `gorm:"column:error"                                  json:"error,omitempty"`
-	CreatedAt          time.Time     `gorm:"column:created_at;not null;default:now()"      json:"created_at"`
-	UpdatedAt          time.Time     `gorm:"column:updated_at;not null;default:now()"      json:"updated_at"`
+	ID                 int64          `gorm:"primaryKey;autoIncrement"                      json:"id"`
+	ChannelID          int64          `gorm:"column:channel_id;not null"                    json:"channel_id"`
+	SenderID           string         `gorm:"column:sender_id;type:text;not null"           json:"sender_id"`
+	Content            string         `gorm:"not null"                                      json:"content"`
+	MsgType            int16          `gorm:"column:msg_type;not null;default:1"            json:"msg_type"`
+	VisibleTo          pq.StringArray `gorm:"column:visible_to;type:text[]"                 json:"visible_to,omitempty"`
+	ReplyTo            *int64         `gorm:"column:reply_to"                               json:"reply_to,omitempty"`
+	FileIDs            pq.Int64Array  `gorm:"column:file_ids;type:bigint[]"                 json:"file_ids,omitempty"`
+	ScheduledAt        time.Time      `gorm:"column:scheduled_at;not null"                  json:"scheduled_at"`
+	Status             int16          `gorm:"not null;default:0"                            json:"status"`
+	DeliveredMessageID *int64         `gorm:"column:delivered_message_id"                   json:"delivered_message_id,omitempty"`
+	Error              string         `gorm:"column:error"                                  json:"error,omitempty"`
+	CreatedAt          time.Time      `gorm:"column:created_at;not null;default:now()"      json:"created_at"`
+	UpdatedAt          time.Time      `gorm:"column:updated_at;not null;default:now()"      json:"updated_at"`
 }
 
 // TableName pins the GORM-derived table name to the migration.
@@ -46,12 +46,12 @@ func (ScheduledMessage) TableName() string { return "scheduled_messages" }
 type ScheduledRepo interface {
 	Create(ctx context.Context, s *ScheduledMessage) error
 	GetByID(ctx context.Context, id int64) (*ScheduledMessage, error)
-	Cancel(ctx context.Context, id, senderID int64) error
+	Cancel(ctx context.Context, id int64, senderID string) error
 
 	// ListBySender returns the caller's queue. When statusFilter >= 0, only
 	// rows with that status are returned; -1 returns every status. Ordered
 	// by scheduled_at DESC.
-	ListBySender(ctx context.Context, senderID int64, statusFilter int16, limit int, cursor int64) ([]ScheduledMessage, error)
+	ListBySender(ctx context.Context, senderID string, statusFilter int16, limit int, cursor int64) ([]ScheduledMessage, error)
 
 	// FetchDue returns up to limit pending rows with scheduled_at <= now,
 	// ordered oldest-first. Worker should lock semantics come later — this
@@ -92,7 +92,7 @@ func (r *gormScheduledRepo) GetByID(ctx context.Context, id int64) (*ScheduledMe
 // Cancel transitions a pending scheduled message to cancelled. Only the sender
 // may cancel — enforced in the WHERE clause. RowsAffected = 0 → ErrNotFound
 // (the row may have already delivered or never existed).
-func (r *gormScheduledRepo) Cancel(ctx context.Context, id, senderID int64) error {
+func (r *gormScheduledRepo) Cancel(ctx context.Context, id int64, senderID string) error {
 	res := r.db.WithContext(ctx).Model(&ScheduledMessage{}).
 		Where("id = ? AND sender_id = ? AND status = ?", id, senderID, ScheduledStatusPending).
 		Updates(map[string]any{
@@ -109,7 +109,7 @@ func (r *gormScheduledRepo) Cancel(ctx context.Context, id, senderID int64) erro
 }
 
 // ListBySender returns messages filed by senderID.
-func (r *gormScheduledRepo) ListBySender(ctx context.Context, senderID int64, statusFilter int16, limit int, cursor int64) ([]ScheduledMessage, error) {
+func (r *gormScheduledRepo) ListBySender(ctx context.Context, senderID string, statusFilter int16, limit int, cursor int64) ([]ScheduledMessage, error) {
 	q := r.db.WithContext(ctx).
 		Where("sender_id = ?", senderID).
 		Order("scheduled_at DESC")

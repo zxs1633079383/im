@@ -23,7 +23,7 @@ func (_m *UserSettingsRepoMock) EXPECT() *UserSettingsRepoMock_Expecter {
 }
 
 // Get provides a mock function with given fields: ctx, userID
-func (_m *UserSettingsRepoMock) Get(ctx context.Context, userID int64) (*repo.UserSettings, error) {
+func (_m *UserSettingsRepoMock) Get(ctx context.Context, userID string) (*repo.UserSettings, error) {
 	ret := _m.Called(ctx, userID)
 
 	if len(ret) == 0 {
@@ -32,10 +32,10 @@ func (_m *UserSettingsRepoMock) Get(ctx context.Context, userID int64) (*repo.Us
 
 	var r0 *repo.UserSettings
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, int64) (*repo.UserSettings, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string) (*repo.UserSettings, error)); ok {
 		return rf(ctx, userID)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, int64) *repo.UserSettings); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string) *repo.UserSettings); ok {
 		r0 = rf(ctx, userID)
 	} else {
 		if ret.Get(0) != nil {
@@ -43,7 +43,7 @@ func (_m *UserSettingsRepoMock) Get(ctx context.Context, userID int64) (*repo.Us
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, int64) error); ok {
+	if rf, ok := ret.Get(1).(func(context.Context, string) error); ok {
 		r1 = rf(ctx, userID)
 	} else {
 		r1 = ret.Error(1)
@@ -59,14 +59,14 @@ type UserSettingsRepoMock_Get_Call struct {
 
 // Get is a helper method to define mock.On call
 //   - ctx context.Context
-//   - userID int64
+//   - userID string
 func (_e *UserSettingsRepoMock_Expecter) Get(ctx interface{}, userID interface{}) *UserSettingsRepoMock_Get_Call {
 	return &UserSettingsRepoMock_Get_Call{Call: _e.mock.On("Get", ctx, userID)}
 }
 
-func (_c *UserSettingsRepoMock_Get_Call) Run(run func(ctx context.Context, userID int64)) *UserSettingsRepoMock_Get_Call {
+func (_c *UserSettingsRepoMock_Get_Call) Run(run func(ctx context.Context, userID string)) *UserSettingsRepoMock_Get_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(int64))
+		run(args[0].(context.Context), args[1].(string))
 	})
 	return _c
 }
@@ -76,7 +76,7 @@ func (_c *UserSettingsRepoMock_Get_Call) Return(_a0 *repo.UserSettings, _a1 erro
 	return _c
 }
 
-func (_c *UserSettingsRepoMock_Get_Call) RunAndReturn(run func(context.Context, int64) (*repo.UserSettings, error)) *UserSettingsRepoMock_Get_Call {
+func (_c *UserSettingsRepoMock_Get_Call) RunAndReturn(run func(context.Context, string) (*repo.UserSettings, error)) *UserSettingsRepoMock_Get_Call {
 	_c.Call.Return(run)
 	return _c
 }

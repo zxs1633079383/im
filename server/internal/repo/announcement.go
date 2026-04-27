@@ -16,7 +16,7 @@ import (
 type Announcement struct {
 	ID        int64     `gorm:"primaryKey;autoIncrement"                                  json:"id"`
 	ChannelID int64     `gorm:"column:channel_id;not null"                                json:"channel_id"`
-	CreatorID int64     `gorm:"column:creator_id;not null"                                json:"creator_id"`
+	CreatorID string    `gorm:"column:creator_id;type:text;not null"                      json:"creator_id"`
 	Title     string    `gorm:"not null"                                                  json:"title"`
 	Content   string    `gorm:"not null"                                                  json:"content"`
 	Props     string    `gorm:"type:jsonb;not null;default:'{}'"                          json:"props"`
@@ -32,7 +32,7 @@ func (Announcement) TableName() string { return "announcements" }
 // acknowledged a specific announcement.
 type AnnouncementAck struct {
 	AnnouncementID int64     `gorm:"column:announcement_id;primaryKey"                          json:"announcement_id"`
-	UserID         int64     `gorm:"column:user_id;primaryKey"                                  json:"user_id"`
+	UserID         string    `gorm:"column:user_id;type:text;primaryKey"                        json:"user_id"`
 	AcknowledgedAt time.Time `gorm:"column:acknowledged_at;not null;default:now()"              json:"acknowledged_at"`
 }
 
@@ -46,7 +46,7 @@ type AnnouncementRepo interface {
 	ListByChannel(ctx context.Context, channelID int64, limit, offset int) ([]Announcement, error)
 	SoftDelete(ctx context.Context, id int64) error
 
-	AddAck(ctx context.Context, announcementID, userID int64) error
+	AddAck(ctx context.Context, announcementID int64, userID string) error
 	ListAcks(ctx context.Context, announcementID int64) ([]AnnouncementAck, error)
 }
 
@@ -113,7 +113,7 @@ func (r *gormAnnouncementRepo) SoftDelete(ctx context.Context, id int64) error {
 }
 
 // AddAck inserts an ack row. Idempotent via ON CONFLICT DO NOTHING.
-func (r *gormAnnouncementRepo) AddAck(ctx context.Context, announcementID, userID int64) error {
+func (r *gormAnnouncementRepo) AddAck(ctx context.Context, announcementID int64, userID string) error {
 	ack := &AnnouncementAck{AnnouncementID: announcementID, UserID: userID}
 	err := r.db.WithContext(ctx).Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "announcement_id"}, {Name: "user_id"}},

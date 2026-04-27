@@ -55,7 +55,7 @@ func NewFileService(files FileStore, uploadDir string) *FileService {
 // multipart.FileHeader (Gin's c.FormFile) or any other source — the service
 // only depends on size, name, mime, and an io.Reader.
 type UploadInput struct {
-	UploaderID int64
+	UploaderID string
 	FileName   string
 	MimeType   string
 	Size       int64
@@ -88,7 +88,7 @@ func (s *FileService) Upload(ctx context.Context, in UploadInput) (*repo.File, e
 	}
 
 	safeName := SanitizeFilename(in.FileName)
-	storageName := fmt.Sprintf("%d_%d_%s", in.UploaderID, now.UnixNano(), safeName)
+	storageName := fmt.Sprintf("%s_%d_%s", in.UploaderID, now.UnixNano(), safeName)
 	storagePath := filepath.Join(subDir, storageName)
 
 	dst, err := os.Create(storagePath)

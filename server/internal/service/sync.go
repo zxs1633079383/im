@@ -30,13 +30,13 @@ const (
 // Defined consumer-side (Go's "accept small interfaces" idiom) so the service
 // surface is documented at the call site.
 type SyncChannelStore interface {
-	GetMemberChannelSeqs(ctx context.Context, userID int64) (map[int64]int64, error)
-	GetMember(ctx context.Context, channelID, userID int64) (*repo.ChannelMember, error)
+	GetMemberChannelSeqs(ctx context.Context, userID string) (map[int64]int64, error)
+	GetMember(ctx context.Context, channelID int64, userID string) (*repo.ChannelMember, error)
 }
 
 // SyncMsgStore is the subset of repo.MessageRepo SyncService needs.
 type SyncMsgStore interface {
-	FetchForUser(ctx context.Context, channelID, userID int64, afterSeq int64, limit int) ([]repo.Message, error)
+	FetchForUser(ctx context.Context, channelID int64, userID string, afterSeq int64, limit int) ([]repo.Message, error)
 }
 
 // SyncCursor is one channel cursor from the client.
@@ -108,7 +108,7 @@ func NewSyncService(channels SyncChannelStore, messages SyncMsgStore) *SyncServi
 // non-fatal (the channel still appears with empty Messages, matching the
 // legacy log-and-continue behaviour); the transport layer is responsible
 // for logging.
-func (s *SyncService) Sync(ctx context.Context, callerID int64, p SyncParams) (SyncResult, error) {
+func (s *SyncService) Sync(ctx context.Context, callerID string, p SyncParams) (SyncResult, error) {
 	ctx, span := tracer.Start(ctx, "SyncService.Sync")
 	defer span.End()
 
@@ -209,7 +209,7 @@ func recordSyncMetrics(ctx context.Context, results []SyncChannelDelta) {
 // fetchLatest returns up to limit messages with seq <= serverSeq for
 // (chID, userID), ordered ascending. Implemented in terms of FetchForUser
 // (which returns seq > afterSeq) by computing afterSeq = serverSeq - limit.
-func (s *SyncService) fetchLatest(ctx context.Context, chID, userID, serverSeq int64, limit int) ([]repo.Message, error) {
+func (s *SyncService) fetchLatest(ctx context.Context, chID int64, userID string, serverSeq int64, limit int) ([]repo.Message, error) {
 	afterSeq := serverSeq - int64(limit)
 	if afterSeq < 0 {
 		afterSeq = 0

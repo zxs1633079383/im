@@ -10,36 +10,31 @@ import (
 
 // PatchChannelFields is the service-layer mirror of repo.PatchChannelFields,
 // re-exported so HTTP handlers can construct it without reaching into the
-// repo package directly. nil means "leave unchanged".
+// repo package directly.
 type PatchChannelFields = repo.PatchChannelFields
 
 // ChannelGovernanceService layers fine-grained channel governance on top of
-// the base ChannelService. It owns its own *ChannelRepo + *ChannelGovernanceRepo
-// pair; the base ChannelService is re-used for the shared permission helpers.
+// the base ChannelService. M4 drops the UserRepo dependency — user identity
+// comes from the resolved Mattermost cookie.
 type ChannelGovernanceService struct {
 	channels   repo.ChannelRepo
 	governance repo.ChannelGovernanceRepo
-	users      repo.UserRepo
 }
 
 // NewChannelGovernanceService wires the repos.
 func NewChannelGovernanceService(
 	channels repo.ChannelRepo,
 	governance repo.ChannelGovernanceRepo,
-	users repo.UserRepo,
 ) *ChannelGovernanceService {
 	return &ChannelGovernanceService{
 		channels:   channels,
 		governance: governance,
-		users:      users,
 	}
 }
 
-// PatchChannel applies p to channelID. Requires caller to be owner OR manager
-// (via legacy role or via channel_managers table). Returns the post-update
-// Channel so the HTTP layer can echo it back.
+// PatchChannel applies p to channelID. Owner+manager required.
 func (s *ChannelGovernanceService) PatchChannel(
-	ctx context.Context, channelID, callerID int64, p PatchChannelFields,
+	ctx context.Context, channelID int64, callerID string, p PatchChannelFields,
 ) (*repo.Channel, error) {
 	ctx, span := tracer.Start(ctx, "ChannelGovernanceService.PatchChannel")
 	defer span.End()
@@ -53,10 +48,9 @@ func (s *ChannelGovernanceService) PatchChannel(
 	return s.channels.GetByID(ctx, channelID)
 }
 
-// AddManager inserts targetID as a manager of channelID. Only the channel
-// owner may add managers.
+// AddManager inserts targetID as a manager of channelID. Owner-only.
 func (s *ChannelGovernanceService) AddManager(
-	ctx context.Context, channelID, callerID, targetID int64,
+	ctx context.Context, channelID int64, callerID, targetID string,
 ) error {
 	ctx, span := tracer.Start(ctx, "ChannelGovernanceService.AddManager")
 	defer span.End()
@@ -64,7 +58,6 @@ func (s *ChannelGovernanceService) AddManager(
 	if err := s.requireOwner(ctx, channelID, callerID); err != nil {
 		return err
 	}
-	// Target must be a member of the channel.
 	if _, err := s.channels.GetMember(ctx, channelID, targetID); err != nil {
 		if errors.Is(err, repo.ErrNotFound) {
 			return ErrTargetNotMember
@@ -74,9 +67,9 @@ func (s *ChannelGovernanceService) AddManager(
 	return s.governance.AddManager(ctx, channelID, targetID, callerID)
 }
 
-// RemoveManager removes targetID from channel_managers. Only owner may remove.
+// RemoveManager removes targetID from channel_managers. Owner-only.
 func (s *ChannelGovernanceService) RemoveManager(
-	ctx context.Context, channelID, callerID, targetID int64,
+	ctx context.Context, channelID int64, callerID, targetID string,
 ) error {
 	if err := s.requireOwner(ctx, channelID, callerID); err != nil {
 		return err
@@ -84,11 +77,10 @@ func (s *ChannelGovernanceService) RemoveManager(
 	return s.governance.RemoveManager(ctx, channelID, targetID)
 }
 
-// ListManagers returns user IDs of managers in channelID. Callers must be
-// channel members.
+// ListManagers returns mm UserIDs of managers in channelID. Members only.
 func (s *ChannelGovernanceService) ListManagers(
-	ctx context.Context, channelID, callerID int64,
-) ([]int64, error) {
+	ctx context.Context, channelID int64, callerID string,
+) ([]string, error) {
 	if err := s.requireMember(ctx, channelID, callerID); err != nil {
 		return nil, err
 	}
@@ -97,7 +89,7 @@ func (s *ChannelGovernanceService) ListManagers(
 
 // PinMessage pins msgID in channelID. Manager+ only.
 func (s *ChannelGovernanceService) PinMessage(
-	ctx context.Context, channelID, callerID, msgID int64,
+	ctx context.Context, channelID int64, callerID string, msgID int64,
 ) error {
 	ctx, span := tracer.Start(ctx, "ChannelGovernanceService.PinMessage")
 	defer span.End()
@@ -110,7 +102,7 @@ func (s *ChannelGovernanceService) PinMessage(
 
 // UnpinMessage removes the pin for msgID. Manager+ only.
 func (s *ChannelGovernanceService) UnpinMessage(
-	ctx context.Context, channelID, callerID, msgID int64,
+	ctx context.Context, channelID int64, callerID string, msgID int64,
 ) error {
 	if err := s.requireManagerOrOwner(ctx, channelID, callerID); err != nil {
 		return err
@@ -120,7 +112,7 @@ func (s *ChannelGovernanceService) UnpinMessage(
 
 // ListPins returns pinned message IDs for channelID. Members may view.
 func (s *ChannelGovernanceService) ListPins(
-	ctx context.Context, channelID, callerID int64,
+	ctx context.Context, channelID int64, callerID string,
 ) ([]int64, error) {
 	if err := s.requireMember(ctx, channelID, callerID); err != nil {
 		return nil, err
@@ -128,9 +120,9 @@ func (s *ChannelGovernanceService) ListPins(
 	return s.governance.ListPins(ctx, channelID)
 }
 
-// UpdateMemberRole updates a member's role. Only owner may update.
+// UpdateMemberRole updates a member's role. Owner-only.
 func (s *ChannelGovernanceService) UpdateMemberRole(
-	ctx context.Context, channelID, callerID, targetID int64, role int16,
+	ctx context.Context, channelID int64, callerID, targetID string, role int16,
 ) error {
 	if err := s.requireOwner(ctx, channelID, callerID); err != nil {
 		return err
@@ -139,9 +131,8 @@ func (s *ChannelGovernanceService) UpdateMemberRole(
 }
 
 // UpdateMemberNotifyPref lets the caller update their OWN notify_pref only.
-// (A user doesn't get to change someone else's notification preference.)
 func (s *ChannelGovernanceService) UpdateMemberNotifyPref(
-	ctx context.Context, channelID, callerID int64, pref int16,
+	ctx context.Context, channelID int64, callerID string, pref int16,
 ) error {
 	if err := s.requireMember(ctx, channelID, callerID); err != nil {
 		return err
@@ -152,10 +143,9 @@ func (s *ChannelGovernanceService) UpdateMemberNotifyPref(
 	return s.governance.UpdateMemberNotifyPref(ctx, channelID, callerID, pref)
 }
 
-// IsManagerOrOwner is exported so other services (announcements, urgent) can
-// share the same admin check.
+// IsManagerOrOwner is exported so other services can share the admin check.
 func (s *ChannelGovernanceService) IsManagerOrOwner(
-	ctx context.Context, channelID, callerID int64,
+	ctx context.Context, channelID int64, callerID string,
 ) (bool, error) {
 	m, err := s.channels.GetMember(ctx, channelID, callerID)
 	if err != nil {
@@ -164,15 +154,13 @@ func (s *ChannelGovernanceService) IsManagerOrOwner(
 		}
 		return false, err
 	}
-	// Legacy Admin/Owner roles count as manager+.
 	if m.Role >= repo.MemberRoleAdmin {
 		return true, nil
 	}
 	return s.governance.IsManager(ctx, channelID, callerID)
 }
 
-// requireMember returns ErrNotMember unless callerID is a member.
-func (s *ChannelGovernanceService) requireMember(ctx context.Context, channelID, callerID int64) error {
+func (s *ChannelGovernanceService) requireMember(ctx context.Context, channelID int64, callerID string) error {
 	if _, err := s.channels.GetMember(ctx, channelID, callerID); err != nil {
 		if errors.Is(err, repo.ErrNotFound) {
 			return ErrNotMember
@@ -182,10 +170,7 @@ func (s *ChannelGovernanceService) requireMember(ctx context.Context, channelID,
 	return nil
 }
 
-// requireOwner returns ErrForbidden unless callerID is the channel owner
-// (member with Role == MemberRoleOwner). Creator of the channel is also
-// considered owner for compatibility with CreateGroup semantics.
-func (s *ChannelGovernanceService) requireOwner(ctx context.Context, channelID, callerID int64) error {
+func (s *ChannelGovernanceService) requireOwner(ctx context.Context, channelID int64, callerID string) error {
 	m, err := s.channels.GetMember(ctx, channelID, callerID)
 	if err != nil {
 		if errors.Is(err, repo.ErrNotFound) {
@@ -199,10 +184,7 @@ func (s *ChannelGovernanceService) requireOwner(ctx context.Context, channelID, 
 	return nil
 }
 
-// requireManagerOrOwner accepts legacy Admin/Owner roles OR an entry in
-// channel_managers. Non-members get ErrNotMember; members lacking manager
-// rights get ErrForbidden.
-func (s *ChannelGovernanceService) requireManagerOrOwner(ctx context.Context, channelID, callerID int64) error {
+func (s *ChannelGovernanceService) requireManagerOrOwner(ctx context.Context, channelID int64, callerID string) error {
 	m, err := s.channels.GetMember(ctx, channelID, callerID)
 	if err != nil {
 		if errors.Is(err, repo.ErrNotFound) {

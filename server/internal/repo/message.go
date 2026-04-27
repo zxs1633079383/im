@@ -56,17 +56,17 @@ type MessageRepo interface {
 	// ErrInvalidSystemProps is returned. tx != nil reuses the caller's
 	// transaction (required when combining with a sibling mutation such as
 	// RemoveMember to keep them atomic).
-	PostSystemMessage(ctx context.Context, tx *gorm.DB, channelID, senderID int64, props map[string]any) (*Message, error)
-	UpdateContent(ctx context.Context, msgID, callerID int64, content string) (*Message, error)
-	SoftDelete(ctx context.Context, msgID, callerID int64) (*Message, error)
+	PostSystemMessage(ctx context.Context, tx *gorm.DB, channelID int64, senderID string, teamID *string, props map[string]any) (*Message, error)
+	UpdateContent(ctx context.Context, msgID int64, callerID string, content string) (*Message, error)
+	SoftDelete(ctx context.Context, msgID int64, callerID string) (*Message, error)
 	GetByID(ctx context.Context, id int64) (*Message, error)
 	FetchAfter(ctx context.Context, channelID, afterSeq int64, limit int) ([]Message, error)
-	FetchForUser(ctx context.Context, channelID, userID, afterSeq int64, limit int) ([]Message, error)
-	FetchBefore(ctx context.Context, channelID, userID, beforeSeq int64, limit int) ([]Message, error)
-	FetchAround(ctx context.Context, channelID, userID, aroundSeq int64, limit int) ([]Message, error)
-	FetchAroundTimestamp(ctx context.Context, channelID, userID int64, ts time.Time, limit int) (older []Message, newer []Message, err error)
-	FetchReplies(ctx context.Context, rootID, userID int64) ([]Message, error)
-	GetReaders(ctx context.Context, channelID, seq int64, cursor int64, limit int) (readers []int64, nextCursor int64, err error)
+	FetchForUser(ctx context.Context, channelID int64, userID string, afterSeq int64, limit int) ([]Message, error)
+	FetchBefore(ctx context.Context, channelID int64, userID string, beforeSeq int64, limit int) ([]Message, error)
+	FetchAround(ctx context.Context, channelID int64, userID string, aroundSeq int64, limit int) ([]Message, error)
+	FetchAroundTimestamp(ctx context.Context, channelID int64, userID string, ts time.Time, limit int) (older []Message, newer []Message, err error)
+	FetchReplies(ctx context.Context, rootID int64, userID string) ([]Message, error)
+	GetReaders(ctx context.Context, channelID, seq int64, cursor string, limit int) (readers []string, nextCursor string, err error)
 }
 
 type gormMessageRepo struct {
@@ -114,7 +114,7 @@ func (r *gormMessageRepo) Send(ctx context.Context, msg *Message) error {
 		//    visible_to (sender stays included so they don't see a phantom
 		//    of their own message).
 		if msg.VisibleTo != nil {
-			visibleWithSender := append([]int64(msg.VisibleTo), msg.SenderID)
+			visibleWithSender := append([]string(msg.VisibleTo), msg.SenderID)
 			if err := r.channel.IncrementPhantomCount(ctx, tx, msg.ChannelID, visibleWithSender); err != nil {
 				return fmt.Errorf("phantom: %w", err)
 			}
@@ -190,7 +190,7 @@ func (r *gormMessageRepo) AllocSeqAndInsert(ctx context.Context, tx *gorm.DB, ms
 // renders from props["sys_type"] + the remaining fields.
 func (r *gormMessageRepo) PostSystemMessage(
 	ctx context.Context, tx *gorm.DB,
-	channelID, senderID int64, props map[string]any,
+	channelID int64, senderID string, teamID *string, props map[string]any,
 ) (*Message, error) {
 	ctx, span := tracer.Start(ctx, "MessageRepo.PostSystemMessage")
 	defer span.End()
@@ -208,6 +208,7 @@ func (r *gormMessageRepo) PostSystemMessage(
 	msg := &Message{
 		ChannelID: channelID,
 		SenderID:  senderID,
+		TeamID:    teamID,
 		MsgType:   MsgTypeSystem,
 		Props:     &propsStr,
 	}
@@ -227,7 +228,7 @@ func (r *gormMessageRepo) PostSystemMessage(
 //
 // The returned *Message reflects the post-update state (including the new
 // updated_at value) so callers can echo it in the WS msg_updated payload.
-func (r *gormMessageRepo) UpdateContent(ctx context.Context, msgID, callerID int64, content string) (*Message, error) {
+func (r *gormMessageRepo) UpdateContent(ctx context.Context, msgID int64, callerID string, content string) (*Message, error) {
 	ctx, span := tracer.Start(ctx, "MessageRepo.UpdateContent")
 	defer span.End()
 
@@ -263,7 +264,7 @@ func (r *gormMessageRepo) UpdateContent(ctx context.Context, msgID, callerID int
 //   - ErrNotFound when the message does not exist.
 //   - ErrForbidden when the caller is not the sender.
 //   - ErrGone when the message is already soft-deleted (idempotent no-op).
-func (r *gormMessageRepo) SoftDelete(ctx context.Context, msgID, callerID int64) (*Message, error) {
+func (r *gormMessageRepo) SoftDelete(ctx context.Context, msgID int64, callerID string) (*Message, error) {
 	ctx, span := tracer.Start(ctx, "MessageRepo.SoftDelete")
 	defer span.End()
 
@@ -303,7 +304,7 @@ func (r *gormMessageRepo) SoftDelete(ctx context.Context, msgID, callerID int64)
 //
 // older is ordered by seq ASC (oldest first); newer is ordered by seq ASC.
 // Callers may concatenate older + newer for a chronologically ordered window.
-func (r *gormMessageRepo) FetchAroundTimestamp(ctx context.Context, channelID, userID int64, ts time.Time, limit int) ([]Message, []Message, error) {
+func (r *gormMessageRepo) FetchAroundTimestamp(ctx context.Context, channelID int64, userID string, ts time.Time, limit int) ([]Message, []Message, error) {
 	if limit <= 0 {
 		limit = 2
 	}
@@ -350,7 +351,7 @@ func (r *gormMessageRepo) FetchAroundTimestamp(ctx context.Context, channelID, u
 
 // FetchReplies returns every non-deleted reply to rootID, ordered by seq ASC.
 // The caller is not membership-checked here — the service layer enforces it.
-func (r *gormMessageRepo) FetchReplies(ctx context.Context, rootID, userID int64) ([]Message, error) {
+func (r *gormMessageRepo) FetchReplies(ctx context.Context, rootID int64, userID string) ([]Message, error) {
 	var out []Message
 	err := r.db.WithContext(ctx).Raw(
 		`SELECT id, channel_id, seq, client_msg_id, sender_id, msg_type, content,
@@ -371,12 +372,12 @@ func (r *gormMessageRepo) FetchReplies(ctx context.Context, rootID, userID int64
 // GetReaders returns the user_ids of channel members whose last_read_seq has
 // advanced past the given seq. cursor is a user_id pagination anchor (0 to
 // start). nextCursor is the last returned user_id (0 if the page is empty).
-func (r *gormMessageRepo) GetReaders(ctx context.Context, channelID, seq, cursor int64, limit int) ([]int64, int64, error) {
+func (r *gormMessageRepo) GetReaders(ctx context.Context, channelID, seq int64, cursor string, limit int) ([]string, string, error) {
 	if limit <= 0 || limit > 200 {
 		limit = 50
 	}
 	type row struct {
-		UserID int64 `gorm:"column:user_id"`
+		UserID string `gorm:"column:user_id"`
 	}
 	var rows []row
 	err := r.db.WithContext(ctx).Raw(
@@ -388,13 +389,13 @@ func (r *gormMessageRepo) GetReaders(ctx context.Context, channelID, seq, cursor
 		channelID, seq, cursor, limit,
 	).Scan(&rows).Error
 	if err != nil {
-		return nil, 0, fmt.Errorf("get readers: %w", err)
+		return nil, "", fmt.Errorf("get readers: %w", err)
 	}
-	readers := make([]int64, len(rows))
+	readers := make([]string, len(rows))
 	for i, r := range rows {
 		readers[i] = r.UserID
 	}
-	var next int64
+	var next string
 	if len(readers) == limit && len(readers) > 0 {
 		next = readers[len(readers)-1]
 	}
@@ -431,7 +432,7 @@ func (r *gormMessageRepo) FetchAfter(ctx context.Context, channelID, afterSeq in
 // FetchForUser returns messages for channelID with seq > afterSeq, filtered
 // to those visible to userID: visible_to IS NULL (broadcast), userID is in
 // visible_to, or userID is the sender.
-func (r *gormMessageRepo) FetchForUser(ctx context.Context, channelID, userID, afterSeq int64, limit int) ([]Message, error) {
+func (r *gormMessageRepo) FetchForUser(ctx context.Context, channelID int64, userID string, afterSeq int64, limit int) ([]Message, error) {
 	ctx, span := tracer.Start(ctx, "MessageRepo.FetchForUser")
 	defer span.End()
 
@@ -456,7 +457,7 @@ func (r *gormMessageRepo) FetchForUser(ctx context.Context, channelID, userID, a
 // by visible_to for userID. Result is ordered by seq ASC (oldest first) so
 // callers get a contiguous chronological window when concatenated with
 // FetchAfter.
-func (r *gormMessageRepo) FetchBefore(ctx context.Context, channelID, userID, beforeSeq int64, limit int) ([]Message, error) {
+func (r *gormMessageRepo) FetchBefore(ctx context.Context, channelID int64, userID string, beforeSeq int64, limit int) ([]Message, error) {
 	var out []Message
 	err := r.db.WithContext(ctx).Raw(
 		`SELECT * FROM (
@@ -478,7 +479,7 @@ func (r *gormMessageRepo) FetchBefore(ctx context.Context, channelID, userID, be
 
 // FetchAround returns up to limit messages centered on aroundSeq (half before,
 // half after, both halves filtered by visible_to for userID). Ordered by seq.
-func (r *gormMessageRepo) FetchAround(ctx context.Context, channelID, userID, aroundSeq int64, limit int) ([]Message, error) {
+func (r *gormMessageRepo) FetchAround(ctx context.Context, channelID int64, userID string, aroundSeq int64, limit int) ([]Message, error) {
 	ctx, span := tracer.Start(ctx, "MessageRepo.FetchAround")
 	defer span.End()
 

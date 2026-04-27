@@ -10,8 +10,8 @@ import (
 // Implemented by store.ChannelStore.
 type ChannelSeqStore interface {
 	// GetMemberChannelSeqs returns the current seq for each channel the user belongs to.
-	// Returns map[channel_id]seq.
-	GetMemberChannelSeqs(ctx context.Context, userID int64) (map[int64]int64, error)
+	// Returns map[channel_id]seq. M4: userID is the mm UserID (24-hex string).
+	GetMemberChannelSeqs(ctx context.Context, userID string) (map[int64]int64, error)
 }
 
 // ---- Inbound (client → server) ----
@@ -74,15 +74,16 @@ type PongPayload struct {
 }
 
 // PushMsgPayload is sent server→client when a new message is available.
+// M4: SenderID + VisibleTo are mm UserIDs (24-hex strings).
 type PushMsgPayload struct {
 	PushID    string    `json:"push_id"`    // idempotency key for ACK
 	ChannelID int64     `json:"channel_id"`
 	Seq       int64     `json:"seq"`
 	ServerID  int64     `json:"server_msg_id"`
-	SenderID  int64     `json:"sender_id"`
+	SenderID  string    `json:"sender_id"`
 	Content   string    `json:"content,omitempty"`
 	MsgType   int16     `json:"msg_type"`             // 1=normal, 2=phantom
-	VisibleTo []int64   `json:"visible_to,omitempty"`
+	VisibleTo []string  `json:"visible_to,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
 }
 
@@ -91,14 +92,14 @@ type PushACKPayload struct {
 	PushID string `json:"push_id"`
 }
 
-// SendPayload is a client-initiated message send over WebSocket.
-// (Alternative to HTTP POST /api/channels/{id}/messages)
+// SendPayload is a client-initiated message send over WebSocket. M4:
+// VisibleTo carries mm UserIDs as 24-hex strings.
 type SendPayload struct {
-	ClientMsgID string  `json:"client_msg_id"`
-	ChannelID   int64   `json:"channel_id"`
-	Content     string  `json:"content"`
-	MsgType     int16   `json:"msg_type,omitempty"`
-	VisibleTo   []int64 `json:"visible_to,omitempty"`
+	ClientMsgID string   `json:"client_msg_id"`
+	ChannelID   int64    `json:"channel_id"`
+	Content     string   `json:"content"`
+	MsgType     int16    `json:"msg_type,omitempty"`
+	VisibleTo   []string `json:"visible_to,omitempty"`
 }
 
 // SendACKPayload is the server's acknowledgement of a client send.
@@ -127,9 +128,10 @@ type ReadSyncPayload struct {
 }
 
 // FriendEventPayload is pushed to a user when a friend request/accept/reject occurs.
+// M4: FromUserID is the mm UserID (24-hex string).
 type FriendEventPayload struct {
 	EventType  string `json:"event_type"`   // "request", "accepted", "rejected"
-	FromUserID int64  `json:"from_user_id"` // the user who triggered the event
+	FromUserID string `json:"from_user_id"` // the user who triggered the event
 }
 
 // ChannelEventPayload is pushed to a user when they are added to a channel.
@@ -157,7 +159,7 @@ type ChannelEventPayload struct {
 // users on the same pod costs exactly one producer.Send per destination pod,
 // not N.
 type PulsarPushEnvelope struct {
-	TargetUIDs []int64         `json:"target_uids"` // at least 1
+	TargetUIDs []string        `json:"target_uids"` // mm UserIDs (24-hex), at least 1
 	MsgType    WSMessageType   `json:"msg_type"`    // e.g. "push_msg", "read_sync"
 	Payload    json.RawMessage `json:"payload"`     // app-level payload, opaque to the envelope
 }

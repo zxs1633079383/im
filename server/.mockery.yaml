@@ -12,7 +12,6 @@ outpkg: mocks
 packages:
   im-server/internal/repo:
     interfaces:
-      UserRepo:
       UserSettingsRepo:
       ChannelRepo:
       MessageRepo:

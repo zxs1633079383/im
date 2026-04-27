@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
-	"strconv"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -16,7 +15,7 @@ import (
 // routingBatchLookup is the narrow routing surface CrossPodBroadcast needs.
 // Real implementation: *Routing.LookupBatch. Tests inject stubs.
 type routingBatchLookup interface {
-	LookupBatch(ctx context.Context, userIDs []int64) (map[int64][]string, error)
+	LookupBatch(ctx context.Context, userIDs []string) (map[string][]string, error)
 }
 
 // producerGetter returns a sender for a given topic. Implemented by
@@ -54,7 +53,7 @@ type crossPodSender interface {
 // below for callers that still operate on one user at a time).
 func (h *Hub) CrossPodBroadcast(
 	ctx context.Context,
-	userIDs []int64,
+	userIDs []string,
 	partitionKey string,
 	msgType WSMessageType,
 	payload any,
@@ -86,9 +85,9 @@ func (h *Hub) CrossPodBroadcast(
 // on this pod and returns the remainder (those needing cross-pod routing).
 // Shared by CrossPodBroadcast so the Pulsar path never sees local-only users.
 func (h *Hub) pushLocalAndCollectRemote(
-	userIDs []int64, msgType WSMessageType, rawPayload json.RawMessage,
-) []int64 {
-	remote := make([]int64, 0, len(userIDs))
+	userIDs []string, msgType WSMessageType, rawPayload json.RawMessage,
+) []string {
+	remote := make([]string, 0, len(userIDs))
 	for _, uid := range userIDs {
 		if sent := h.PushRawToUser(uid, msgType, rawPayload); sent == 0 {
 			remote = append(remote, uid)
@@ -103,7 +102,7 @@ func (h *Hub) pushLocalAndCollectRemote(
 // CrossPodBroadcast directly to collapse N Pulsar sends into M (one per pod).
 func (h *Hub) CrossPodPush(
 	ctx context.Context,
-	userID int64,
+	userID string,
 	msgType WSMessageType,
 	payload any,
 	routing *Routing,
@@ -112,8 +111,8 @@ func (h *Hub) CrossPodPush(
 	env string,
 	log *slog.Logger,
 ) {
-	h.CrossPodBroadcast(ctx, []int64{userID},
-		strconv.FormatInt(userID, 10), msgType, payload,
+	h.CrossPodBroadcast(ctx, []string{userID},
+		userID, msgType, payload,
 		routing, cache, gatewayID, env, log)
 }
 
@@ -121,7 +120,7 @@ func (h *Hub) CrossPodPush(
 // Extracted so it can run with stubbed routing / producer cache in tests.
 func (h *Hub) crossPodBroadcastImpl(
 	ctx context.Context,
-	userIDs []int64,
+	userIDs []string,
 	partitionKey string,
 	msgType WSMessageType,
 	rawPayload json.RawMessage,
@@ -151,8 +150,8 @@ func (h *Hub) crossPodBroadcastImpl(
 // {gwID → []uid} shape the Pulsar send loop needs. Users already handled by
 // the local hub (gwID == self) and duplicates are filtered out so each
 // destination pod receives each user at most once.
-func bucketByGateway(gwMap map[int64][]string, selfGatewayID string) map[string][]int64 {
-	buckets := make(map[string][]int64, len(gwMap))
+func bucketByGateway(gwMap map[string][]string, selfGatewayID string) map[string][]string {
+	buckets := make(map[string][]string, len(gwMap))
 	for uid, gwIDs := range gwMap {
 		seen := make(map[string]struct{}, len(gwIDs))
 		for _, gw := range gwIDs {
@@ -173,7 +172,7 @@ func bucketByGateway(gwMap map[int64][]string, selfGatewayID string) map[string]
 // user in that bucket as a PulsarPushEnvelope.TargetUIDs list.
 func (h *Hub) sendBuckets(
 	ctx context.Context,
-	buckets map[string][]int64,
+	buckets map[string][]string,
 	partitionKey string,
 	msgType WSMessageType,
 	rawPayload json.RawMessage,
@@ -210,7 +209,7 @@ func (h *Hub) sendOne(
 	topic, gwID, partitionKey string,
 	msgType WSMessageType,
 	envelope PulsarPushEnvelope,
-	uids []int64,
+	uids []string,
 	log *slog.Logger,
 ) {
 	sendCtx, span := tracer.Start(ctx, "CrossPodBroadcast.Send",
@@ -241,7 +240,7 @@ func (h *Hub) sendOne(
 // routingBatchLookup interface. nil-safe so callers don't have to special-case.
 type routingBatchAdapter struct{ r *Routing }
 
-func (a routingBatchAdapter) LookupBatch(ctx context.Context, userIDs []int64) (map[int64][]string, error) {
+func (a routingBatchAdapter) LookupBatch(ctx context.Context, userIDs []string) (map[string][]string, error) {
 	if a.r == nil {
 		return nil, nil
 	}

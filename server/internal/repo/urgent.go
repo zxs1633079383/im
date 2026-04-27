@@ -13,7 +13,7 @@ import (
 // that clears the "urgent unconfirmed" badge for that user on that message.
 type UrgentConfirmation struct {
 	MessageID   int64     `gorm:"column:message_id;primaryKey"                           json:"message_id"`
-	UserID      int64     `gorm:"column:user_id;primaryKey"                              json:"user_id"`
+	UserID      string    `gorm:"column:user_id;type:text;primaryKey"                    json:"user_id"`
 	ConfirmedAt time.Time `gorm:"column:confirmed_at;not null;default:now()"             json:"confirmed_at"`
 }
 
@@ -25,10 +25,10 @@ type UrgentRepo interface {
 	SetUrgent(ctx context.Context, msgID int64) error
 	ClearUrgent(ctx context.Context, msgID int64) error
 
-	AddConfirmation(ctx context.Context, msgID, userID int64) error
-	RemoveConfirmation(ctx context.Context, msgID, userID int64) error
-	ListConfirmations(ctx context.Context, msgID int64) ([]int64, error)
-	CountUnconfirmed(ctx context.Context, channelID, userID int64) (int64, error)
+	AddConfirmation(ctx context.Context, msgID int64, userID string) error
+	RemoveConfirmation(ctx context.Context, msgID int64, userID string) error
+	ListConfirmations(ctx context.Context, msgID int64) ([]string, error)
+	CountUnconfirmed(ctx context.Context, channelID int64, userID string) (int64, error)
 }
 
 type gormUrgentRepo struct{ db *gorm.DB }
@@ -66,7 +66,7 @@ func (r *gormUrgentRepo) ClearUrgent(ctx context.Context, msgID int64) error {
 }
 
 // AddConfirmation records (msgID, userID) in urgent_confirmations. Idempotent.
-func (r *gormUrgentRepo) AddConfirmation(ctx context.Context, msgID, userID int64) error {
+func (r *gormUrgentRepo) AddConfirmation(ctx context.Context, msgID int64, userID string) error {
 	c := &UrgentConfirmation{MessageID: msgID, UserID: userID}
 	err := r.db.WithContext(ctx).Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "message_id"}, {Name: "user_id"}},
@@ -79,7 +79,7 @@ func (r *gormUrgentRepo) AddConfirmation(ctx context.Context, msgID, userID int6
 }
 
 // RemoveConfirmation removes the (msgID, userID) pair. Idempotent.
-func (r *gormUrgentRepo) RemoveConfirmation(ctx context.Context, msgID, userID int64) error {
+func (r *gormUrgentRepo) RemoveConfirmation(ctx context.Context, msgID int64, userID string) error {
 	err := r.db.WithContext(ctx).
 		Where("message_id = ? AND user_id = ?", msgID, userID).
 		Delete(&UrgentConfirmation{}).Error
@@ -90,8 +90,8 @@ func (r *gormUrgentRepo) RemoveConfirmation(ctx context.Context, msgID, userID i
 }
 
 // ListConfirmations returns the user IDs that have confirmed msgID.
-func (r *gormUrgentRepo) ListConfirmations(ctx context.Context, msgID int64) ([]int64, error) {
-	var ids []int64
+func (r *gormUrgentRepo) ListConfirmations(ctx context.Context, msgID int64) ([]string, error) {
+	var ids []string
 	err := r.db.WithContext(ctx).Model(&UrgentConfirmation{}).
 		Where("message_id = ?", msgID).
 		Order("confirmed_at ASC").
@@ -104,7 +104,7 @@ func (r *gormUrgentRepo) ListConfirmations(ctx context.Context, msgID int64) ([]
 
 // CountUnconfirmed returns the number of urgent messages in channelID that
 // userID has NOT yet confirmed. Used to render per-channel urgent badges.
-func (r *gormUrgentRepo) CountUnconfirmed(ctx context.Context, channelID, userID int64) (int64, error) {
+func (r *gormUrgentRepo) CountUnconfirmed(ctx context.Context, channelID int64, userID string) (int64, error) {
 	var count int64
 	err := r.db.WithContext(ctx).Raw(
 		`SELECT COUNT(*) FROM messages m

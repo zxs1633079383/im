@@ -23,13 +23,13 @@ const (
 // membership (e.g. approval updates go to requester + approver only). nil-safe
 // at call sites.
 type UserEventPusher interface {
-	PushToUser(userID int64, eventType MessageEventType, payload any)
+	PushToUser(userID string, eventType MessageEventType, payload any)
 }
 
 // createApprovalReq is POST /api/approvals body.
 type createApprovalReq struct {
 	ChannelID  int64            `json:"channel_id"`
-	ApproverID int64            `json:"approver_id"`
+	ApproverID string           `json:"approver_id"`
 	Subject    string           `json:"subject"`
 	Content    string           `json:"content"`
 	Props      *json.RawMessage `json:"props,omitempty"`
@@ -42,7 +42,7 @@ type decisionReq struct {
 
 // approvalDeciderFn matches the svc.Approve / svc.Reject signatures. Used to
 // share the handler body between the two decision endpoints.
-type approvalDeciderFn func(ctx context.Context, id, callerID int64, note string) (*repo.Approval, error)
+type approvalDeciderFn func(ctx context.Context, id int64, callerID, note string) (*repo.Approval, error)
 
 // RegisterApprovalRoutes wires the 7 approval endpoints. pusher may be nil
 // (tests / offline mode). When non-nil, state-changing endpoints fire an
@@ -63,7 +63,7 @@ func RegisterApprovalRoutes(
 			c.JSON(400, gin.H{"error": "invalid JSON"})
 			return
 		}
-		if in.ChannelID == 0 || in.ApproverID == 0 {
+		if in.ChannelID == 0 || in.ApproverID == "" {
 			c.JSON(422, gin.H{"error": "channel_id and approver_id are required"})
 			return
 		}

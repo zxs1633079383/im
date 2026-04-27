@@ -13,18 +13,16 @@ import (
 // It is safe for concurrent use from multiple goroutines.
 type Hub struct {
 	mu    sync.RWMutex
-	conns map[int64][]*Conn // userID → list of active connections
+	conns map[string][]*Conn // mm UserID → list of active connections
 	// failures is an optional tracker that evicts stale routing entries when
-	// producer.Send repeatedly fails for the same destination pod. Nil means
-	// failure-driven eviction is disabled (zero-value Hub in tests leaves it
-	// nil; production wires it in cmd/gateway/main.go).
+	// producer.Send repeatedly fails for the same destination pod.
 	failures *sendFailureTracker
 }
 
 // NewHub creates an empty Hub and registers an OTel ObservableGauge that
 // reports the live WebSocket connection count.
 func NewHub() *Hub {
-	h := &Hub{conns: make(map[int64][]*Conn)}
+	h := &Hub{conns: make(map[string][]*Conn)}
 	_ = h.registerMetrics()
 	return h
 }
@@ -90,7 +88,7 @@ func (h *Hub) Deregister(c *Conn) {
 
 // ConnsForUser returns a snapshot of all connections for the given user.
 // Callers must not modify the returned slice.
-func (h *Hub) ConnsForUser(userID int64) []*Conn {
+func (h *Hub) ConnsForUser(userID string) []*Conn {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	list := h.conns[userID]
@@ -104,7 +102,7 @@ func (h *Hub) ConnsForUser(userID int64) []*Conn {
 
 // PushToUser pushes a payload to all connections of userID.
 // Returns the number of connections reached.
-func (h *Hub) PushToUser(userID int64, msgType WSMessageType, payload any) int {
+func (h *Hub) PushToUser(userID string, msgType WSMessageType, payload any) int {
 	conns := h.ConnsForUser(userID)
 	sent := 0
 	for _, c := range conns {
@@ -118,7 +116,7 @@ func (h *Hub) PushToUser(userID int64, msgType WSMessageType, payload any) int {
 // PushRawToUser is the zero-marshal counterpart of PushToUser. Used by the
 // cross-pod broadcast path so the same JSON bytes are reused across every
 // recipient on this pod (N PushRaw calls share one json.Marshal).
-func (h *Hub) PushRawToUser(userID int64, msgType WSMessageType, rawPayload []byte) int {
+func (h *Hub) PushRawToUser(userID string, msgType WSMessageType, rawPayload []byte) int {
 	conns := h.ConnsForUser(userID)
 	sent := 0
 	for _, c := range conns {

@@ -4,46 +4,39 @@ import (
 	"context"
 	"errors"
 
+	"im-server/internal/auth"
 	"im-server/internal/repo"
 )
 
 // Notification-service sentinels.
 var (
-	ErrNotificationTitleEmpty = errors.New("title is required")
+	ErrNotificationTitleEmpty  = errors.New("title is required")
 	ErrNotificationBadReceiver = errors.New("receiver_id is required")
 )
 
-// NotificationService orchestrates per-user notifications. No channel
-// membership check — notifications are user→user; the caller supplies the
-// receiver explicitly.
+// NotificationService orchestrates per-user notifications. M4: receiver
+// validation is purely format-based (24-hex mm UserID) — there is no longer
+// a local users table to confirm against.
 type NotificationService struct {
 	notifications repo.NotificationRepo
-	users         userExistsCheck
-}
-
-// userExistsCheck is the minimal UserRepo surface NotificationService needs to
-// guard against sending to a non-existent receiver.
-type userExistsCheck interface {
-	GetByID(ctx context.Context, id int64) (*repo.User, error)
 }
 
 // NewNotificationService wires deps.
-func NewNotificationService(notifications repo.NotificationRepo, users userExistsCheck) *NotificationService {
-	return &NotificationService{notifications: notifications, users: users}
+func NewNotificationService(notifications repo.NotificationRepo) *NotificationService {
+	return &NotificationService{notifications: notifications}
 }
 
-// SendParams is the input to Send.
+// NotificationSendParams is the input to Send.
 type NotificationSendParams struct {
-	SenderID   int64
-	ReceiverID int64
+	SenderID   string
+	ReceiverID string
 	Title      string
 	Body       string
 	Type       int16
 	Props      string
 }
 
-// Send inserts a new notification. Returns the persisted row so the transport
-// can echo it back and fan the WS event to the receiver.
+// Send inserts a new notification.
 func (s *NotificationService) Send(ctx context.Context, p NotificationSendParams) (*repo.Notification, error) {
 	ctx, span := tracer.Start(ctx, "NotificationService.Send")
 	defer span.End()
@@ -51,14 +44,8 @@ func (s *NotificationService) Send(ctx context.Context, p NotificationSendParams
 	if p.Title == "" {
 		return nil, ErrNotificationTitleEmpty
 	}
-	if p.ReceiverID == 0 {
+	if err := auth.ValidateUserID(p.ReceiverID); err != nil {
 		return nil, ErrNotificationBadReceiver
-	}
-	if _, err := s.users.GetByID(ctx, p.ReceiverID); err != nil {
-		if errors.Is(err, repo.ErrNotFound) {
-			return nil, ErrNotificationBadReceiver
-		}
-		return nil, err
 	}
 	n := &repo.Notification{
 		SenderID:   p.SenderID,
@@ -75,7 +62,7 @@ func (s *NotificationService) Send(ctx context.Context, p NotificationSendParams
 }
 
 // ListReceived returns the caller's inbox.
-func (s *NotificationService) ListReceived(ctx context.Context, receiverID int64, unreadOnly bool, limit int, cursor int64) ([]repo.Notification, error) {
+func (s *NotificationService) ListReceived(ctx context.Context, receiverID string, unreadOnly bool, limit int, cursor int64) ([]repo.Notification, error) {
 	ctx, span := tracer.Start(ctx, "NotificationService.ListReceived")
 	defer span.End()
 
@@ -83,7 +70,7 @@ func (s *NotificationService) ListReceived(ctx context.Context, receiverID int64
 }
 
 // ListSent returns the caller's outbox.
-func (s *NotificationService) ListSent(ctx context.Context, senderID int64, limit int, cursor int64) ([]repo.Notification, error) {
+func (s *NotificationService) ListSent(ctx context.Context, senderID string, limit int, cursor int64) ([]repo.Notification, error) {
 	ctx, span := tracer.Start(ctx, "NotificationService.ListSent")
 	defer span.End()
 
@@ -91,7 +78,7 @@ func (s *NotificationService) ListSent(ctx context.Context, senderID int64, limi
 }
 
 // MarkRead marks a notification read. Only the receiver may mark.
-func (s *NotificationService) MarkRead(ctx context.Context, id, callerID int64) error {
+func (s *NotificationService) MarkRead(ctx context.Context, id int64, callerID string) error {
 	ctx, span := tracer.Start(ctx, "NotificationService.MarkRead")
 	defer span.End()
 

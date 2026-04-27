@@ -83,19 +83,31 @@ func RegisterSettingsRoutes(authed *gin.RouterGroup, svc *service.SettingsServic
 	})
 }
 
-// userIDFromCtx extracts the authenticated user id set by middleware.JWTGin.
-// On failure it writes a 401 response and returns ok=false so the caller can
-// simply early-return.
-func userIDFromCtx(c *gin.Context) (int64, bool) {
+// userIDFromCtx extracts the authenticated mm UserID set by
+// middleware.MattermostCookieResolve. On failure it writes a 401 and returns
+// ok=false so the caller can simply early-return.
+//
+// M4: returns string (mm UserID, 24-char hex). The format check here is
+// deliberately strict — an unexpected non-string value, an empty value, or a
+// non-hex value all fail closed.
+func userIDFromCtx(c *gin.Context) (string, bool) {
 	uidAny, exists := c.Get(middleware.UserIDKey)
 	if !exists {
 		c.JSON(401, gin.H{"error": "unauthorized"})
-		return 0, false
+		return "", false
 	}
-	uid, ok := uidAny.(int64)
-	if !ok {
+	uid, ok := uidAny.(string)
+	if !ok || uid == "" {
 		c.JSON(401, gin.H{"error": "unauthorized"})
-		return 0, false
+		return "", false
 	}
 	return uid, true
+}
+
+// teamIDFromCtx returns the resolved team_id (mm CompanyID, with OrgID
+// fallback) — empty string when the user has no organisation. Handlers pass
+// this into service params for messages.team_id / channels.team_id
+// denormalisation.
+func teamIDFromCtx(c *gin.Context) string {
+	return middleware.TeamIDFromCtx(c)
 }

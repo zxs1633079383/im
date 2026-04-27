@@ -23,25 +23,25 @@ func (_m *FriendshipRepoMock) EXPECT() *FriendshipRepoMock_Expecter {
 }
 
 // AcceptRequest provides a mock function with given fields: ctx, friendshipID, userID
-func (_m *FriendshipRepoMock) AcceptRequest(ctx context.Context, friendshipID int64, userID int64) (int64, error) {
+func (_m *FriendshipRepoMock) AcceptRequest(ctx context.Context, friendshipID int64, userID string) (string, error) {
 	ret := _m.Called(ctx, friendshipID, userID)
 
 	if len(ret) == 0 {
 		panic("no return value specified for AcceptRequest")
 	}
 
-	var r0 int64
+	var r0 string
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, int64, int64) (int64, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, int64, string) (string, error)); ok {
 		return rf(ctx, friendshipID, userID)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, int64, int64) int64); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, int64, string) string); ok {
 		r0 = rf(ctx, friendshipID, userID)
 	} else {
-		r0 = ret.Get(0).(int64)
+		r0 = ret.Get(0).(string)
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, int64, int64) error); ok {
+	if rf, ok := ret.Get(1).(func(context.Context, int64, string) error); ok {
 		r1 = rf(ctx, friendshipID, userID)
 	} else {
 		r1 = ret.Error(1)
@@ -58,30 +58,30 @@ type FriendshipRepoMock_AcceptRequest_Call struct {
 // AcceptRequest is a helper method to define mock.On call
 //   - ctx context.Context
 //   - friendshipID int64
-//   - userID int64
+//   - userID string
 func (_e *FriendshipRepoMock_Expecter) AcceptRequest(ctx interface{}, friendshipID interface{}, userID interface{}) *FriendshipRepoMock_AcceptRequest_Call {
 	return &FriendshipRepoMock_AcceptRequest_Call{Call: _e.mock.On("AcceptRequest", ctx, friendshipID, userID)}
 }
 
-func (_c *FriendshipRepoMock_AcceptRequest_Call) Run(run func(ctx context.Context, friendshipID int64, userID int64)) *FriendshipRepoMock_AcceptRequest_Call {
+func (_c *FriendshipRepoMock_AcceptRequest_Call) Run(run func(ctx context.Context, friendshipID int64, userID string)) *FriendshipRepoMock_AcceptRequest_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(int64), args[2].(int64))
+		run(args[0].(context.Context), args[1].(int64), args[2].(string))
 	})
 	return _c
 }
 
-func (_c *FriendshipRepoMock_AcceptRequest_Call) Return(requesterID int64, err error) *FriendshipRepoMock_AcceptRequest_Call {
+func (_c *FriendshipRepoMock_AcceptRequest_Call) Return(requesterID string, err error) *FriendshipRepoMock_AcceptRequest_Call {
 	_c.Call.Return(requesterID, err)
 	return _c
 }
 
-func (_c *FriendshipRepoMock_AcceptRequest_Call) RunAndReturn(run func(context.Context, int64, int64) (int64, error)) *FriendshipRepoMock_AcceptRequest_Call {
+func (_c *FriendshipRepoMock_AcceptRequest_Call) RunAndReturn(run func(context.Context, int64, string) (string, error)) *FriendshipRepoMock_AcceptRequest_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // BlockUser provides a mock function with given fields: ctx, blockerID, blockedID
-func (_m *FriendshipRepoMock) BlockUser(ctx context.Context, blockerID int64, blockedID int64) error {
+func (_m *FriendshipRepoMock) BlockUser(ctx context.Context, blockerID string, blockedID string) error {
 	ret := _m.Called(ctx, blockerID, blockedID)
 
 	if len(ret) == 0 {
@@ -89,7 +89,7 @@ func (_m *FriendshipRepoMock) BlockUser(ctx context.Context, blockerID int64, bl
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, int64, int64) error); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string, string) error); ok {
 		r0 = rf(ctx, blockerID, blockedID)
 	} else {
 		r0 = ret.Error(0)
@@ -105,15 +105,15 @@ type FriendshipRepoMock_BlockUser_Call struct {
 
 // BlockUser is a helper method to define mock.On call
 //   - ctx context.Context
-//   - blockerID int64
-//   - blockedID int64
+//   - blockerID string
+//   - blockedID string
 func (_e *FriendshipRepoMock_Expecter) BlockUser(ctx interface{}, blockerID interface{}, blockedID interface{}) *FriendshipRepoMock_BlockUser_Call {
 	return &FriendshipRepoMock_BlockUser_Call{Call: _e.mock.On("BlockUser", ctx, blockerID, blockedID)}
 }
 
-func (_c *FriendshipRepoMock_BlockUser_Call) Run(run func(ctx context.Context, blockerID int64, blockedID int64)) *FriendshipRepoMock_BlockUser_Call {
+func (_c *FriendshipRepoMock_BlockUser_Call) Run(run func(ctx context.Context, blockerID string, blockedID string)) *FriendshipRepoMock_BlockUser_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(int64), args[2].(int64))
+		run(args[0].(context.Context), args[1].(string), args[2].(string))
 	})
 	return _c
 }
@@ -123,13 +123,13 @@ func (_c *FriendshipRepoMock_BlockUser_Call) Return(_a0 error) *FriendshipRepoMo
 	return _c
 }
 
-func (_c *FriendshipRepoMock_BlockUser_Call) RunAndReturn(run func(context.Context, int64, int64) error) *FriendshipRepoMock_BlockUser_Call {
+func (_c *FriendshipRepoMock_BlockUser_Call) RunAndReturn(run func(context.Context, string, string) error) *FriendshipRepoMock_BlockUser_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // GetFriendship provides a mock function with given fields: ctx, userA, userB
-func (_m *FriendshipRepoMock) GetFriendship(ctx context.Context, userA int64, userB int64) (*repo.Friendship, error) {
+func (_m *FriendshipRepoMock) GetFriendship(ctx context.Context, userA string, userB string) (*repo.Friendship, error) {
 	ret := _m.Called(ctx, userA, userB)
 
 	if len(ret) == 0 {
@@ -138,10 +138,10 @@ func (_m *FriendshipRepoMock) GetFriendship(ctx context.Context, userA int64, us
 
 	var r0 *repo.Friendship
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, int64, int64) (*repo.Friendship, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string, string) (*repo.Friendship, error)); ok {
 		return rf(ctx, userA, userB)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, int64, int64) *repo.Friendship); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string, string) *repo.Friendship); ok {
 		r0 = rf(ctx, userA, userB)
 	} else {
 		if ret.Get(0) != nil {
@@ -149,7 +149,7 @@ func (_m *FriendshipRepoMock) GetFriendship(ctx context.Context, userA int64, us
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, int64, int64) error); ok {
+	if rf, ok := ret.Get(1).(func(context.Context, string, string) error); ok {
 		r1 = rf(ctx, userA, userB)
 	} else {
 		r1 = ret.Error(1)
@@ -165,15 +165,15 @@ type FriendshipRepoMock_GetFriendship_Call struct {
 
 // GetFriendship is a helper method to define mock.On call
 //   - ctx context.Context
-//   - userA int64
-//   - userB int64
+//   - userA string
+//   - userB string
 func (_e *FriendshipRepoMock_Expecter) GetFriendship(ctx interface{}, userA interface{}, userB interface{}) *FriendshipRepoMock_GetFriendship_Call {
 	return &FriendshipRepoMock_GetFriendship_Call{Call: _e.mock.On("GetFriendship", ctx, userA, userB)}
 }
 
-func (_c *FriendshipRepoMock_GetFriendship_Call) Run(run func(ctx context.Context, userA int64, userB int64)) *FriendshipRepoMock_GetFriendship_Call {
+func (_c *FriendshipRepoMock_GetFriendship_Call) Run(run func(ctx context.Context, userA string, userB string)) *FriendshipRepoMock_GetFriendship_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(int64), args[2].(int64))
+		run(args[0].(context.Context), args[1].(string), args[2].(string))
 	})
 	return _c
 }
@@ -183,33 +183,33 @@ func (_c *FriendshipRepoMock_GetFriendship_Call) Return(_a0 *repo.Friendship, _a
 	return _c
 }
 
-func (_c *FriendshipRepoMock_GetFriendship_Call) RunAndReturn(run func(context.Context, int64, int64) (*repo.Friendship, error)) *FriendshipRepoMock_GetFriendship_Call {
+func (_c *FriendshipRepoMock_GetFriendship_Call) RunAndReturn(run func(context.Context, string, string) (*repo.Friendship, error)) *FriendshipRepoMock_GetFriendship_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // ListFriends provides a mock function with given fields: ctx, userID
-func (_m *FriendshipRepoMock) ListFriends(ctx context.Context, userID int64) ([]repo.User, error) {
+func (_m *FriendshipRepoMock) ListFriends(ctx context.Context, userID string) ([]string, error) {
 	ret := _m.Called(ctx, userID)
 
 	if len(ret) == 0 {
 		panic("no return value specified for ListFriends")
 	}
 
-	var r0 []repo.User
+	var r0 []string
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, int64) ([]repo.User, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string) ([]string, error)); ok {
 		return rf(ctx, userID)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, int64) []repo.User); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string) []string); ok {
 		r0 = rf(ctx, userID)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]repo.User)
+			r0 = ret.Get(0).([]string)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, int64) error); ok {
+	if rf, ok := ret.Get(1).(func(context.Context, string) error); ok {
 		r1 = rf(ctx, userID)
 	} else {
 		r1 = ret.Error(1)
@@ -225,30 +225,30 @@ type FriendshipRepoMock_ListFriends_Call struct {
 
 // ListFriends is a helper method to define mock.On call
 //   - ctx context.Context
-//   - userID int64
+//   - userID string
 func (_e *FriendshipRepoMock_Expecter) ListFriends(ctx interface{}, userID interface{}) *FriendshipRepoMock_ListFriends_Call {
 	return &FriendshipRepoMock_ListFriends_Call{Call: _e.mock.On("ListFriends", ctx, userID)}
 }
 
-func (_c *FriendshipRepoMock_ListFriends_Call) Run(run func(ctx context.Context, userID int64)) *FriendshipRepoMock_ListFriends_Call {
+func (_c *FriendshipRepoMock_ListFriends_Call) Run(run func(ctx context.Context, userID string)) *FriendshipRepoMock_ListFriends_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(int64))
+		run(args[0].(context.Context), args[1].(string))
 	})
 	return _c
 }
 
-func (_c *FriendshipRepoMock_ListFriends_Call) Return(_a0 []repo.User, _a1 error) *FriendshipRepoMock_ListFriends_Call {
+func (_c *FriendshipRepoMock_ListFriends_Call) Return(_a0 []string, _a1 error) *FriendshipRepoMock_ListFriends_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *FriendshipRepoMock_ListFriends_Call) RunAndReturn(run func(context.Context, int64) ([]repo.User, error)) *FriendshipRepoMock_ListFriends_Call {
+func (_c *FriendshipRepoMock_ListFriends_Call) RunAndReturn(run func(context.Context, string) ([]string, error)) *FriendshipRepoMock_ListFriends_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // ListPendingRequests provides a mock function with given fields: ctx, userID
-func (_m *FriendshipRepoMock) ListPendingRequests(ctx context.Context, userID int64) ([]repo.PendingRequest, error) {
+func (_m *FriendshipRepoMock) ListPendingRequests(ctx context.Context, userID string) ([]repo.PendingRequest, error) {
 	ret := _m.Called(ctx, userID)
 
 	if len(ret) == 0 {
@@ -257,10 +257,10 @@ func (_m *FriendshipRepoMock) ListPendingRequests(ctx context.Context, userID in
 
 	var r0 []repo.PendingRequest
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, int64) ([]repo.PendingRequest, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string) ([]repo.PendingRequest, error)); ok {
 		return rf(ctx, userID)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, int64) []repo.PendingRequest); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string) []repo.PendingRequest); ok {
 		r0 = rf(ctx, userID)
 	} else {
 		if ret.Get(0) != nil {
@@ -268,7 +268,7 @@ func (_m *FriendshipRepoMock) ListPendingRequests(ctx context.Context, userID in
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, int64) error); ok {
+	if rf, ok := ret.Get(1).(func(context.Context, string) error); ok {
 		r1 = rf(ctx, userID)
 	} else {
 		r1 = ret.Error(1)
@@ -284,14 +284,14 @@ type FriendshipRepoMock_ListPendingRequests_Call struct {
 
 // ListPendingRequests is a helper method to define mock.On call
 //   - ctx context.Context
-//   - userID int64
+//   - userID string
 func (_e *FriendshipRepoMock_Expecter) ListPendingRequests(ctx interface{}, userID interface{}) *FriendshipRepoMock_ListPendingRequests_Call {
 	return &FriendshipRepoMock_ListPendingRequests_Call{Call: _e.mock.On("ListPendingRequests", ctx, userID)}
 }
 
-func (_c *FriendshipRepoMock_ListPendingRequests_Call) Run(run func(ctx context.Context, userID int64)) *FriendshipRepoMock_ListPendingRequests_Call {
+func (_c *FriendshipRepoMock_ListPendingRequests_Call) Run(run func(ctx context.Context, userID string)) *FriendshipRepoMock_ListPendingRequests_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(int64))
+		run(args[0].(context.Context), args[1].(string))
 	})
 	return _c
 }
@@ -301,31 +301,31 @@ func (_c *FriendshipRepoMock_ListPendingRequests_Call) Return(_a0 []repo.Pending
 	return _c
 }
 
-func (_c *FriendshipRepoMock_ListPendingRequests_Call) RunAndReturn(run func(context.Context, int64) ([]repo.PendingRequest, error)) *FriendshipRepoMock_ListPendingRequests_Call {
+func (_c *FriendshipRepoMock_ListPendingRequests_Call) RunAndReturn(run func(context.Context, string) ([]repo.PendingRequest, error)) *FriendshipRepoMock_ListPendingRequests_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // RejectRequest provides a mock function with given fields: ctx, friendshipID, userID
-func (_m *FriendshipRepoMock) RejectRequest(ctx context.Context, friendshipID int64, userID int64) (int64, error) {
+func (_m *FriendshipRepoMock) RejectRequest(ctx context.Context, friendshipID int64, userID string) (string, error) {
 	ret := _m.Called(ctx, friendshipID, userID)
 
 	if len(ret) == 0 {
 		panic("no return value specified for RejectRequest")
 	}
 
-	var r0 int64
+	var r0 string
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, int64, int64) (int64, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, int64, string) (string, error)); ok {
 		return rf(ctx, friendshipID, userID)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, int64, int64) int64); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, int64, string) string); ok {
 		r0 = rf(ctx, friendshipID, userID)
 	} else {
-		r0 = ret.Get(0).(int64)
+		r0 = ret.Get(0).(string)
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, int64, int64) error); ok {
+	if rf, ok := ret.Get(1).(func(context.Context, int64, string) error); ok {
 		r1 = rf(ctx, friendshipID, userID)
 	} else {
 		r1 = ret.Error(1)
@@ -342,30 +342,30 @@ type FriendshipRepoMock_RejectRequest_Call struct {
 // RejectRequest is a helper method to define mock.On call
 //   - ctx context.Context
 //   - friendshipID int64
-//   - userID int64
+//   - userID string
 func (_e *FriendshipRepoMock_Expecter) RejectRequest(ctx interface{}, friendshipID interface{}, userID interface{}) *FriendshipRepoMock_RejectRequest_Call {
 	return &FriendshipRepoMock_RejectRequest_Call{Call: _e.mock.On("RejectRequest", ctx, friendshipID, userID)}
 }
 
-func (_c *FriendshipRepoMock_RejectRequest_Call) Run(run func(ctx context.Context, friendshipID int64, userID int64)) *FriendshipRepoMock_RejectRequest_Call {
+func (_c *FriendshipRepoMock_RejectRequest_Call) Run(run func(ctx context.Context, friendshipID int64, userID string)) *FriendshipRepoMock_RejectRequest_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(int64), args[2].(int64))
+		run(args[0].(context.Context), args[1].(int64), args[2].(string))
 	})
 	return _c
 }
 
-func (_c *FriendshipRepoMock_RejectRequest_Call) Return(requesterID int64, err error) *FriendshipRepoMock_RejectRequest_Call {
+func (_c *FriendshipRepoMock_RejectRequest_Call) Return(requesterID string, err error) *FriendshipRepoMock_RejectRequest_Call {
 	_c.Call.Return(requesterID, err)
 	return _c
 }
 
-func (_c *FriendshipRepoMock_RejectRequest_Call) RunAndReturn(run func(context.Context, int64, int64) (int64, error)) *FriendshipRepoMock_RejectRequest_Call {
+func (_c *FriendshipRepoMock_RejectRequest_Call) RunAndReturn(run func(context.Context, int64, string) (string, error)) *FriendshipRepoMock_RejectRequest_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // SendRequest provides a mock function with given fields: ctx, requesterID, addresseeID
-func (_m *FriendshipRepoMock) SendRequest(ctx context.Context, requesterID int64, addresseeID int64) error {
+func (_m *FriendshipRepoMock) SendRequest(ctx context.Context, requesterID string, addresseeID string) error {
 	ret := _m.Called(ctx, requesterID, addresseeID)
 
 	if len(ret) == 0 {
@@ -373,7 +373,7 @@ func (_m *FriendshipRepoMock) SendRequest(ctx context.Context, requesterID int64
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, int64, int64) error); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string, string) error); ok {
 		r0 = rf(ctx, requesterID, addresseeID)
 	} else {
 		r0 = ret.Error(0)
@@ -389,15 +389,15 @@ type FriendshipRepoMock_SendRequest_Call struct {
 
 // SendRequest is a helper method to define mock.On call
 //   - ctx context.Context
-//   - requesterID int64
-//   - addresseeID int64
+//   - requesterID string
+//   - addresseeID string
 func (_e *FriendshipRepoMock_Expecter) SendRequest(ctx interface{}, requesterID interface{}, addresseeID interface{}) *FriendshipRepoMock_SendRequest_Call {
 	return &FriendshipRepoMock_SendRequest_Call{Call: _e.mock.On("SendRequest", ctx, requesterID, addresseeID)}
 }
 
-func (_c *FriendshipRepoMock_SendRequest_Call) Run(run func(ctx context.Context, requesterID int64, addresseeID int64)) *FriendshipRepoMock_SendRequest_Call {
+func (_c *FriendshipRepoMock_SendRequest_Call) Run(run func(ctx context.Context, requesterID string, addresseeID string)) *FriendshipRepoMock_SendRequest_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(int64), args[2].(int64))
+		run(args[0].(context.Context), args[1].(string), args[2].(string))
 	})
 	return _c
 }
@@ -407,7 +407,7 @@ func (_c *FriendshipRepoMock_SendRequest_Call) Return(_a0 error) *FriendshipRepo
 	return _c
 }
 
-func (_c *FriendshipRepoMock_SendRequest_Call) RunAndReturn(run func(context.Context, int64, int64) error) *FriendshipRepoMock_SendRequest_Call {
+func (_c *FriendshipRepoMock_SendRequest_Call) RunAndReturn(run func(context.Context, string, string) error) *FriendshipRepoMock_SendRequest_Call {
 	_c.Call.Return(run)
 	return _c
 }

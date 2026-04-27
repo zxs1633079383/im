@@ -133,7 +133,7 @@ func RegisterUrgentRoutes(
 			c.JSON(500, gin.H{"error": "internal error"})
 		default:
 			if ids == nil {
-				ids = []int64{}
+				ids = []string{}
 			}
 			c.JSON(200, gin.H{"confirmations": ids})
 		}

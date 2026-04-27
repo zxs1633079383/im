@@ -15,18 +15,17 @@ import (
 // nil = no real-time notifications (the integration / unit tests don't need
 // a live hub).
 type ChannelEventPusher interface {
-	PushChannelEvent(targetUserID int64, eventType string, channelID int64, name string)
+	PushChannelEvent(targetUserID string, eventType string, channelID int64, name string)
 }
 
-// Request bodies. Field names + JSON tags match the legacy handler exactly so
-// existing clients continue to work after the cut-over.
+// Request bodies. M4: user-id fields are mm UserIDs (24-hex strings).
 type createGroupReq struct {
-	Name      string  `json:"name"`
-	MemberIDs []int64 `json:"member_ids"`
+	Name      string   `json:"name"`
+	MemberIDs []string `json:"member_ids"`
 }
 
 type createDMReq struct {
-	PeerID int64 `json:"peer_id"`
+	PeerID string `json:"peer_id"`
 }
 
 type updateChannelReq struct {
@@ -35,7 +34,7 @@ type updateChannelReq struct {
 }
 
 type addMemberReq struct {
-	UserID int64 `json:"user_id"`
+	UserID string `json:"user_id"`
 }
 
 // pathInt64 parses :name as int64. Returns ok=false and writes a 400 on
@@ -75,7 +74,8 @@ func RegisterChannelRoutes(authed *gin.RouterGroup, svc *service.ChannelService,
 			c.JSON(422, gin.H{"error": "name is required"})
 			return
 		}
-		ch, added, err := svc.CreateGroup(c.Request.Context(), uid, in.Name, in.MemberIDs)
+		teamID := teamIDFromCtx(c)
+		ch, added, err := svc.CreateGroup(c.Request.Context(), uid, teamID, in.Name, in.MemberIDs)
 		if err != nil {
 			c.JSON(500, gin.H{"error": "internal error"})
 			return
@@ -102,11 +102,12 @@ func RegisterChannelRoutes(authed *gin.RouterGroup, svc *service.ChannelService,
 			c.JSON(400, gin.H{"error": "invalid JSON"})
 			return
 		}
-		if in.PeerID == 0 {
+		if in.PeerID == "" {
 			c.JSON(422, gin.H{"error": "peer_id is required"})
 			return
 		}
-		ch, created, err := svc.CreateOrGetDM(c.Request.Context(), uid, in.PeerID)
+		teamID := teamIDFromCtx(c)
+		ch, created, err := svc.CreateOrGetDM(c.Request.Context(), uid, in.PeerID, teamID)
 		switch {
 		case errors.Is(err, service.ErrSelfDM):
 			c.JSON(422, gin.H{"error": "cannot DM yourself"})
@@ -202,7 +203,7 @@ func RegisterChannelRoutes(authed *gin.RouterGroup, svc *service.ChannelService,
 			c.JSON(400, gin.H{"error": "invalid JSON"})
 			return
 		}
-		if in.UserID == 0 {
+		if in.UserID == "" {
 			c.JSON(422, gin.H{"error": "user_id is required"})
 			return
 		}
@@ -234,8 +235,9 @@ func RegisterChannelRoutes(authed *gin.RouterGroup, svc *service.ChannelService,
 		if !ok {
 			return
 		}
-		targetID, ok := pathInt64(c, "user_id")
-		if !ok {
+		targetID := c.Param("user_id")
+		if targetID == "" {
+			c.JSON(400, gin.H{"error": "invalid user_id"})
 			return
 		}
 		err := svc.RemoveMember(c.Request.Context(), channelID, uid, targetID)

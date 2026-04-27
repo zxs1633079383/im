@@ -18,7 +18,7 @@ const (
 
 // sendNotificationReq is POST /api/notifications body.
 type sendNotificationReq struct {
-	ReceiverID int64            `json:"receiver_id"`
+	ReceiverID string           `json:"receiver_id"`
 	Title      string           `json:"title"`
 	Body       string           `json:"body"`
 	Type       int16            `json:"type"`

@@ -12,9 +12,9 @@ import (
 // createTopicReq mirrors the JSON body for POST /api/channels/:id/topics.
 // Field names are kept snake_case to match the rest of this handler family.
 type createTopicReq struct {
-	RootMessageID int64   `json:"root_message_id"`
-	Name          string  `json:"name"`
-	MemberUserIDs []int64 `json:"member_user_ids"`
+	RootMessageID int64    `json:"root_message_id"`
+	Name          string   `json:"name"`
+	MemberUserIDs []string `json:"member_user_ids"`
 }
 
 // registerTopicRoutes wires POST/GET /api/channels/:id/topics.
@@ -39,8 +39,14 @@ func registerTopicRoutes(authed *gin.RouterGroup, svc *service.ChannelService) {
 			c.JSON(422, gin.H{"error": "name is required"})
 			return
 		}
+		teamID := teamIDFromCtx(c)
+		var teamPtr *string
+		if teamID != "" {
+			teamPtr = &teamID
+		}
 		topic, err := svc.CreateTopic(c.Request.Context(), service.CreateTopicRequest{
 			CallerID:      uid,
+			TeamID:        teamPtr,
 			ParentID:      parentID,
 			RootMessageID: in.RootMessageID,
 			Name:          in.Name,

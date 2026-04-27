@@ -37,21 +37,9 @@ func JWTGin(secret string) gin.HandlerFunc {
 	}
 }
 
-// JWTOrCookie is the dual-stack auth gate. It accepts the request when
-// EITHER:
-//   - a previous middleware (typically MattermostCookieAuth) already set
-//     UserIDKey on the context, OR
-//   - the Authorization header carries a valid Bearer JWT.
-//
-// Use it INSTEAD of JWTGin when MattermostCookieAuth runs first:
-//
-//	authedAPI.Use(MattermostCookieAuth(rdb, users, log))
-//	authedAPI.Use(JWTOrCookie(cfg.JWTSecret))
-//
-// Cookie-only callers pass cleanly (no Bearer JWT required); JWT-only
-// callers behave exactly as before; both-present callers get JWT identity
-// (cookie identity already on the context is overwritten by the JWT
-// claims for explicitness — JWT is the higher-trust source).
+// JWTOrCookie is the M3-era dual-stack auth gate. M4 deprecates it in favour
+// of CookieRequired (cookie-only) — kept here only because the WS handler and
+// any future /api/admin/* routes still rely on JWT.
 func JWTOrCookie(secret string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		header := c.GetHeader("Authorization")

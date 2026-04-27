@@ -47,8 +47,8 @@ func NewApprovalService(
 // CreateApprovalParams is the input to Create.
 type CreateApprovalParams struct {
 	ChannelID   int64
-	RequesterID int64
-	ApproverID  int64
+	RequesterID string
+	ApproverID  string
 	Subject     string
 	Content     string
 	Props       string
@@ -94,7 +94,7 @@ func (s *ApprovalService) Create(ctx context.Context, p CreateApprovalParams) (*
 
 // Approve decides id as approved with an optional note. Only the designated
 // approver may call. Returns the refreshed row so the transport can broadcast.
-func (s *ApprovalService) Approve(ctx context.Context, id, callerID int64, note string) (*repo.Approval, error) {
+func (s *ApprovalService) Approve(ctx context.Context, id int64, callerID, note string) (*repo.Approval, error) {
 	ctx, span := tracer.Start(ctx, "ApprovalService.Approve")
 	defer span.End()
 
@@ -103,7 +103,7 @@ func (s *ApprovalService) Approve(ctx context.Context, id, callerID int64, note 
 
 // Reject decides id as rejected with an optional note. Only the approver may
 // call.
-func (s *ApprovalService) Reject(ctx context.Context, id, callerID int64, note string) (*repo.Approval, error) {
+func (s *ApprovalService) Reject(ctx context.Context, id int64, callerID, note string) (*repo.Approval, error) {
 	ctx, span := tracer.Start(ctx, "ApprovalService.Reject")
 	defer span.End()
 
@@ -113,7 +113,7 @@ func (s *ApprovalService) Reject(ctx context.Context, id, callerID int64, note s
 // decide is the shared code path for Approve/Reject. Fetches + authorises +
 // transitions + re-reads. The WHERE status = pending guard inside Decide()
 // protects against concurrent approve/reject/cancel.
-func (s *ApprovalService) decide(ctx context.Context, id, callerID int64, status int16, note string) (*repo.Approval, error) {
+func (s *ApprovalService) decide(ctx context.Context, id int64, callerID string, status int16, note string) (*repo.Approval, error) {
 	a, err := s.approvals.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
@@ -138,7 +138,7 @@ func (s *ApprovalService) decide(ctx context.Context, id, callerID int64, status
 
 // Cancel transitions the approval to cancelled. Caller must be the requester,
 // status must be pending. Returns the refreshed row.
-func (s *ApprovalService) Cancel(ctx context.Context, id, callerID int64) (*repo.Approval, error) {
+func (s *ApprovalService) Cancel(ctx context.Context, id int64, callerID string) (*repo.Approval, error) {
 	ctx, span := tracer.Start(ctx, "ApprovalService.Cancel")
 	defer span.End()
 
@@ -162,7 +162,7 @@ func (s *ApprovalService) Cancel(ctx context.Context, id, callerID int64) (*repo
 }
 
 // Get returns the approval. Only the requester or the approver may view.
-func (s *ApprovalService) Get(ctx context.Context, id, callerID int64) (*repo.Approval, error) {
+func (s *ApprovalService) Get(ctx context.Context, id int64, callerID string) (*repo.Approval, error) {
 	ctx, span := tracer.Start(ctx, "ApprovalService.Get")
 	defer span.End()
 
@@ -177,7 +177,7 @@ func (s *ApprovalService) Get(ctx context.Context, id, callerID int64) (*repo.Ap
 }
 
 // ListPending returns the caller's pending-approver inbox.
-func (s *ApprovalService) ListPending(ctx context.Context, callerID int64, limit int, cursor int64) ([]repo.Approval, error) {
+func (s *ApprovalService) ListPending(ctx context.Context, callerID string, limit int, cursor int64) ([]repo.Approval, error) {
 	ctx, span := tracer.Start(ctx, "ApprovalService.ListPending")
 	defer span.End()
 
@@ -185,7 +185,7 @@ func (s *ApprovalService) ListPending(ctx context.Context, callerID int64, limit
 }
 
 // ListMine returns approvals filed by the caller (any status).
-func (s *ApprovalService) ListMine(ctx context.Context, callerID int64, limit int, cursor int64) ([]repo.Approval, error) {
+func (s *ApprovalService) ListMine(ctx context.Context, callerID string, limit int, cursor int64) ([]repo.Approval, error) {
 	ctx, span := tracer.Start(ctx, "ApprovalService.ListMine")
 	defer span.End()
 
@@ -193,7 +193,7 @@ func (s *ApprovalService) ListMine(ctx context.Context, callerID int64, limit in
 }
 
 // requireMember mirrors the other services' membership check.
-func (s *ApprovalService) requireMember(ctx context.Context, channelID, callerID int64) error {
+func (s *ApprovalService) requireMember(ctx context.Context, channelID int64, callerID string) error {
 	if _, err := s.channels.GetMember(ctx, channelID, callerID); err != nil {
 		if errors.Is(err, repo.ErrNotFound) {
 			return ErrNotMember

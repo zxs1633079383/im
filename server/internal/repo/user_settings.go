@@ -10,7 +10,7 @@ import (
 
 // UserSettingsRepo persists per-user preferences.
 type UserSettingsRepo interface {
-	Get(ctx context.Context, userID int64) (*UserSettings, error)
+	Get(ctx context.Context, userID string) (*UserSettings, error)
 	Upsert(ctx context.Context, s *UserSettings) error
 }
 
@@ -21,7 +21,7 @@ func NewUserSettingsRepo(db *gorm.DB) UserSettingsRepo {
 	return &gormUserSettingsRepo{db: db}
 }
 
-func (r *gormUserSettingsRepo) Get(ctx context.Context, userID int64) (*UserSettings, error) {
+func (r *gormUserSettingsRepo) Get(ctx context.Context, userID string) (*UserSettings, error) {
 	var s UserSettings
 	if err := r.db.WithContext(ctx).First(&s, "user_id = ?", userID).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -33,7 +33,7 @@ func (r *gormUserSettingsRepo) Get(ctx context.Context, userID int64) (*UserSett
 }
 
 func (r *gormUserSettingsRepo) Upsert(ctx context.Context, s *UserSettings) error {
-	if s == nil || s.UserID == 0 {
+	if s == nil || s.UserID == "" {
 		return errors.New("user_settings: user_id required")
 	}
 	return r.db.WithContext(ctx).Clauses(clause.OnConflict{

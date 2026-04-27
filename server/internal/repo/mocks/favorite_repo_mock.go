@@ -23,7 +23,7 @@ func (_m *FavoriteRepoMock) EXPECT() *FavoriteRepoMock_Expecter {
 }
 
 // Add provides a mock function with given fields: ctx, userID, messageID
-func (_m *FavoriteRepoMock) Add(ctx context.Context, userID int64, messageID int64) error {
+func (_m *FavoriteRepoMock) Add(ctx context.Context, userID string, messageID int64) error {
 	ret := _m.Called(ctx, userID, messageID)
 
 	if len(ret) == 0 {
@@ -31,7 +31,7 @@ func (_m *FavoriteRepoMock) Add(ctx context.Context, userID int64, messageID int
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, int64, int64) error); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string, int64) error); ok {
 		r0 = rf(ctx, userID, messageID)
 	} else {
 		r0 = ret.Error(0)
@@ -47,15 +47,15 @@ type FavoriteRepoMock_Add_Call struct {
 
 // Add is a helper method to define mock.On call
 //   - ctx context.Context
-//   - userID int64
+//   - userID string
 //   - messageID int64
 func (_e *FavoriteRepoMock_Expecter) Add(ctx interface{}, userID interface{}, messageID interface{}) *FavoriteRepoMock_Add_Call {
 	return &FavoriteRepoMock_Add_Call{Call: _e.mock.On("Add", ctx, userID, messageID)}
 }
 
-func (_c *FavoriteRepoMock_Add_Call) Run(run func(ctx context.Context, userID int64, messageID int64)) *FavoriteRepoMock_Add_Call {
+func (_c *FavoriteRepoMock_Add_Call) Run(run func(ctx context.Context, userID string, messageID int64)) *FavoriteRepoMock_Add_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(int64), args[2].(int64))
+		run(args[0].(context.Context), args[1].(string), args[2].(int64))
 	})
 	return _c
 }
@@ -65,13 +65,13 @@ func (_c *FavoriteRepoMock_Add_Call) Return(_a0 error) *FavoriteRepoMock_Add_Cal
 	return _c
 }
 
-func (_c *FavoriteRepoMock_Add_Call) RunAndReturn(run func(context.Context, int64, int64) error) *FavoriteRepoMock_Add_Call {
+func (_c *FavoriteRepoMock_Add_Call) RunAndReturn(run func(context.Context, string, int64) error) *FavoriteRepoMock_Add_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // List provides a mock function with given fields: ctx, userID
-func (_m *FavoriteRepoMock) List(ctx context.Context, userID int64) ([]repo.FavoriteWithMessage, error) {
+func (_m *FavoriteRepoMock) List(ctx context.Context, userID string) ([]repo.FavoriteWithMessage, error) {
 	ret := _m.Called(ctx, userID)
 
 	if len(ret) == 0 {
@@ -80,10 +80,10 @@ func (_m *FavoriteRepoMock) List(ctx context.Context, userID int64) ([]repo.Favo
 
 	var r0 []repo.FavoriteWithMessage
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, int64) ([]repo.FavoriteWithMessage, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string) ([]repo.FavoriteWithMessage, error)); ok {
 		return rf(ctx, userID)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, int64) []repo.FavoriteWithMessage); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string) []repo.FavoriteWithMessage); ok {
 		r0 = rf(ctx, userID)
 	} else {
 		if ret.Get(0) != nil {
@@ -91,7 +91,7 @@ func (_m *FavoriteRepoMock) List(ctx context.Context, userID int64) ([]repo.Favo
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, int64) error); ok {
+	if rf, ok := ret.Get(1).(func(context.Context, string) error); ok {
 		r1 = rf(ctx, userID)
 	} else {
 		r1 = ret.Error(1)
@@ -107,14 +107,14 @@ type FavoriteRepoMock_List_Call struct {
 
 // List is a helper method to define mock.On call
 //   - ctx context.Context
-//   - userID int64
+//   - userID string
 func (_e *FavoriteRepoMock_Expecter) List(ctx interface{}, userID interface{}) *FavoriteRepoMock_List_Call {
 	return &FavoriteRepoMock_List_Call{Call: _e.mock.On("List", ctx, userID)}
 }
 
-func (_c *FavoriteRepoMock_List_Call) Run(run func(ctx context.Context, userID int64)) *FavoriteRepoMock_List_Call {
+func (_c *FavoriteRepoMock_List_Call) Run(run func(ctx context.Context, userID string)) *FavoriteRepoMock_List_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(int64))
+		run(args[0].(context.Context), args[1].(string))
 	})
 	return _c
 }
@@ -124,13 +124,13 @@ func (_c *FavoriteRepoMock_List_Call) Return(_a0 []repo.FavoriteWithMessage, _a1
 	return _c
 }
 
-func (_c *FavoriteRepoMock_List_Call) RunAndReturn(run func(context.Context, int64) ([]repo.FavoriteWithMessage, error)) *FavoriteRepoMock_List_Call {
+func (_c *FavoriteRepoMock_List_Call) RunAndReturn(run func(context.Context, string) ([]repo.FavoriteWithMessage, error)) *FavoriteRepoMock_List_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // Remove provides a mock function with given fields: ctx, userID, messageID
-func (_m *FavoriteRepoMock) Remove(ctx context.Context, userID int64, messageID int64) error {
+func (_m *FavoriteRepoMock) Remove(ctx context.Context, userID string, messageID int64) error {
 	ret := _m.Called(ctx, userID, messageID)
 
 	if len(ret) == 0 {
@@ -138,7 +138,7 @@ func (_m *FavoriteRepoMock) Remove(ctx context.Context, userID int64, messageID 
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, int64, int64) error); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string, int64) error); ok {
 		r0 = rf(ctx, userID, messageID)
 	} else {
 		r0 = ret.Error(0)
@@ -154,15 +154,15 @@ type FavoriteRepoMock_Remove_Call struct {
 
 // Remove is a helper method to define mock.On call
 //   - ctx context.Context
-//   - userID int64
+//   - userID string
 //   - messageID int64
 func (_e *FavoriteRepoMock_Expecter) Remove(ctx interface{}, userID interface{}, messageID interface{}) *FavoriteRepoMock_Remove_Call {
 	return &FavoriteRepoMock_Remove_Call{Call: _e.mock.On("Remove", ctx, userID, messageID)}
 }
 
-func (_c *FavoriteRepoMock_Remove_Call) Run(run func(ctx context.Context, userID int64, messageID int64)) *FavoriteRepoMock_Remove_Call {
+func (_c *FavoriteRepoMock_Remove_Call) Run(run func(ctx context.Context, userID string, messageID int64)) *FavoriteRepoMock_Remove_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(int64), args[2].(int64))
+		run(args[0].(context.Context), args[1].(string), args[2].(int64))
 	})
 	return _c
 }
@@ -172,7 +172,7 @@ func (_c *FavoriteRepoMock_Remove_Call) Return(_a0 error) *FavoriteRepoMock_Remo
 	return _c
 }
 
-func (_c *FavoriteRepoMock_Remove_Call) RunAndReturn(run func(context.Context, int64, int64) error) *FavoriteRepoMock_Remove_Call {
+func (_c *FavoriteRepoMock_Remove_Call) RunAndReturn(run func(context.Context, string, int64) error) *FavoriteRepoMock_Remove_Call {
 	_c.Call.Return(run)
 	return _c
 }

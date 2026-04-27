@@ -32,17 +32,17 @@ type PatchChannelFields struct {
 type ChannelGovernanceRepo interface {
 	PatchChannel(ctx context.Context, channelID int64, fields PatchChannelFields) error
 
-	AddManager(ctx context.Context, channelID, userID, addedBy int64) error
-	RemoveManager(ctx context.Context, channelID, userID int64) error
-	ListManagers(ctx context.Context, channelID int64) ([]int64, error)
-	IsManager(ctx context.Context, channelID, userID int64) (bool, error)
+	AddManager(ctx context.Context, channelID int64, userID, addedBy string) error
+	RemoveManager(ctx context.Context, channelID int64, userID string) error
+	ListManagers(ctx context.Context, channelID int64) ([]string, error)
+	IsManager(ctx context.Context, channelID int64, userID string) (bool, error)
 
-	PinMessage(ctx context.Context, channelID, msgID, pinnedBy int64) error
+	PinMessage(ctx context.Context, channelID, msgID int64, pinnedBy string) error
 	UnpinMessage(ctx context.Context, channelID, msgID int64) error
 	ListPins(ctx context.Context, channelID int64) ([]int64, error)
 
-	UpdateMemberRole(ctx context.Context, channelID, userID int64, role int16) error
-	UpdateMemberNotifyPref(ctx context.Context, channelID, userID int64, pref int16) error
+	UpdateMemberRole(ctx context.Context, channelID int64, userID string, role int16) error
+	UpdateMemberNotifyPref(ctx context.Context, channelID int64, userID string, pref int16) error
 }
 
 // gormChannelGovernanceRepo implements ChannelGovernanceRepo against GORM.
@@ -111,7 +111,7 @@ func (r *gormChannelGovernanceRepo) PatchChannel(ctx context.Context, channelID 
 
 // AddManager inserts (channelID, userID) into channel_managers. Idempotent:
 // if the row already exists, the insert is a no-op.
-func (r *gormChannelGovernanceRepo) AddManager(ctx context.Context, channelID, userID, addedBy int64) error {
+func (r *gormChannelGovernanceRepo) AddManager(ctx context.Context, channelID int64, userID, addedBy string) error {
 	m := &ChannelManager{ChannelID: channelID, UserID: userID, AddedBy: addedBy}
 	err := r.db.WithContext(ctx).Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "channel_id"}, {Name: "user_id"}},
@@ -124,7 +124,7 @@ func (r *gormChannelGovernanceRepo) AddManager(ctx context.Context, channelID, u
 }
 
 // RemoveManager is idempotent — no error if the pair didn't exist.
-func (r *gormChannelGovernanceRepo) RemoveManager(ctx context.Context, channelID, userID int64) error {
+func (r *gormChannelGovernanceRepo) RemoveManager(ctx context.Context, channelID int64, userID string) error {
 	err := r.db.WithContext(ctx).
 		Where("channel_id = ? AND user_id = ?", channelID, userID).
 		Delete(&ChannelManager{}).Error
@@ -134,9 +134,9 @@ func (r *gormChannelGovernanceRepo) RemoveManager(ctx context.Context, channelID
 	return nil
 }
 
-// ListManagers returns the user IDs of every manager in channelID.
-func (r *gormChannelGovernanceRepo) ListManagers(ctx context.Context, channelID int64) ([]int64, error) {
-	var ids []int64
+// ListManagers returns the mm UserIDs of every manager in channelID.
+func (r *gormChannelGovernanceRepo) ListManagers(ctx context.Context, channelID int64) ([]string, error) {
+	var ids []string
 	err := r.db.WithContext(ctx).Model(&ChannelManager{}).
 		Where("channel_id = ?", channelID).
 		Order("added_at ASC").
@@ -148,7 +148,7 @@ func (r *gormChannelGovernanceRepo) ListManagers(ctx context.Context, channelID 
 }
 
 // IsManager returns true when userID has a manager row in channelID.
-func (r *gormChannelGovernanceRepo) IsManager(ctx context.Context, channelID, userID int64) (bool, error) {
+func (r *gormChannelGovernanceRepo) IsManager(ctx context.Context, channelID int64, userID string) (bool, error) {
 	var count int64
 	err := r.db.WithContext(ctx).Model(&ChannelManager{}).
 		Where("channel_id = ? AND user_id = ?", channelID, userID).
@@ -160,7 +160,7 @@ func (r *gormChannelGovernanceRepo) IsManager(ctx context.Context, channelID, us
 }
 
 // PinMessage pins msgID in channelID. Idempotent on conflict.
-func (r *gormChannelGovernanceRepo) PinMessage(ctx context.Context, channelID, msgID, pinnedBy int64) error {
+func (r *gormChannelGovernanceRepo) PinMessage(ctx context.Context, channelID, msgID int64, pinnedBy string) error {
 	p := &ChannelPinnedMessage{ChannelID: channelID, MessageID: msgID, PinnedBy: pinnedBy}
 	err := r.db.WithContext(ctx).Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "channel_id"}, {Name: "message_id"}},
@@ -198,7 +198,7 @@ func (r *gormChannelGovernanceRepo) ListPins(ctx context.Context, channelID int6
 
 // UpdateMemberRole sets channel_members.role for (channelID, userID). Returns
 // ErrNotFound when the member row doesn't exist.
-func (r *gormChannelGovernanceRepo) UpdateMemberRole(ctx context.Context, channelID, userID int64, role int16) error {
+func (r *gormChannelGovernanceRepo) UpdateMemberRole(ctx context.Context, channelID int64, userID string, role int16) error {
 	res := r.db.WithContext(ctx).Model(&ChannelMember{}).
 		Where("channel_id = ? AND user_id = ?", channelID, userID).
 		Update("role", role)
@@ -212,7 +212,7 @@ func (r *gormChannelGovernanceRepo) UpdateMemberRole(ctx context.Context, channe
 }
 
 // UpdateMemberNotifyPref sets channel_members.notify_pref for (channelID, userID).
-func (r *gormChannelGovernanceRepo) UpdateMemberNotifyPref(ctx context.Context, channelID, userID int64, pref int16) error {
+func (r *gormChannelGovernanceRepo) UpdateMemberNotifyPref(ctx context.Context, channelID int64, userID string, pref int16) error {
 	res := r.db.WithContext(ctx).Model(&ChannelMember{}).
 		Where("channel_id = ? AND user_id = ?", channelID, userID).
 		Update("notify_pref", pref)

@@ -20,8 +20,8 @@ const (
 // explicitly marks it read.
 type Notification struct {
 	ID         int64      `gorm:"primaryKey;autoIncrement"                 json:"id"`
-	SenderID   int64      `gorm:"column:sender_id;not null"                json:"sender_id"`
-	ReceiverID int64      `gorm:"column:receiver_id;not null"              json:"receiver_id"`
+	SenderID   string     `gorm:"column:sender_id;type:text;not null"      json:"sender_id"`
+	ReceiverID string     `gorm:"column:receiver_id;type:text;not null"    json:"receiver_id"`
 	Title      string     `gorm:"not null"                                 json:"title"`
 	Body       string     `gorm:"not null;default:''"                      json:"body"`
 	Type       int16      `gorm:"not null;default:0"                       json:"type"`
@@ -41,14 +41,14 @@ type NotificationRepo interface {
 	// ListReceived returns notifications addressed to receiverID. When
 	// unreadOnly is true, only rows with read_at IS NULL are returned.
 	// Pagination uses (limit, cursor) where cursor is the last id seen.
-	ListReceived(ctx context.Context, receiverID int64, unreadOnly bool, limit int, cursor int64) ([]Notification, error)
+	ListReceived(ctx context.Context, receiverID string, unreadOnly bool, limit int, cursor int64) ([]Notification, error)
 
 	// ListSent returns notifications sent by senderID. Newest-first.
-	ListSent(ctx context.Context, senderID int64, limit int, cursor int64) ([]Notification, error)
+	ListSent(ctx context.Context, senderID string, limit int, cursor int64) ([]Notification, error)
 
 	// MarkRead stamps read_at = now() on id — but only if receiver_id matches
 	// the caller. RowsAffected = 0 → ErrNotFound.
-	MarkRead(ctx context.Context, id, receiverID int64) error
+	MarkRead(ctx context.Context, id int64, receiverID string) error
 }
 
 type gormNotificationRepo struct{ db *gorm.DB }
@@ -83,7 +83,7 @@ func (r *gormNotificationRepo) GetByID(ctx context.Context, id int64) (*Notifica
 }
 
 // ListReceived returns the receiver's inbox newest-first.
-func (r *gormNotificationRepo) ListReceived(ctx context.Context, receiverID int64, unreadOnly bool, limit int, cursor int64) ([]Notification, error) {
+func (r *gormNotificationRepo) ListReceived(ctx context.Context, receiverID string, unreadOnly bool, limit int, cursor int64) ([]Notification, error) {
 	q := r.db.WithContext(ctx).
 		Where("receiver_id = ?", receiverID).
 		Order("id DESC")
@@ -104,7 +104,7 @@ func (r *gormNotificationRepo) ListReceived(ctx context.Context, receiverID int6
 }
 
 // ListSent returns the sender's outbox newest-first.
-func (r *gormNotificationRepo) ListSent(ctx context.Context, senderID int64, limit int, cursor int64) ([]Notification, error) {
+func (r *gormNotificationRepo) ListSent(ctx context.Context, senderID string, limit int, cursor int64) ([]Notification, error) {
 	q := r.db.WithContext(ctx).
 		Where("sender_id = ?", senderID).
 		Order("id DESC")
@@ -123,7 +123,7 @@ func (r *gormNotificationRepo) ListSent(ctx context.Context, senderID int64, lim
 
 // MarkRead stamps read_at = now() — only if (id, receiver_id) matches AND
 // read_at is still NULL (idempotent second-mark, single UPDATE).
-func (r *gormNotificationRepo) MarkRead(ctx context.Context, id, receiverID int64) error {
+func (r *gormNotificationRepo) MarkRead(ctx context.Context, id int64, receiverID string) error {
 	res := r.db.WithContext(ctx).Model(&Notification{}).
 		Where("id = ? AND receiver_id = ? AND read_at IS NULL", id, receiverID).
 		Update("read_at", gorm.Expr("now()"))

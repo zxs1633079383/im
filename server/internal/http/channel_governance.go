@@ -100,8 +100,9 @@ func RegisterChannelGovernanceRoutes(
 		if !ok {
 			return
 		}
-		targetID, ok := pathInt64(c, "user_id")
-		if !ok {
+		targetID := c.Param("user_id")
+		if targetID == "" {
+			c.JSON(400, gin.H{"error": "invalid user_id"})
 			return
 		}
 		err := svc.AddManager(c.Request.Context(), channelID, uid, targetID)
@@ -132,8 +133,9 @@ func RegisterChannelGovernanceRoutes(
 		if !ok {
 			return
 		}
-		targetID, ok := pathInt64(c, "user_id")
-		if !ok {
+		targetID := c.Param("user_id")
+		if targetID == "" {
+			c.JSON(400, gin.H{"error": "invalid user_id"})
 			return
 		}
 		err := svc.RemoveManager(c.Request.Context(), channelID, uid, targetID)
@@ -170,7 +172,7 @@ func RegisterChannelGovernanceRoutes(
 			c.JSON(500, gin.H{"error": "internal error"})
 		default:
 			if ids == nil {
-				ids = []int64{}
+				ids = []string{}
 			}
 			c.JSON(200, gin.H{"managers": ids})
 		}
@@ -267,8 +269,9 @@ func RegisterChannelGovernanceRoutes(
 		if !ok {
 			return
 		}
-		targetID, ok := pathInt64(c, "user_id")
-		if !ok {
+		targetID := c.Param("user_id")
+		if targetID == "" {
+			c.JSON(400, gin.H{"error": "invalid user_id"})
 			return
 		}
 		var in patchMemberReq

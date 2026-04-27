@@ -1,112 +1,45 @@
 package http
 
 import (
-	"errors"
-
 	"github.com/gin-gonic/gin"
 
 	"im-server/internal/middleware"
-	"im-server/internal/repo"
-	"im-server/internal/service"
 )
 
-// registerReq is the JSON body for POST /api/auth/register.
-type registerReq struct {
-	Username    string `json:"username"     binding:"required,min=3,max=32"`
-	Email       string `json:"email"        binding:"required,email"`
-	Password    string `json:"password"     binding:"required,min=8"`
-	DisplayName string `json:"display_name"`
-}
+// gone is the canonical 410 body for retired auth endpoints. Keep the wire
+// shape minimal so cses-client error handlers don't need new code paths.
+var gone = gin.H{"error": "register/login retired in M4; cookie auth only"}
 
-// loginReq is the JSON body for POST /api/auth/login. Login is a username or
-// email; the service layer disambiguates on the '@' character.
-type loginReq struct {
-	Login    string `json:"login"    binding:"required"`
-	Password string `json:"password" binding:"required"`
-}
-
-// authResponse mirrors the legacy net/http handler shape exactly.
-type authResponse struct {
-	Token string     `json:"token"`
-	User  *repo.User `json:"user"`
-}
-
-// RegisterAuthRoutes wires the three auth endpoints onto r:
+// RegisterAuthRoutes wires the M4 cookie-only auth surface:
 //
-//   - POST /api/auth/register
-//   - POST /api/auth/login
-//   - GET  /api/auth/me  (JWT-protected)
+//   - POST /api/auth/register → 410 Gone (im no longer mints accounts)
+//   - POST /api/auth/login    → 410 Gone (cses owns identity)
+//   - GET  /api/auth/me       → returns the resolved MattermostUser injected
+//                                by MattermostCookieResolve; 401 when the
+//                                cookieId is missing/invalid.
 //
-// jwtSecret is needed both by the service (token signing) and the /me
-// middleware. userRepo is needed by /me to look up the current user record.
-//
-// authedExtra (optional) lets the caller pre-attach middlewares to the /me
-// route — typically MattermostCookieAuth so cookie-only callers can resolve
-// /api/auth/me without a Bearer JWT. Pass nil to keep JWT-only behaviour.
-func RegisterAuthRoutes(r *gin.Engine, svc *service.AuthService, userRepo repo.UserRepo, jwtSecret string, authedExtra ...gin.HandlerFunc) {
+// authedExtra typically carries MattermostCookieResolve so the /me handler
+// finds the user on the context. CookieRequired is appended after so the
+// 401 path is shared.
+func RegisterAuthRoutes(r *gin.Engine, authedExtra ...gin.HandlerFunc) {
 	pub := r.Group("/api/auth")
+	pub.POST("/register", func(c *gin.Context) { c.JSON(410, gone) })
+	pub.POST("/login", func(c *gin.Context) { c.JSON(410, gone) })
 
-	pub.POST("/register", func(c *gin.Context) {
-		var in registerReq
-		if err := c.ShouldBindJSON(&in); err != nil {
-			// Match the legacy handler: validation failures are 422.
-			c.JSON(422, gin.H{"error": err.Error()})
-			return
-		}
-		u, tok, err := svc.Register(c.Request.Context(), in.Username, in.Email, in.Password, in.DisplayName)
-		switch {
-		case errors.Is(err, service.ErrUserExists):
-			c.JSON(409, gin.H{"error": "username or email already taken"})
-		case err != nil:
-			c.JSON(500, gin.H{"error": "internal error"})
-		default:
-			c.JSON(201, authResponse{Token: tok, User: u})
-		}
-	})
-
-	pub.POST("/login", func(c *gin.Context) {
-		var in loginReq
-		if err := c.ShouldBindJSON(&in); err != nil {
-			// Match the legacy handler: missing/invalid fields → 422.
-			c.JSON(422, gin.H{"error": "login and password are required"})
-			return
-		}
-		u, tok, err := svc.Login(c.Request.Context(), in.Login, in.Password)
-		switch {
-		case errors.Is(err, service.ErrBadCreds):
-			c.JSON(401, gin.H{"error": "invalid credentials"})
-		case err != nil:
-			c.JSON(500, gin.H{"error": "internal error"})
-		default:
-			c.JSON(200, authResponse{Token: tok, User: u})
-		}
-	})
-
-	// Authenticated /me — Gin JWT middleware sets UserIDKey on the context.
-	// Cookie middleware (when supplied via authedExtra) runs first so it can
-	// inject UserIDKey, then JWTOrCookie accepts either path.
 	authed := r.Group("/api/auth")
 	for _, mw := range authedExtra {
 		authed.Use(mw)
 	}
-	authed.Use(middleware.JWTOrCookie(jwtSecret))
+	authed.Use(middleware.CookieRequired())
 	authed.GET("/me", func(c *gin.Context) {
-		uidAny, ok := c.Get(middleware.UserIDKey)
-		if !ok {
+		mm := middleware.MMUserFromCtx(c)
+		if mm == nil {
+			// CookieRequired upstream guarantees this is unreachable in
+			// practice, but be defensive — the alternative is a typed nil
+			// JSON body which clients would mis-handle.
 			c.JSON(401, gin.H{"error": "unauthorized"})
 			return
 		}
-		uid, ok := uidAny.(int64)
-		if !ok {
-			c.JSON(401, gin.H{"error": "unauthorized"})
-			return
-		}
-		u, err := userRepo.GetByID(c.Request.Context(), uid)
-		if err != nil {
-			c.JSON(404, gin.H{"error": "user not found"})
-			return
-		}
-		// Legacy handler returns the bare user object — preserve that shape.
-		c.JSON(200, u)
+		c.JSON(200, mm)
 	})
 }

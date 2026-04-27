@@ -7,19 +7,16 @@ import (
 	"gorm.io/gorm"
 )
 
-// SearchRepo provides full-text and fuzzy search across messages, users, and
-// channels. It mirrors the legacy store.SearchStore semantics on top of GORM
-// raw SQL so we keep the GIN(to_tsvector('simple', content)) plan from the
-// migration.
+// SearchRepo provides full-text search across messages and channels. M4
+// removes user search from im — cses owns the user directory; the front-end
+// queries cses-side endpoints (or pulls profiles via the Redis HASH "User")
+// for that data, and im no longer keeps a local users table.
 type SearchRepo interface {
-	SearchMessages(ctx context.Context, q string, userID, channelID int64, limit int) ([]MessageSearchResult, error)
-	SearchUsers(ctx context.Context, q string, callerID int64, limit int) ([]User, error)
-	SearchChannels(ctx context.Context, q string, callerID int64, limit int) ([]Channel, error)
+	SearchMessages(ctx context.Context, q string, userID string, channelID int64, limit int) ([]MessageSearchResult, error)
+	SearchChannels(ctx context.Context, q string, callerID string, limit int) ([]Channel, error)
 }
 
-// MessageSearchResult embeds Message and adds the joined channel name. The
-// embedded Message's gorm column tags (e.g. `client_msg_id`) make raw-SQL
-// Scan map columns into the right fields automatically.
+// MessageSearchResult embeds Message and adds the joined channel name.
 type MessageSearchResult struct {
 	Message
 	ChannelName string `gorm:"column:channel_name" json:"channel_name"`
@@ -46,14 +43,14 @@ func clampLimit(limit int) int {
 // SearchMessages returns messages whose content matches q (Postgres FTS,
 // 'simple' config) inside channels where userID is a member. When channelID
 // > 0 the search is scoped to that channel.
-func (r *gormSearchRepo) SearchMessages(ctx context.Context, q string, userID, channelID int64, limit int) ([]MessageSearchResult, error) {
+func (r *gormSearchRepo) SearchMessages(ctx context.Context, q string, userID string, channelID int64, limit int) ([]MessageSearchResult, error) {
 	limit = clampLimit(limit)
 	if strings.TrimSpace(q) == "" {
 		return nil, nil
 	}
 
 	const baseSelect = `
-		SELECT m.id, m.channel_id, m.seq, m.client_msg_id, m.sender_id, m.msg_type,
+		SELECT m.id, m.channel_id, m.seq, m.client_msg_id, m.sender_id, m.team_id, m.msg_type,
 		       m.content, m.visible_to, m.reply_to, m.forwarded_from, m.created_at,
 		       c.name AS channel_name
 		FROM messages m
@@ -81,36 +78,9 @@ func (r *gormSearchRepo) SearchMessages(ctx context.Context, q string, userID, c
 	return rows, nil
 }
 
-// SearchUsers returns active users whose username or display_name match q
-// (case-insensitive ILIKE). The calling user is always excluded.
-func (r *gormSearchRepo) SearchUsers(ctx context.Context, q string, callerID int64, limit int) ([]User, error) {
-	limit = clampLimit(limit)
-	q = strings.TrimSpace(q)
-	if q == "" {
-		return nil, nil
-	}
-
-	pattern := "%" + q + "%"
-	var users []User
-	err := r.db.WithContext(ctx).Raw(`
-		SELECT id, username, email, password_hash, display_name, avatar_url,
-		       status, created_at, updated_at
-		FROM users
-		WHERE id <> ?
-		  AND status = 1
-		  AND (username ILIKE ? OR display_name ILIKE ?)
-		ORDER BY username
-		LIMIT ?
-	`, callerID, pattern, pattern, limit).Scan(&users).Error
-	if err != nil {
-		return nil, err
-	}
-	return users, nil
-}
-
 // SearchChannels returns group channels (type=2) the caller belongs to whose
 // name matches q (ILIKE). DM channels are excluded.
-func (r *gormSearchRepo) SearchChannels(ctx context.Context, q string, callerID int64, limit int) ([]Channel, error) {
+func (r *gormSearchRepo) SearchChannels(ctx context.Context, q string, callerID string, limit int) ([]Channel, error) {
 	limit = clampLimit(limit)
 	q = strings.TrimSpace(q)
 	if q == "" {
@@ -120,7 +90,7 @@ func (r *gormSearchRepo) SearchChannels(ctx context.Context, q string, callerID 
 	pattern := "%" + q + "%"
 	var channels []Channel
 	err := r.db.WithContext(ctx).Raw(`
-		SELECT c.id, c.type, c.name, c.avatar_url, c.seq, c.creator_id,
+		SELECT c.id, c.type, c.name, c.avatar_url, c.seq, c.creator_id, c.team_id,
 		       c.created_at, c.updated_at
 		FROM channels c
 		JOIN channel_members cm ON cm.channel_id = c.id AND cm.user_id = ?

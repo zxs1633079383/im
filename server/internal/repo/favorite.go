@@ -15,7 +15,7 @@ import (
 // to avoid column-prefix gymnastics — favorite columns and message columns
 // have overlapping names (created_at) that don't cleanly destructure.
 type FavoriteWithMessage struct {
-	UserID    int64     `json:"user_id"`
+	UserID    string    `json:"user_id"`
 	MessageID int64     `json:"message_id"`
 	CreatedAt time.Time `json:"created_at"`
 	Message   Message   `gorm:"-" json:"message"`
@@ -26,9 +26,9 @@ type FavoriteWithMessage struct {
 // Add is idempotent via OnConflict DoNothing on the (user_id, message_id)
 // composite PK. Remove returns ErrNotFound if no row matched.
 type FavoriteRepo interface {
-	Add(ctx context.Context, userID, messageID int64) error
-	Remove(ctx context.Context, userID, messageID int64) error
-	List(ctx context.Context, userID int64) ([]FavoriteWithMessage, error)
+	Add(ctx context.Context, userID string, messageID int64) error
+	Remove(ctx context.Context, userID string, messageID int64) error
+	List(ctx context.Context, userID string) ([]FavoriteWithMessage, error)
 }
 
 type gormFavoriteRepo struct{ db *gorm.DB }
@@ -36,7 +36,7 @@ type gormFavoriteRepo struct{ db *gorm.DB }
 // NewFavoriteRepo returns a GORM-backed FavoriteRepo.
 func NewFavoriteRepo(db *gorm.DB) FavoriteRepo { return &gormFavoriteRepo{db: db} }
 
-func (r *gormFavoriteRepo) Add(ctx context.Context, userID, messageID int64) error {
+func (r *gormFavoriteRepo) Add(ctx context.Context, userID string, messageID int64) error {
 	fav := MessageFavorite{UserID: userID, MessageID: messageID}
 	if err := r.db.WithContext(ctx).
 		Clauses(clause.OnConflict{DoNothing: true}).
@@ -46,7 +46,7 @@ func (r *gormFavoriteRepo) Add(ctx context.Context, userID, messageID int64) err
 	return nil
 }
 
-func (r *gormFavoriteRepo) Remove(ctx context.Context, userID, messageID int64) error {
+func (r *gormFavoriteRepo) Remove(ctx context.Context, userID string, messageID int64) error {
 	res := r.db.WithContext(ctx).
 		Where("user_id = ? AND message_id = ?", userID, messageID).
 		Delete(&MessageFavorite{})
@@ -65,7 +65,7 @@ func (r *gormFavoriteRepo) Remove(ctx context.Context, userID, messageID int64) 
 // referenced messages in a single IN query, then assemble. This is simpler
 // (and in practice no slower for typical favorite list sizes) than
 // dealing with overlapping column names in a single embedded SELECT.
-func (r *gormFavoriteRepo) List(ctx context.Context, userID int64) ([]FavoriteWithMessage, error) {
+func (r *gormFavoriteRepo) List(ctx context.Context, userID string) ([]FavoriteWithMessage, error) {
 	var favs []MessageFavorite
 	if err := r.db.WithContext(ctx).
 		Where("user_id = ?", userID).

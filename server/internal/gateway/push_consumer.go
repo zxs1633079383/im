@@ -149,7 +149,7 @@ func (pc *PushConsumer) Handle(ctx context.Context, data []byte) error {
 // when at least one conn received the frame.
 func (pc *PushConsumer) deliverOne(
 	ctx context.Context,
-	uid int64,
+	uid string,
 	msgType WSMessageType,
 	rawPayload json.RawMessage,
 	pushID string,

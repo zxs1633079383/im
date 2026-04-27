@@ -13,7 +13,7 @@ import (
 // injects into normal messages.
 type QuickReply struct {
 	ID        int64     `gorm:"primaryKey;autoIncrement"                 json:"id"`
-	UserID    int64     `gorm:"column:user_id;not null"                  json:"user_id"`
+	UserID    string    `gorm:"column:user_id;type:text;not null"        json:"user_id"`
 	Label     string    `gorm:"not null"                                 json:"label"`
 	Content   string    `gorm:"not null"                                 json:"content"`
 	SortOrder int       `gorm:"column:sort_order;not null;default:0"     json:"sort_order"`
@@ -28,7 +28,7 @@ func (QuickReply) TableName() string { return "quick_replies" }
 type QuickReplyRepo interface {
 	Create(ctx context.Context, q *QuickReply) error
 	GetByID(ctx context.Context, id int64) (*QuickReply, error)
-	ListByUser(ctx context.Context, userID int64) ([]QuickReply, error)
+	ListByUser(ctx context.Context, userID string) ([]QuickReply, error)
 	Update(ctx context.Context, id int64, fields QuickReplyPatch) error
 	Delete(ctx context.Context, id int64) error
 }
@@ -67,7 +67,7 @@ func (r *gormQuickReplyRepo) GetByID(ctx context.Context, id int64) (*QuickReply
 
 // ListByUser returns the user's quick replies ordered by sort_order ASC,
 // falling back to id ASC for deterministic display when sort_order ties.
-func (r *gormQuickReplyRepo) ListByUser(ctx context.Context, userID int64) ([]QuickReply, error) {
+func (r *gormQuickReplyRepo) ListByUser(ctx context.Context, userID string) ([]QuickReply, error) {
 	var out []QuickReply
 	if err := r.db.WithContext(ctx).
 		Where("user_id = ?", userID).

@@ -7,10 +7,14 @@ import (
 	"im-server/internal/auth"
 )
 
-const testSecret = "test-secret-32-bytes-long-enough!"
+const (
+	testSecret = "test-secret-32-bytes-long-enough!"
+	testUID    = "676cc4ccfbbc501161d5cd65" // 张立超 fixture
+	testUID2   = "111111111111111111111111"
+)
 
 func TestJWT_GenerateAndValidate(t *testing.T) {
-	token, err := auth.GenerateToken(testSecret, 42, "alice")
+	token, err := auth.GenerateToken(testSecret, testUID, "alice")
 	if err != nil {
 		t.Fatalf("GenerateToken error: %v", err)
 	}
@@ -22,8 +26,8 @@ func TestJWT_GenerateAndValidate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ValidateToken error: %v", err)
 	}
-	if claims.UserID != 42 {
-		t.Errorf("expected UserID 42, got %d", claims.UserID)
+	if claims.UserID != testUID {
+		t.Errorf("expected UserID %q, got %q", testUID, claims.UserID)
 	}
 	if claims.Username != "alice" {
 		t.Errorf("expected username 'alice', got %q", claims.Username)
@@ -31,7 +35,7 @@ func TestJWT_GenerateAndValidate(t *testing.T) {
 }
 
 func TestJWT_WrongSecret(t *testing.T) {
-	token, _ := auth.GenerateToken(testSecret, 1, "bob")
+	token, _ := auth.GenerateToken(testSecret, testUID2, "bob")
 	_, err := auth.ValidateToken("wrong-secret", token)
 	if err == nil {
 		t.Fatal("ValidateToken should fail with wrong secret")
@@ -46,14 +50,14 @@ func TestJWT_MalformedToken(t *testing.T) {
 }
 
 func TestJWT_EmptySecret(t *testing.T) {
-	_, err := auth.GenerateToken("", 1, "carol")
+	_, err := auth.GenerateToken("", testUID2, "carol")
 	if err == nil {
 		t.Fatal("GenerateToken should fail with empty secret")
 	}
 }
 
 func TestJWT_ExpiryIsSetTo7Days(t *testing.T) {
-	token, _ := auth.GenerateToken(testSecret, 1, "dave")
+	token, _ := auth.GenerateToken(testSecret, testUID2, "dave")
 	claims, _ := auth.ValidateToken(testSecret, token)
 
 	diff := claims.ExpiresAt.Time.Sub(claims.IssuedAt.Time)

@@ -90,9 +90,8 @@ func run() int {
 		}
 	}()
 
-	// Construct repositories. UserSettingsRepo is split out from UserRepo
-	// in the new repo package (the legacy store.UserStore conflated both).
-	userRepo := repo.NewUserRepo(gormDB)
+	// Construct repositories. M4: users table is gone — identity is resolved
+	// from Mattermost cookieId + the cses Redis "User" hash.
 	userSettingsRepo := repo.NewUserSettingsRepo(gormDB)
 	channelRepo := repo.NewChannelRepo(gormDB)
 	messageRepo := repo.NewMessageRepo(gormDB, channelRepo)
@@ -174,25 +173,17 @@ func run() int {
 		Mode:        gin.ReleaseMode,
 	})
 
-	// Phase 6 cut-over: auth endpoints now run on Gin, in front of the legacy
-	// mux fallthrough. /api/auth/{register,login,me} are served by Gin.
-	authSvc := service.NewAuthService(userRepo, cfg.Gateway.JWTSecret)
-	// authed /me path also accepts cookieId via the Mattermost bridge.
-	imhttp.RegisterAuthRoutes(engine, authSvc, userRepo, cfg.Gateway.JWTSecret,
-		middleware.MattermostCookieAuth(rdb, userRepo, log))
+	// M4 cut-over: auth surface is cookie-only. POST /register and /login
+	// are 410 Gone; GET /me echoes the resolved MattermostUser.
+	imhttp.RegisterAuthRoutes(engine, middleware.MattermostCookieResolve(rdb, log))
 
-	// Phase 7.1 cut-over: profile + settings endpoints. These share a single
-	// JWT-protected /api group so the middleware is constructed once.
-	profileSvc := service.NewProfileService(userRepo)
+	// Settings endpoints. The /api group runs MattermostCookieResolve
+	// (parse + LRU cache) followed by CookieRequired (hard 401 gate) so
+	// every authed handler can rely on a populated UserIDKey.
 	settingsSvc := service.NewSettingsService(userSettingsRepo)
 	authedAPI := engine.Group("/api")
-	// Mattermost cookieId bridge runs BEFORE the JWT check: callers that
-	// still send the legacy header get their *MattermostUser injected into
-	// the request context (via MMUserFromCtx) without affecting JWT-only
-	// callers. The middleware is silent on missing header / Redis miss.
-	authedAPI.Use(middleware.MattermostCookieAuth(rdb, userRepo, log))
-	authedAPI.Use(middleware.JWTOrCookie(cfg.Gateway.JWTSecret))
-	imhttp.RegisterProfileRoutes(authedAPI, profileSvc)
+	authedAPI.Use(middleware.MattermostCookieResolve(rdb, log))
+	authedAPI.Use(middleware.CookieRequired())
 	imhttp.RegisterSettingsRoutes(authedAPI, settingsSvc)
 
 	// Shared cross-pod push dependencies for every hook below. Each pusher
@@ -211,18 +202,18 @@ func run() int {
 	// Phase 7.2 cut-over: friend + user-search endpoints. The pusher hook is
 	// preserved (legacy WithEventPusher) so the addressee still receives a
 	// real-time WebSocket notification on a new friend request.
-	friendSvc := service.NewFriendService(friendRepo, userRepo)
+	friendSvc := service.NewFriendService(friendRepo)
 	imhttp.RegisterFriendRoutes(authedAPI, friendSvc, &hubFriendEventPusher{xpod: xpod})
 
 	// Phase 7.3 cut-over: channel endpoints. The pusher hook is preserved
 	// (legacy WithEventPusher) so newly added members still receive a
 	// real-time WebSocket "added" event.
-	channelSvc := service.NewChannelService(channelRepo, userRepo, messageRepo)
+	channelSvc := service.NewChannelService(channelRepo, messageRepo)
 	imhttp.RegisterChannelRoutes(authedAPI, channelSvc, &hubChannelEventPusher{xpod: xpod})
 
 	// M2-A: fine-grained channel governance (patch, managers, pins, role/notify).
 	governanceRepo := repo.NewChannelGovernanceRepo(gormDB)
-	governanceSvc := service.NewChannelGovernanceService(channelRepo, governanceRepo, userRepo)
+	governanceSvc := service.NewChannelGovernanceService(channelRepo, governanceRepo)
 	imhttp.RegisterChannelGovernanceRoutes(authedAPI, governanceSvc, &hubChannelEventPusher{xpod: xpod})
 
 	// Phase 7.4 cut-over: message endpoints. All three legacy hooks are
@@ -260,7 +251,7 @@ func run() int {
 
 	// M2-E: notifications — per-user inbox/outbox + mark-read.
 	notificationRepo := repo.NewNotificationRepo(gormDB)
-	notificationSvc := service.NewNotificationService(notificationRepo, userRepo)
+	notificationSvc := service.NewNotificationService(notificationRepo)
 	imhttp.RegisterNotificationRoutes(authedAPI, notificationSvc, userPusher)
 
 	// M2-F: scheduled messages — CRUD + background worker.
@@ -367,7 +358,7 @@ type crossPodDeps struct {
 
 // dispatch delivers (msgType, payload) to userID via the local hub when
 // possible, and falls back to cross-pod Pulsar fan-out otherwise.
-func (x crossPodDeps) dispatch(userID int64, msgType gateway.WSMessageType, payload any) {
+func (x crossPodDeps) dispatch(userID string, msgType gateway.WSMessageType, payload any) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	x.hub.CrossPodPush(ctx, userID, msgType, payload,
@@ -378,7 +369,7 @@ func (x crossPodDeps) dispatch(userID int64, msgType gateway.WSMessageType, payl
 // single pipelined routing lookup and one Pulsar send per destination pod.
 // partitionKey controls the Pulsar message key — pass the channel id for
 // channel-scoped events so same-channel ordering holds on each pod.
-func (x crossPodDeps) broadcast(userIDs []int64, partitionKey string,
+func (x crossPodDeps) broadcast(userIDs []string, partitionKey string,
 	msgType gateway.WSMessageType, payload any) {
 	if len(userIDs) == 0 {
 		return
@@ -395,7 +386,7 @@ type hubMessagePusher struct {
 	xpod crossPodDeps
 }
 
-func (p *hubMessagePusher) BroadcastMessage(channelID int64, userIDs []int64, msg *repo.Message) {
+func (p *hubMessagePusher) BroadcastMessage(channelID int64, userIDs []string, msg *repo.Message) {
 	if len(userIDs) == 0 {
 		return
 	}
@@ -407,7 +398,7 @@ func (p *hubMessagePusher) BroadcastMessage(channelID int64, userIDs []int64, ms
 		SenderID:  msg.SenderID,
 		Content:   msg.Content,
 		MsgType:   msg.MsgType,
-		VisibleTo: []int64(msg.VisibleTo),
+		VisibleTo: []string(msg.VisibleTo),
 		CreatedAt: msg.CreatedAt,
 	}
 	p.xpod.broadcast(userIDs, strconv.FormatInt(channelID, 10),
@@ -419,7 +410,7 @@ type hubReadSyncer struct {
 	xpod crossPodDeps
 }
 
-func (s *hubReadSyncer) PushReadSync(userID, channelID, readSeq int64) {
+func (s *hubReadSyncer) PushReadSync(userID string, channelID, readSeq int64) {
 	s.xpod.dispatch(userID, gateway.TypeReadSync, gateway.ReadSyncPayload{
 		ChannelID: channelID,
 		ReadSeq:   readSeq,
@@ -431,7 +422,7 @@ type hubFriendEventPusher struct {
 	xpod crossPodDeps
 }
 
-func (p *hubFriendEventPusher) PushFriendEvent(targetUserID int64, eventType string, fromUserID int64) {
+func (p *hubFriendEventPusher) PushFriendEvent(targetUserID, eventType, fromUserID string) {
 	p.xpod.dispatch(targetUserID, gateway.TypeFriendEvent, gateway.FriendEventPayload{
 		EventType:  eventType,
 		FromUserID: fromUserID,
@@ -443,7 +434,7 @@ type hubChannelEventPusher struct {
 	xpod crossPodDeps
 }
 
-func (p *hubChannelEventPusher) PushChannelEvent(targetUserID int64, eventType string, channelID int64, name string) {
+func (p *hubChannelEventPusher) PushChannelEvent(targetUserID string, eventType string, channelID int64, name string) {
 	p.xpod.dispatch(targetUserID, gateway.TypeChannelEvent, gateway.ChannelEventPayload{
 		EventType: eventType,
 		ChannelID: channelID,
@@ -459,7 +450,7 @@ type hubUserEventPusher struct {
 	xpod crossPodDeps
 }
 
-func (p *hubUserEventPusher) PushToUser(userID int64, eventType imhttp.MessageEventType, payload any) {
+func (p *hubUserEventPusher) PushToUser(userID string, eventType imhttp.MessageEventType, payload any) {
 	p.xpod.dispatch(userID, gateway.WSMessageType(eventType), payload)
 }
 
@@ -480,7 +471,7 @@ func (b *hubEventBroadcaster) BroadcastToMembers(channelID int64, eventType imht
 		b.xpod.log.Warn("broadcast: list members failed", "error", err, "channel_id", channelID)
 		return
 	}
-	uids := make([]int64, 0, len(members))
+	uids := make([]string, 0, len(members))
 	for _, m := range members {
 		uids = append(uids, m.UserID)
 	}

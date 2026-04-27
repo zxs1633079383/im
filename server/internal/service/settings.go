@@ -26,7 +26,7 @@ func NewSettingsService(s repo.UserSettingsRepo) *SettingsService {
 // Get returns the user's settings row, or a default shape when no row exists.
 // The defaults mirror the legacy handler's defaultSettings() helper exactly:
 // Theme="system", Language="zh", NotificationEnabled=true, SettingsJSON="{}".
-func (s *SettingsService) Get(ctx context.Context, userID int64) (*repo.UserSettings, error) {
+func (s *SettingsService) Get(ctx context.Context, userID string) (*repo.UserSettings, error) {
 	ctx, span := tracer.Start(ctx, "SettingsService.Get")
 	defer span.End()
 
@@ -53,7 +53,7 @@ func (s *SettingsService) Update(ctx context.Context, settings *repo.UserSetting
 // yet. Mirrors the legacy handler.defaultSettings — Theme="system" and
 // Language="zh" are deliberately different from the GORM column defaults
 // (light / zh-CN) and must be preserved for client compatibility.
-func defaultSettings(userID int64) *repo.UserSettings {
+func defaultSettings(userID string) *repo.UserSettings {
 	return &repo.UserSettings{
 		UserID:              userID,
 		NotificationEnabled: true,

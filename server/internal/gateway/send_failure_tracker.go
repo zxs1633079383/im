@@ -17,7 +17,7 @@ const markOfflineThreshold = 3
 // offlineMarker is the narrow subset of repo.Routing the failure tracker needs.
 // Lets unit tests stub Redis out.
 type offlineMarker interface {
-	MarkOffline(ctx context.Context, userID int64, gatewayID string) (int, error)
+	MarkOffline(ctx context.Context, userID string, gatewayID string) (int, error)
 }
 
 // sendFailureTracker counts consecutive producer.Send failures per destination
@@ -64,7 +64,7 @@ func (t *sendFailureTracker) RecordSuccess(gatewayID string) {
 //
 // Eviction is best-effort — if MarkOffline returns an error we log and keep
 // going so one flaky Redis Lua call cannot wedge the whole fan-out loop.
-func (t *sendFailureTracker) RecordFailure(ctx context.Context, gatewayID string, userIDs []int64) {
+func (t *sendFailureTracker) RecordFailure(ctx context.Context, gatewayID string, userIDs []string) {
 	if t == nil || gatewayID == "" {
 		return
 	}
@@ -85,7 +85,7 @@ func (t *sendFailureTracker) RecordFailure(ctx context.Context, gatewayID string
 
 // evict is the per-bucket MarkOffline loop. Separated so RecordFailure stays
 // under the 60-line function cap and so tests can exercise it directly.
-func (t *sendFailureTracker) evict(ctx context.Context, gatewayID string, userIDs []int64) {
+func (t *sendFailureTracker) evict(ctx context.Context, gatewayID string, userIDs []string) {
 	if t.routing == nil || len(userIDs) == 0 {
 		return
 	}

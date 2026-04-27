@@ -15,9 +15,12 @@ import (
 // requested is *absent* from the JSON envelope, while a requested category
 // with no matches is emitted as an empty array. Existing clients already
 // rely on this distinction.
+// M4: Users carries mm UserIDs (24-hex strings); clients resolve profile
+// data from the cses Redis "User" hash. The search service no longer
+// returns local user rows.
 type searchResponse struct {
 	Messages *[]repo.MessageSearchResult `json:"messages,omitempty"`
-	Users    *[]repo.User                `json:"users,omitempty"`
+	Users    *[]string                   `json:"users,omitempty"`
 	Channels *[]repo.Channel             `json:"channels,omitempty"`
 }
 

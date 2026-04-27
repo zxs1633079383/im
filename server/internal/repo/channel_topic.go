@@ -13,13 +13,16 @@ import (
 //
 // ParentID / RootMessageID pin the topic to its origin message; Name is the
 // topic display name; CreatorID becomes the topic owner; MemberIDs is the
-// initial member set (deduped, creator auto-added as owner).
+// initial member set (deduped, creator auto-added as owner). M4: CreatorID
+// and MemberIDs are mm UserIDs (24-hex strings). TeamID is the topic's team
+// scope inherited from the parent channel (frozen at creation).
 type CreateTopicParams struct {
 	ParentID      int64
 	RootMessageID int64
 	Name          string
-	CreatorID     int64
-	MemberIDs     []int64
+	CreatorID     string
+	TeamID        *string
+	MemberIDs     []string
 }
 
 // CreateTopic creates a topic channel (子群聊) rooted at params.ParentID +
@@ -45,13 +48,13 @@ func (r *gormChannelRepo) CreateTopic(ctx context.Context, p CreateTopicParams) 
 // insertTopicTx inserts the topic row then bulk-inserts its members in the
 // same transaction. Separate from CreateTopic so the closure stays short.
 func insertTopicTx(tx *gorm.DB, p CreateTopicParams, out *Channel) error {
-	cid := p.CreatorID
 	parent := p.ParentID
 	rootMsg := p.RootMessageID
 	*out = Channel{
 		Type:          ChannelTypeGroup,
 		Name:          p.Name,
-		CreatorID:     &cid,
+		CreatorID:     p.CreatorID,
+		TeamID:        p.TeamID,
 		RootID:        &parent,
 		RootMessageID: &rootMsg,
 	}
@@ -67,10 +70,13 @@ func insertTopicTx(tx *gorm.DB, p CreateTopicParams, out *Channel) error {
 
 // collectTopicMembers dedupes memberIDs and prepends the creator as owner.
 // Exposed as a package-level helper so it's unit-testable without a real DB.
-func collectTopicMembers(channelID, creatorID int64, memberIDs []int64) []ChannelMember {
-	seen := make(map[int64]struct{}, len(memberIDs)+1)
+func collectTopicMembers(channelID int64, creatorID string, memberIDs []string) []ChannelMember {
+	seen := make(map[string]struct{}, len(memberIDs)+1)
 	out := make([]ChannelMember, 0, len(memberIDs)+1)
-	add := func(uid int64, role int16) {
+	add := func(uid string, role int16) {
+		if uid == "" {
+			return
+		}
 		if _, ok := seen[uid]; ok {
 			return
 		}
