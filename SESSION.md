@@ -3,7 +3,7 @@
 > 这份文档是"会话快照"：每次会话结束前更新一次，下次会话开局只要先读它 + `docs/GOAL.md` + `CLAUDE.md` 就能无缝接着干。
 > **更新原则**：事实先写（分支/tag/commit），决策次之，待办最后。过时信息必须删除，不留历史沉积。
 
-Last updated: 2026-04-27（M3 闭环 + 跨 pod 批量化 + cookie 桥接 + Consul 配置中心；M4 重构方案已锁定，待新 session 开工）
+Last updated: 2026-04-27（**M4 已开工 — Foundation phase 落地**：spec 锁死 + migration 014 + Cookie 单栈中间件 + LRU 缓存 + 测试 fixture；级联改造（repo / service / handler）下次会话续接）
 
 ---
 
@@ -11,20 +11,22 @@ Last updated: 2026-04-27（M3 闭环 + 跨 pod 批量化 + cookie 桥接 + Consu
 
 | 分支 | 用途 | 最新 commit | 状态 |
 |------|------|-------------|------|
-| `main` | 稳定主干 — M1+M2+M3 主体 + pre 部署 + 性能调优 | `378e67e` chore(local): Pulsar 本地一键初始化脚本 | ✅ 已 push 到 origin/main |
+| `main` | 稳定主干 — M3 GA + M4 Foundation phase | `668e408` feat(m4): 落地 spec + foundation | 🟡 M4 P1+P2 落地，P3-P6 未 push（本地 33 commits ahead）|
 | `im-backend-switch` (cses-client) | `ImApiAdapter` M1 能力 100% 覆盖 | `c0b3985c9` feat(im-api): M1 补齐 5 stub | ✅ V6 smoke 7/7 + M1 完整覆盖 |
 
-### main 最近 commit（本轮全部产出，按时间顺序倒序）
+### main 最近 commit（最新一轮：M4 Foundation）
 ```
+668e408 feat(m4): 落地 spec + foundation — migration 014 / cookie 单栈 / 测试 fixture
+0dab7be docs(session): 锁定 M4 用户身份模型重构 spec + 同步 v0.4/v0.5 tag 全景
+367f7b8 feat(auth): 纯 cookie 也通过鉴权 (lazy-upsert shadow user) + JWTOrCookie 双栈
+05c7868 feat(config): Consul KV 配置中心 + 本地直连 pre 中间件 + cookie 缺失 middleware 告警
+ad49e4e feat(middleware): Mattermost cookieId 桥接 + 用户上下文注入 + traces 改指 jaeger-cses
+1f9b78c fix(gateway): 补齐 markOffline + cmd/message 迁移到新 envelope
 378e67e chore(local): Pulsar 本地一键初始化脚本
 86ac2e5 docs(benchmark): pre-6 DM-index 基线 sync/markRead P95 减半
 64fb356 perf(dm): FindDM 反向 index + SQL 改走 EXISTS
-ecaacd0 docs(benchmark): pre-5 pool=300+racefix 压测基线全链路 100% 可靠
 5dc95e5 fix(gateway): Conn.Push 防 send on closed channel panic
-41e04bd fix(benchmark-loop): 去 -e + CPU_POD_CNT 空值兜底
 815df1f perf(pool): PG 池对齐 Java HikariCP 配置 50->300
-3d3e844 perf(pool): PG 连接池 20->50 + 压测脚本改共享 peer
- ...
 9822ad1 feat(e2e): pre 集群全链路 harness 13/13 通过
 e0ecb32 fix(gateway): push_consumer 走 PushTopicFor 与发送侧对齐
 2607e65 feat(metrics): 埋 9 个 OTel metric 点亮 Grafana dashboard
@@ -41,11 +43,12 @@ e0ecb32 fix(gateway): push_consumer 走 PushTopicFor 与发送侧对齐
 - **`v0.4.1-m3-markoffline-cleanup`** — `Routing.MarkOffline` 连续失败 3 次自动摘除 + `cmd/message` 改走新 envelope
 - **`v0.4.2-m3-mm-cookie-bridge`** — Mattermost cookieId → MattermostUser 注入 ctx + OTel traces 接入 jaeger-cses
 - **`v0.5.0-config-consul`** — Consul KV 配置中心 + 本地 `make run-dev` 直连 pre 中间件 + cookie 缺失 warn
-- **`v0.5.1-cookie-auth`** — 纯 cookie 也通过鉴权（lazy-upsert shadow user + JWTOrCookie 双栈），**当前 HEAD 指向的生产候选**（pre image: `v1.0.0-pre-11`）。注意：影子映射模型在 M4 会被废弃（详见 §3 M4 spec）。
+- **`v0.5.1-cookie-auth`** — 纯 cookie 也通过鉴权（lazy-upsert shadow user + JWTOrCookie 双栈），**生产候选**（pre image: `v1.0.0-pre-11`）。
+- **`v0.5.2-m4-foundation`** — **当前 HEAD**：M4 Foundation phase（spec + migration 014 + Cookie 单栈 + LRU + 测试 fixture）。**未 deploy / 未 push**；下次会话续接 P3 cascade 再判断 deploy 时机。
 
-### 回归基线（2026-04-27 v0.5.1）
-- build + vet + unit + race + 集成 71 PASS / 0 FAIL / 1 SKIP；e2e 13/13；pod 0 restart / 0 panic
-- 详见 `server/docs/regression/2026-04-27-v0.5.1.md`
+### 回归基线
+- **v0.5.1**：build + vet + unit + race + 集成 71 PASS / 0 FAIL / 1 SKIP；e2e 13/13；pod 0 restart / 0 panic（详见 `server/docs/regression/2026-04-27-v0.5.1.md`）
+- **v0.5.2-m4-foundation**：`go build ./... ✅`；`go test ./internal/auth/... ./internal/middleware/... ./internal/testutil/... ✅`；migration 014 未在 dev DB 跑；其他集成测试未跑（P3 级联未做，repo/handler 仍走旧 int64 路径）
 
 ### 镜像演进
 `harbor.jinqidongli.com/x9-go/im/im-gateway:v1.0.0-pre-{2,3,4,5,6}` — 每轮性能调优一个 tag，pre-6 是最新。
@@ -54,10 +57,25 @@ e0ecb32 fix(gateway): push_consumer 走 PushTopicFor 与发送侧对齐
 
 ## 2. 已完成
 
+### M4 Foundation（本会话产出）
+
+| Phase | 状态 | 产出 |
+|-------|------|------|
+| **P1** | ✅ | `server/migrations/014_m4_userid_text.{up,down}.sql`（DROP & RECREATE 整库；users 删；所有 user FK BIGINT → TEXT；channels.team_id / messages.team_id 新增；messages.visible_to TEXT[]）；`internal/auth/userid.go`（ValidateUserID + MustUserID + 100% 覆盖单测，含张立超真实 cookieId/userId/companyId 验证用例） |
+| **P2** | ✅ | `MattermostCookieResolve`（剥离 lazy upsert + UserRepo 依赖）；`hashicorp/golang-lru/v2` 30s TTL × 10k cap 进程内缓存；`CookieRequired` hard 401 gate；`MattermostUser.ResolvedTeamID`（CompanyID → OrgID → ""）；`testutil.CookieFixture` + 张立超 ground-truth 常量；`scripts/seed-mm-cookies.sh`手动 e2e 灌库 |
+| **P3** | ⛔ 未启动 | repo 23 个文件 user-id 字段 / 函数签名 int64 → string 全量级联 |
+| **P4** | ⛔ 未启动 | service params struct + 17 handler 文件 76 调用点 + main.go 装配重写 |
+| **P5** | ⛔ 未启动 | v5_*_test.go fixture 改造 + m4_*_test.go 系列（76×5 case + 96 WS）|
+| **P6** | 🟡 进行中 | 本节 SESSION.md / GOAL.md 更新；tag `v0.5.2-m4-foundation` 已打 |
+
+> 本地编译 + 单测全绿；migration 014 未在 PG 跑过；集成 / e2e 没动（旧 int64 路径仍是 source of truth，repo 还没迁）。
+>
+> **下次会话开局 5 分钟做完**：(1) 读 SESSION.md §3 "M4 Cascade Plan"；(2) 跑 `migrate -path server/migrations -database "$IM_DEV_DSN" up` 让 014 在 dev 库落地；(3) 从 §3 cascade plan 步骤 1 起手 — 改 `internal/repo/models.go` 让 `go build ./...` 报错倒推剩余文件清单。
+
 ### Backend（M1+M2+M3 主体）
 - **M1**：auth / friends / channel / messages / sync / WS / 跨 pod 推送骨架 + ProducerCache + routing TTL — 全绿。
 - **M2**：announcements / channel governance / urgent / approvals / notifications / scheduled / quick replies — 全绿。
-- **M3 主体（本轮）**：
+- **M3 主体**：
   - Redis **Cluster 兼容**：`OpenRedis` 返回 `UniversalClient`，key prefix `im-new:*` 逻辑隔离（Cluster 无多 DB）
   - **Topic 子群聊**：`channels.root_id`/`root_message_id` + POST/GET `/api/channels/:id/topics`
   - **Presence 端点**：`GET /api/presence?channel_id=X`（复用 Redis routing，不新增状态）
@@ -116,10 +134,82 @@ HPA `minReplicas=3 → maxReplicas=20`，VU=800 时实际扩到 17 pod 触发 st
 
 ## 3. 进行中 / 未决
 
-### 进行中 / 下一步
-- **cses-client 切换 37 处 Mattermost URI → `ImApiAdapter`**：message.service.ts F1 主线。Adapter 已完整覆盖 M1，只剩 service 层 branching 工作。建议 demo 前只切核心 4 条（send/markRead/revoke/sync）即可跑全链路 demo。
+### M4 Cascade Plan（下次会话主线 — 把 P3-P6 推完）
+
+> Spec 已在 `server/docs/M4_SPEC.md`（12 节 + 10 决策点 + 9 步验证门禁）。Foundation phase 已 commit `668e408`，tag `v0.5.2-m4-foundation`。本节是接力清单。
+
+**总策略**：让 build 错误倒推 — 改 `internal/repo/models.go` 后 `go build ./...` 会报每个用 int64 user-id 的调用点；按报错列表挨个改。各阶段独立可 commit。
+
+#### P3-A. repo/models.go 字段 flip（30 min 内必须落地）
+```
+internal/repo/models.go：
+  - 删除整个 User struct + TableName()
+  - ChannelMember.UserID            int64    → string
+  - Channel.CreatorID              *int64    → string  // 同时新增 TeamID *string
+  - Message.SenderID                int64    → string  // 同时新增 TeamID *string；VisibleTo pq.Int64Array → pq.StringArray
+  - Message.IsVisibleTo(userID)     int64    → string
+  - Friendship.RequesterID/AddresseeID int64 → string
+  - File.UploaderID                 int64    → string
+  - MessageFavorite.UserID          int64    → string
+  - ChannelManager.UserID/AddedBy   int64    → string
+  - ChannelPinnedMessage.PinnedBy   int64    → string
+  - UserSettings.UserID             int64    → string
+```
+另外 `MsgType` 系列常量保留；`UserStatusActive/Disabled` 删除（users 表没了）。
+
+#### P3-B. repo/*.go 一个一个改（按 grep -c int64 排序大→小）
+- channel.go (37) / message.go (28) / channel_governance.go (24) / urgent.go (16) / scheduled.go (15) / friendship.go (15) / announcement.go (15) / approval.go (14) / routing.go (13) / notification.go (12) / quick_reply.go (10) / favorite.go (10) / channel_topic.go (8) / user.go (8 — **整文件删**) / search.go (6) / file.go (6) / user_settings.go (2)
+- `mocks/` 目录全删（UserRepo / 等同时退役）
+
+> 每个文件 5-15 min 机械改造：把所有 `user_id int64` / `senderID int64` / `[]int64` 用户列表字段 / `pq.Int64Array{}` (用户场景) → string 对应物。`tx.Where("user_id = ?", uid)` 不动 SQL，改不到 SQL 字符串。
+
+#### P4-A. service params struct flip（mostly mechanical）
+internal/service/*.go：所有 `*Params` 字段 `UserID/SenderID int64 → string`。
+特别注意 `service.SendParams.SenderID` 走 `repo.MessageRepo.AllocSeqAndInsert`，需要带 `TeamID` 给 messages.team_id（denormalize from channels）。
+
+#### P4-B. handler userIDFromCtx 返回类型 + 76 调用点
+- 改 `internal/http/settings.go::userIDFromCtx`：返回 `(string, bool)`，加 `auth.ValidateUserID(uid) != nil → 401`
+- 17 个 handler 文件改调用点；body 里 `UserID int64 → string` 的 request DTO 也跟着改（friend.go / channel.go 等管理动作）
+- 列表过滤加 `team_id` (D3 默认：`team_id = caller OR team_id IS NULL`)
+
+#### P4-C. main.go 装配
+```diff
+- userRepo := repo.NewUserRepo(gormDB)
++ // M4: users 表删除，cookieId 即身份
+- imhttp.RegisterAuthRoutes(engine, authSvc, userRepo, cfg.Gateway.JWTSecret,
+-   middleware.MattermostCookieAuth(rdb, userRepo, log))
++ imhttp.RegisterAuthRoutes(engine, cfg.Gateway.JWTSecret,
++   middleware.MattermostCookieResolve(rdb, log))
+- authedAPI.Use(middleware.MattermostCookieAuth(rdb, userRepo, log))
+- authedAPI.Use(middleware.JWTOrCookie(cfg.Gateway.JWTSecret))
++ authedAPI.Use(middleware.MattermostCookieResolve(rdb, log))
++ authedAPI.Use(middleware.CookieRequired())
+```
+auth.go：register/login → 410 Gone；/me → 直接 `c.JSON(200, MMUserFromCtx(c))`，不再 GetByID。
+
+#### P5-A. 既有测试 fixture 改造（v5_*_test.go × 28 个文件）
+所有 `int64(1)` / `int64(2)` 等魔数 user-id → `testutil.HexUserID(1)` / `testutil.HexUserID(2)` 等。helper：写一个 `mustSeedTestUser(t, rdb, seed int) cookieID` 包装 CookieFixture。
+
+#### P5-B. m4_*_test.go 新增（76 endpoints × 5 case）
+模板：`server/tests/integration/m4_<scope>_test.go`，每 scope 5 case：C1 success / C2 cookie missing / C3 cookie invalid / C4 team_id null / C5 team_id mismatch。
+WS：`m4_ws_*_test.go` 16 type × 2 team state × 3 action = 96 用例。
+
+#### P6. 验证 + tag
+- migration 014 在 dev DB 跑通
+- `make verify-all` 全绿
+- `IM_GATEWAY=... node scripts/e2e-pre.mjs` 13/13
+- pre-7 镜像 + k6 压测对比 pre-6 baseline（P95 ≤ 400ms 容差）
+- Grafana panel 加 `im.auth.cookie_cache.hit_rate` ≥ 90%
+- 删 `JWTOrCookie` / `RegisterAuthRoutes` 旧 code path / `repo/user.go` / `repo/mocks/`
+- tag `v0.6.0-m4-cookie-id-native` + push origin
+- 同步刷 `docs/GOAL.md` / `docs/ARCHITECTURE.md` / `server/docs/BACKEND.md`
+
+---
+
+### 其他 backlog（M4 完工后再说）
+- **cses-client 切换 37 处 Mattermost URI → `ImApiAdapter`**：message.service.ts F1 主线。Adapter 已完整覆盖 M1。建议 demo 前只切核心 4 条（send/markRead/revoke/sync）。
 - **HPA `maxReplicas 20 → 30 / minReplicas 3 → 6`**：pre-6 VU=800 时 17 pod 触发 stop，想测 VU=1500+ 的天花板需先扩 max。
-- **其他含 `channel_members` JOIN 的热路径 EXPLAIN**：`ListByUser` / `ListByUserWithPreview` 看是否享受 DM 反向索引的收益。
+- **其他含 `channel_members` JOIN 的热路径 EXPLAIN**：`ListByUser` / `ListByUserWithPreview`。
 
 ### k6 压测演进（共 3 个主要 batch，完整记录见 `server/docs/benchmark/README.md`）
 
@@ -146,7 +236,7 @@ HPA `minReplicas=3 → maxReplicas=20`，VU=800 时实际扩到 17 pod 触发 st
 
 ### 已知债务
 - ~~`cross_pod_push.go` `markOffline(userID)` 仍是骨架位~~ → ✅ 已补齐（`v0.4.1-m3-markoffline-cleanup`）：`Routing.MarkOffline` Lua 原子 HDEL + `sendFailureTracker` 连续 3 次失败触发；`cmd/message` 同步改走 `PulsarPushEnvelope` + `ProducerCache`。
-- **影子映射 mm_user_id ↔ im int64** 是过渡方案，M4 会全部删除（见下面 "M4 用户身份模型重构"）。本期 v0.5.1 的 lazy-upsert / shadow user 都会被清理，业务表 user 字段全部改成 TEXT 直接存 mm UserID。
+- ~~**影子映射 mm_user_id ↔ im int64** 是过渡方案~~ → 🟡 M4 P3-P5 移除中：foundation phase 已落 (`v0.5.2-m4-foundation`)，cookie 中间件已剥离 lazy upsert + LRU 缓存就位；剩余 repo/service/handler 级联待下次会话推完。
 - `scripts/e2e-teardown.sh` 末尾 Pulsar `topics list` 在没 topic 时返非零被 `set -e` 抓到 exit=1（不影响实际清理）。补 `|| true` 即可。
 - OTel SDK metrics push 到 jaeger-cses 失败刷 INFO 噪音（jaeger-v2-collector 只支持 traces service）。修法：env `OTEL_METRICS_EXPORTER=none` 或 SDK 侧禁 metric exporter。
 - `internal/repo` 单测覆盖率 2.1%（目前主要靠集成测试）。补 sqlmock 拉到 15-20%。
@@ -157,51 +247,39 @@ HPA `minReplicas=3 → maxReplicas=20`，VU=800 时实际扩到 17 pod 触发 st
 - OTel traces export 到 `otel-collector:4317` 在 im-v2 ns 解析不到（name resolver error），metrics 正常，traces 未送到 Jaeger。需部署 OTel collector 或改指 `jaeger-cses` 的 OTLP endpoint。
 - `ListByUser` / `ListByUserWithPreview` 未 EXPLAIN 验证是否享受 DM 反向索引的收益。
 
-### M4：用户身份模型重构（**下一次 session 开工的主线**）
+### M4 全景（spec → P1+P2 落地 → P3-P6 cascade）
 
-**背景**：v0.5.1 的"影子映射 mm_user_id ↔ im int64"是过渡方案。用户明确要求**所有 userId 走 mm/Redis**，im 不再"开户"。等价于把 Mattermost 的 sql session_store 模型搬过来：cookieId → Redis HGET "User" → 用户档案 JSON → 信任 + 注入 context。im 业务表全部用 mm UserID（24-char hex MongoDB ObjectId）做外键。
+**背景**：v0.5.1 影子映射 `mm_user_id ↔ im int64` 是过渡方案。用户决定 im 完全走 mm/Redis，业务表全部用 mm UserID（24-hex MongoDB ObjectId）做外键。等价于把 Mattermost 的 sql session_store 模型搬过来：cookieId → Redis HGET "User" → 信任 + 注入 ctx。
 
-**目标态（M4 完成后）**：
-- 删 `users` 表（或退化为只读缓存）；删 `mm_user_id` 影子映射；删 lazy-upsert
-- `messages.sender_id`、`channel_members.user_id`、`friendships.{requester,addressee}_id`、`channels.creator_id` 等**全部 BIGINT → TEXT**（mm UserID）
-- 加 `team_id TEXT NULL` 到 `channels` / `messages`（设计点：维度跟随 mm `companyId`/`organizes[].orgId`），**NULL = 无公司用户**，业务路径不强制 team
-- handler 不再用 `c.GetInt64("user_id")`，改 `MMUserFromCtx(c).UserID` (string)
-- **userSnapshot 概念**：im 只冷冻 `(user_id, team_id)` 两个字段；name/email/avatar/orgRole 等其余字段**前端拿 userId 自己去 Redis 或 cses 查**，im 不存
-- 鉴权统一只信 cookieId（与 Mattermost 完全一致），JWT 路径退役或留 admin only
+**Spec 锁定决策**（详见 `server/docs/M4_SPEC.md` §1-§9）：
+- D1 user-id Go 类型 = `string`（不引入 type alias）
+- D2 team_id 来源 = CompanyID → OrgID → ""（多组织场景待 cses 协议）
+- D3 列表 team 过滤 = `team_id = caller OR team_id IS NULL`
+- D4 JWT 注册登录端点 = 410 Gone
+- D5 LRU TTL = 30s / capacity = 10k
+- D6 LRU lib = `hashicorp/golang-lru/v2`
+- D7 Migration 014 形态 = DROP & RECREATE（pre/dev 测试库无生产数据）
+- D8 `visible_to` = `TEXT[]`（与 mm UserID 字符串对齐）
+- D9 admin JWT 通道 = 保留 `/api/admin/*`（运维口子）
+- D10 cookie 缺失 warn 日志 = 删（M4 后是 hard 401）
 
-**参考真实 cookie 档案 schema**（来自 `cookieId=69eec6dbe6876865ff98945a`）：
-- 顶层 `userId` / `id`（同值，24-hex）→ 用作所有外键
-- `companyId` + `organizes[].orgId`（单组织时 `companyId==orgId`）→ team_id 候选
-- `name` / `userName` / `mobile` / `deptId` / `deptName` / `roles` / `permissions` —— 全部不存 im
-- `mattermostHttp` / `mattermostWebSocket` —— 客户端用，im 后端无视
+**冷冻范围澄清**（spec 附录 A）：im 只在 `messages.{sender_id, team_id}` 冷冻；`channels.team_id` 创建时刻冻结一次；其他表（channel_members / friendships / files / approvals 等）是 live 关系，user_id 是实时引用，mm 删用户后跟随 cses 侧。
 
-**作用域评估**：
-- migration 014 重写所有 user FK 为 TEXT，加 team_id 列；同时**保留** v0.5.1 的 mm_user_id（migration 013）作为兼容数据迁移路径
-- 13 个 migration、所有 repo 接口、所有 service、所有 handler、所有 test 全部改一遍
-- ImApiAdapter 客户端要同步改（用 cookie 调用，不再走 JWT register/login）
-- 等于第二个 M1 工作量，建议**双周冲刺**（spec + 代码 + 测试）
-
-**测试需求**（用户要求："测试类覆盖全量回归测试集合：单接口 + 测试用例集"）：
-- 每个 HTTP 端点（76 个）都要有：成功路径 + cookie 缺失 + cookie 无效 + team_id 空 + team_id 非空 5 种 case 至少
-- WS 路径同理：每种 WSMessageType 在两种 team_id 状态下的发送 / 接收 / ACK
-- 集成测试目录下新增 `m4_*_test.go` 系列；现有 `v5_*_test.go` 全部改造（user fixture 从 int64 → mm UserID）
-
-**前置 / 解锁顺序**：
-1. spec 落地 `server/docs/M4_SPEC.md`（重点：team_id 语义 / userSnapshot 字段冷冻 / 兼容期的 dual-write 不需要因为不回切 / cookieId Redis lookup 的缓存策略）
-2. migration 014 + 数据 backfill 脚本（im_pre / im_dev 都要跑；老数据 sender_id 从历史 mm_user_id 反查或标 unknown）
-3. repo + service + handler 三层一起改（不能拆，会半截编译不过）
-4. 全量测试集合改造 + 5 种 case 覆盖
-5. cses-client 切到 cookie 鉴权
-6. 性能基线复测（cookie 解析每请求多 1 次 Redis HGET，本应不显著影响 P95；做 LRU 缓存进一步压低）
+**真实 cookie fixture（验证基准 — 张立超）**：
+- cookieId = `69eec6dbe6876865ff98945a`
+- userId = `676cc4ccfbbc501161d5cd65`
+- companyId = `6111fb0a202d425d221c53db`
+- orgId = `6311a17c50c75d009ed3864f`
+- 已固化到 `internal/testutil/cookie_fixture.go` 常量 + `scripts/seed-mm-cookies.sh` 内置 fixture
 
 ### 待用户拍板
-- ~~打 tag~~ → ✅ `v0.3.0` / `v0.3.1` / `v0.3.2` 三枚 tag 覆盖 M3 演进
-- ~~性能调优~~ → ✅ pool=300 + race fix + DM 索引，VU=300 下 send P95 从 12.75s → 375ms（**34×**）
-- ~~ImApiAdapter M1 完整覆盖~~ → ✅ `c0b3985c9` 补齐 5 stub
-- **cses-client `message.service.ts` 切换时点**：什么时候开工？建议从 sendMessage / markRead / revokeMessage / queryIncrementTopics 四个最热的入手 demo
+- ~~M4 spec~~ → ✅ `server/docs/M4_SPEC.md` 锁定，10 决策点全默认
+- ~~M4 Foundation phase~~ → ✅ `v0.5.2-m4-foundation` (commit `668e408`)
+- **M4 P3-P6 cascade**：建议下次会话整段做完（mechanically grind 23 repo + 21 handler + tests）。预估单会话 4-6 hr 集中精力可推完，否则按 §3 "M4 Cascade Plan" 拆 2-3 次。
+- **cses-client `message.service.ts` 切换时点**：M4 完工后再切（避免双重切换）
 - **HPA 扩容上限调整**：`maxReplicas 20→30 minReplicas 3→6`？（想测 VU=1500+ 真实 ceiling 前置）
 - **`im.fanout.e2e.duration` 语义升级**：当前等同 handler 耗时，想要真端到端需 handler 同步 fanout（见已知债务）
-- **M5 历史 ETL**：仍然 TODO，非本期
+- **M5 历史 ETL**：M4 完工后开 — 仍然 TODO，非本期
 
 ### pre 集群环境事实（2026-04-24）
 
@@ -221,15 +299,16 @@ HPA `minReplicas=3 → maxReplicas=20`，VU=800 时实际扩到 17 pod 触发 st
 
 ---
 
-## 4. 下次会话开局推荐顺序
+## 4. 下次会话开局推荐顺序（接力 M4 P3-P6）
 
-1. 读 `CLAUDE.md`（2 min）——知道要按 `/go-concurrency-patterns` 写代码。
-2. 读 `docs/GOAL.md`（3 min）——知道全局目标和里程碑。
-3. 读本 `SESSION.md`（2 min）——知道当前在哪。
-4. 读 `docs/ARCHITECTURE.md` + `docs/HTTP_WS_MAP.md`（按需）——找要改的文件和事件分布。
-5. 跑 `git status` + `git log -5` ——校验 SESSION 与仓库一致（如不一致，以仓库为准并更新本文件）。
-6. 如果要跑验证：`cd server && make verify-all`（本地单测）or `node scripts/e2e-pre.mjs`（pre 端到端）。
-7. 向用户确认 §3 "待用户拍板" 选哪条，然后开干。
+1. 读 `CLAUDE.md`（2 min）——按 `/go-concurrency-patterns` 写代码。
+2. 读 `docs/GOAL.md`（3 min）——全局目标和里程碑。
+3. 读本 `SESSION.md` §3 "M4 Cascade Plan"（5 min）——知道每一步动哪个文件。
+4. 读 `server/docs/M4_SPEC.md`（10 min）——决策点全部已锁，照做。
+5. `git status && git log --oneline -5` 确认 HEAD = `v0.5.2-m4-foundation` (commit `668e408`)。
+6. **开干顺序**：P3-A models.go → P3-B repo 文件按 int64 计数大→小 → P4-A service params → P4-B handler userIDFromCtx → P4-C main.go → P5-A v5_*_test fixture → P5-B m4_*_test 系列 → P6 验证 + tag。
+7. 阶段性 commit；每完成一个 phase 跑 `go build ./... && go test ./internal/...` 再继续。
+8. 全部绿了再 `migrate -path server/migrations -database "$IM_DEV_DSN" up` 让 014 落地。
 
 ---
 
@@ -239,7 +318,19 @@ HPA `minReplicas=3 → maxReplicas=20`，VU=800 时实际扩到 17 pod 触发 st
 # 查看当前分支状态（main 已是最新主力）
 git status && git log --oneline --graph -15
 
-# 本地验证
+# ========== M4 Foundation 验证 ==========
+# 单独跑 M4 P1+P2 已落地的单测
+cd server && go test -race ./internal/auth/... ./internal/middleware/... ./internal/testutil/...
+
+# 把张立超 fixture 灌到本地 redis（手动 e2e）
+IM_REDIS=localhost:6379 server/scripts/seed-mm-cookies.sh
+# 用任意 cookieId 测：
+curl -H 'cookieId: 69eec6dbe6876865ff98945a' http://localhost:38080/api/auth/me
+
+# 跑 014 migration（dev 库）— P3 cascade 启动前先做
+migrate -path server/migrations -database "$IM_DEV_DSN" up
+
+# 本地验证（M4 cascade 落地后才能全绿）
 cd server && make verify-all              # V1+V2（build + race unit）
 cd server && make verify-integration      # V3 testcontainers 集成
 
