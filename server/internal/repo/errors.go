@@ -13,3 +13,8 @@ var ErrForbidden = errors.New("forbidden")
 // (e.g. an already soft-deleted message). Idempotent callers can treat this
 // as success.
 var ErrGone = errors.New("already gone")
+
+// ErrInvalidTemplate is returned by MarkTemplateReceived when the targeted
+// message lacks a props.template payload — i.e. it is not a template message
+// and the "received" semantic does not apply.
+var ErrInvalidTemplate = errors.New("not a template message")

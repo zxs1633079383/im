@@ -58,6 +58,14 @@ type MessageRepo interface {
 	// RemoveMember to keep them atomic).
 	PostSystemMessage(ctx context.Context, tx *gorm.DB, channelID int64, senderID string, teamID *string, props map[string]any) (*Message, error)
 	UpdateContent(ctx context.Context, msgID int64, callerID string, content string) (*Message, error)
+	// UpdateMessageProps overwrites messages.props with the given JSON string
+	// and bumps updated_at. See message_props.go for behaviour and concurrency
+	// notes.
+	UpdateMessageProps(ctx context.Context, msgID int64, newProps string) (*Message, error)
+	// GetReadStatsBatch returns per-message read summaries for callers who
+	// need to render "X read / Y unread" UI on multiple messages at once.
+	// See read_stats.go for the SQL shape and the truncation policy.
+	GetReadStatsBatch(ctx context.Context, callerID string, msgIDs []int64) ([]ReadStat, error)
 	SoftDelete(ctx context.Context, msgID int64, callerID string) (*Message, error)
 	GetByID(ctx context.Context, id int64) (*Message, error)
 	FetchAfter(ctx context.Context, channelID, afterSeq int64, limit int) ([]Message, error)

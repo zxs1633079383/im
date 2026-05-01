@@ -584,6 +584,18 @@ func RegisterMessageRoutes(authed *gin.RouterGroup, svc *service.MessageService,
 			c.JSON(200, fetchMessagesResp{Messages: msgs})
 		}
 	})
+
+	// POST /api/messages/:id/received — template-message receipt. Wired in
+	// message_template.go to keep the handler near its decision notes. See
+	// decisions/no-traffic-rollback + GOAL §4 #1 for why we reuse
+	// msg_updated rather than introduce a new WS event.
+	registerTemplateReceivedRoute(authed, svc, opts)
+
+	// GET /api/messages/read-stats?ids=1,2,3 — batched per-message read
+	// summary. Replaces the cses-client readBits bitmap; see read_stats.go
+	// for the contract and docs/CSES_CLIENT_CUTOVER.md decision 1c for the
+	// design rationale.
+	registerReadStatsRoute(authed, svc, opts)
 }
 
 // pushToMembers fans out a push notification to all online channel members.
