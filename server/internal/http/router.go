@@ -31,6 +31,7 @@ func New(cfg Config) *gin.Engine {
 	r.Use(gin.Recovery())
 	r.Use(otelgin.Middleware(cfg.ServiceName))
 	r.Use(corsMiddleware())
+	r.Use(responseEnvelope())
 
 	r.GET("/healthz", func(c *gin.Context) { c.String(200, "ok") })
 	r.GET("/readyz", func(c *gin.Context) { c.String(200, "ok") })
@@ -50,6 +51,18 @@ func New(cfg Config) *gin.Engine {
 // corsMiddleware adds permissive CORS headers and short-circuits OPTIONS
 // preflight requests. Permissive on purpose for local dev / Tauri origins;
 // tighten the allowed origin list before exposing to the public internet.
+//
+// CORS contract notes (the part that bites webviews):
+//   - Allow-Origin must reflect the actual Origin (not "*") whenever
+//     Allow-Credentials is "true" — fetch spec rejects the wildcard pair.
+//   - Allow-Headers must list every custom header the client sends; cses-client
+//     attaches cookieId for auth + userId/companyId for tenant routing +
+//     X-Request-Id/X-Request-Source for tracing. Missing any of those drops the
+//     real request at preflight as status=0 ("Unknown Error" in Angular).
+//   - Allow-Methods must include PATCH for v0.7.0+ endpoints
+//     (e.g. PATCH /api/channels/:id/members/:user_id { is_top }).
+//   - Vary: Origin so reverse proxies / caches don't serve a stale Allow-Origin
+//     to a different webview origin.
 func corsMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		origin := c.GetHeader("Origin")
@@ -57,8 +70,10 @@ func corsMiddleware() gin.HandlerFunc {
 			origin = "*"
 		}
 		c.Header("Access-Control-Allow-Origin", origin)
-		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		c.Header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		c.Header("Vary", "Origin")
+		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, PATCH, OPTIONS")
+		c.Header("Access-Control-Allow-Headers",
+			"Content-Type, Authorization, cookieId, userId, companyId, X-Request-Id, X-Request-Source")
 		c.Header("Access-Control-Allow-Credentials", "true")
 		c.Header("Access-Control-Max-Age", "600")
 		if c.Request.Method == stdhttp.MethodOptions {
