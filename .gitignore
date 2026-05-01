@@ -17,3 +17,13 @@ server/config.yaml
 # Git worktrees
 .worktrees/
 .gitnexus
+
+# Claude Code local artifacts (never commit)
+.claude/settings.local.json
+.claude/worktrees/
+
+# IDE noise
+server/.idea/
+
+# Generated K8s manifests (templated from base)
+deploy/k8s/rendered/
