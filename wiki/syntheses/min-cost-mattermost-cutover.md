@@ -130,7 +130,7 @@ Angular 业务组件
 
 ```bash
 # 客户端层
-cd /Users/mac28/workspace/angular/cses-client
+cd /Users/mac28/workspace/angular/temp/cses-client    # ⭐ 注意 temp/ 前缀
 grep -rn "imHttp\.\(post\|get\|put\|delete\)\(['\"]/posts" src/  # 应为 0（cses-shape 全死）
 grep -rn "imHttp\.\(post\|get\|put\|delete\)\(['\"]/channel/" src/  # 应为 0
 grep -rn "/api/channels\|/api/messages\|/api/announcements" src/    # 应 ≥ 37（im REST 已落地）
@@ -165,7 +165,7 @@ yarn start  # cses-client tauri:dev
 
 | 阶段 | 工作 | tag |
 |---|---|---|
-| 当前 | v0.7.2 联调（im-server + cses Java + cses-client im-backend-switch HEAD `7c8a0c972`） | `v0.7.2-no-mattermost` |
+| 当前 | Phase 1 im 后端落地（commit `441ba37`/`66c2a67`/`ee32f7f`/`65f0763`）+ cses-client 工作目录切到 `/Users/mac28/workspace/angular/temp/cses-client` branch `tauri-new-im` HEAD `836b899ab`（旧 `im-backend-switch`/`7c8a0c972` 仅作历史 commit 引用）| `v0.7.2-no-mattermost` + im 后端 main `c9995bf` |
 | 下一步 | 客户端 37 条 rewrite + 5 条 review TODO | `v0.7.3-client-direct-rewrite` |
 | 之后 | 全量 e2e + k6 → 性能基线 | `v0.7.4-perf-baseline` |
 | 收尾 | [[milestones/M6-mattermost-decom]] | `v1.0.0-csesapi-decom` |

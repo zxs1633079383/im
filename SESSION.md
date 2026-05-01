@@ -3,36 +3,50 @@
 > 这份文档是"会话快照"：每次会话结束前更新一次，下次会话开局只要先读它 + `docs/GOAL.md` + `CLAUDE.md` 就能无缝接着干。
 > **更新原则**：事实先写（分支/tag/commit），决策次之，待办最后。过时信息必须删除，不留历史沉积。
 
-Last updated: 2026-04-27（**M4 GA + pre 部署完成**：spec / migration 014 / cookie 单栈 / LRU / repo+service+handler+gateway 全量级联 / 单测重建 / dev-DB dry-run / 6 个 happy-path 集成测试 / pre-7 镜像部署 + im_pre migration + 张立超 cookie 冒烟 200。tag `v0.6.1-m4-pre-deployed`）
+Last updated: 2026-05-01（**Phase 1 im 后端切换基础设施落地**：response_envelope 中间件 + `POST /api/messages/:id/received` + `GET /api/messages/read-stats` 三件套 commit `441ba37`/`66c2a67`/`ee32f7f`/`65f0763` push origin/main，go vet + race + integration + golangci-lint 全绿。Phase 2/3/4 移交 cses-client + Tauri Rust 团队。**cses-client 工作目录已切换** → `/Users/mac28/workspace/angular/temp/cses-client` branch `tauri-new-im` HEAD `836b899ab`，旧的 `im-backend-switch` / `7c8a0c972` 仅作历史 commit 引用保留）
 
 ---
 
 ## 0. 下次会话一句话启动 ⭐
 
-**复制粘贴这句话开新会话即可**（三仓库代码全推 origin、配置就绪，下一步 Tauri 客户端联调）：
+**复制粘贴这句话开新会话即可**（im 后端 Phase 1 已合 main + push origin，下一步前端 Phase 2-4 联调）：
 
-> 继续 v0.7.2 联调：im-server pre-7g 已部署 (`im-v2/im-gateway` NodePort 30880)，Java cses Feature-new-im `20e750bea` push 后本地 `196.168.1.177:3399/User/login` 已下发 `imGatewayHttp` + `imGatewayWebSocket` 两个字段（值都是 `192.168.6.41:30880`）。cses-client `im-backend-switch` HEAD `7c8a0c972` 已删完所有 mattermost 死代码。**操作：** ① 进 `/Users/mac28/workspace/angular/cses-client`，`git pull origin im-backend-switch`，`yarn start`（= `tauri:dev`，**无需 cargo / 无需改 environment.ts**，src-tauri/ 0 改动）；② 用 `17692704771/123456` 登录；③ DevTools console 期待看到 `🔀 [MessageHttpService] apiFlavor: mattermost → im` + `🔄 [LOGIN] reconnectMainWs ... routedToIm: true`；④ Network 验：`imHttp.*` 全部打 `http://192.168.6.41:30880/api/...`，`this.http.*`（vote/Im/search/average）继续走 `196.168.1.177:3399/api/cses/...`；⑤ 联调中如果 console 报红 `ImEndpointNotMappedError: <method> <endpoint>` 把 endpoint 名贴给我，5 分钟补 route-table；⑥ 全跑通后跑 ws-smoke-zhanglichao + v070-smoke + v072-smoke 三件套确认基线，打 tag `v0.7.3-client-verified`。
+> 继续 cses-client 切换 Phase 2-4：im 后端 Phase 1 三件套已合 main + push origin（commit `441ba37`/`66c2a67`/`ee32f7f`/`65f0763`，response_envelope 中间件 + `POST /api/messages/:id/received` + `GET /api/messages/read-stats` 全套就绪，go test -race -tags integration 55s 全绿）。pre-7g 已部署，Java cses `Feature-new-im 20e750bea` 下发 `imGatewayHttp/imGatewayWebSocket` 字段。**cses-client 工作目录是 `/Users/mac28/workspace/angular/temp/cses-client` branch `tauri-new-im` HEAD `836b899ab`**（注意不是 angular/cses-client 也不是 im-backend-switch，那是历史分支）。**操作：** ① `cd /Users/mac28/workspace/angular/temp/cses-client && git pull origin tauri-new-im && yarn start`（= `tauri:dev`，src-tauri/ 0 改动）；② 用 `17692704771/123456` 登录；③ DevTools console 期待 `🔀 apiFlavor: mattermost → im` + `🔄 reconnectMainWs routedToIm: true`；④ Network 验：`imHttp.*` 打 `http://192.168.6.41:30880/api/...`、`this.http.*`（vote/Im/search/average）走旧 cses Java；⑤ 见 `docs/CSES_CLIENT_CUTOVER.md` Phase 2-4 = 模板已收到 path 切换 + onChannelRead 6 处 path 切换 + 砍 onPostRead/inViewMsgRead dead code + readBits → 异步 read-stats UI 重构；⑥ 联调全跑通后打 tag `v0.7.3-client-verified`。
 
 ### 三仓库 origin 状态（联调依赖）
 | 仓库 | branch | HEAD | 验证 |
 |---|---|---|---|
-| im (go) | `main` | `594b341` | tag `v0.7.2-no-mattermost`, pre-7g 部署 |
+| im (go) | `main` | `c9995bf` | Phase 1 已合，pre-7g 部署，3 commit 待发 tag `v0.7.3-rc1` |
 | cses (java) | `Feature-new-im` | `20e750bea` | XPA-12 `imGatewayEnabled: true`, 本地 196.168.1.177 已下发字段 |
-| cses-client (angular) | `im-backend-switch` | `7c8a0c972` | tsc 干净, 已删 mattermost 死代码 |
+| cses-client (angular) | `tauri-new-im` ⭐ | `836b899ab` | 工作目录 `/Users/mac28/workspace/angular/temp/cses-client`，**不是** `angular/cses-client` |
 
 ### 联调 cheatsheet（不需要 cargo / tauri build）
 ```bash
-cd /Users/mac28/workspace/angular/cses-client
-git pull origin im-backend-switch     # 拉最新 7c8a0c972
-yarn start                             # = tauri:dev，自动起 Angular + Tauri
+cd /Users/mac28/workspace/angular/temp/cses-client    # ⭐ 注意 temp/ 前缀
+git pull origin tauri-new-im                          # 拉最新 836b899ab
+yarn start                                            # = tauri:dev，自动起 Angular + Tauri
 # 不需要：cargo build / npm run tauri:build / 改 environment.ts
-# (本期 7 个 commit 全在 src/*.ts，src-tauri/ Rust 代码 0 改动)
 ```
 
 ### 联调出问题第一时间看
 - `apiFlavor: mattermost → mattermost` 没切 → cses 没下发 imGatewayHttp，看 XPA-12.yaml `imGatewayEnabled: true`
 - WS upgrade 401 → cookieId 没在 cses Redis，`redis-cli -h <host> HGET User '"<cookieId>"'`
 - `ImEndpointNotMappedError` 红色 → 漏网 imHttp 调用，告诉新 session 我，补 route-table.ts
+- 响应 shape 与预期不符 → 现在 im 后端走全局信封 `{status:"success",data:...}`/`{status:"error",error:"..."}`，前端 interceptor 应去掉 cses Java 旧的 isWrappedResponse 双重判断
+
+### im 后端 Phase 1 已落地（不要重做，2026-05-01）
+- ✅ `441ba37` feat(http): 全局响应包裹中间件 + 100% 单测
+- ✅ `66c2a67` feat(message): POST `/api/messages/:id/received` 模板已收到端点
+- ✅ `ee32f7f` feat(message): GET `/api/messages/read-stats` 批量读统计端点
+- ✅ `65f0763` docs(cutover): 标 Phase 1 完成 + wiki 同步
+- 决策依据见 `docs/CSES_CLIENT_CUTOVER.md` + `wiki/syntheses/min-cost-mattermost-cutover.md`
+
+### 工作目录变更公告（2026-05-01）
+**之前会话里所有 `im-backend-switch` / `7c8a0c972` / `/Users/mac28/workspace/angular/cses-client` 引用都已过时**。当前工作目录、分支、HEAD：
+- 路径：`/Users/mac28/workspace/angular/temp/cses-client`
+- 分支：`tauri-new-im`
+- HEAD：`836b899ab`
+- 历史段（§3 / §0 残留 / wiki 历史 ingest 条目）保留旧引用作为历史 commit 事实，不要据此操作。
 
 ### v0.6.1 已经做掉的（不要重做）
 - ✅ Step ① migration 014 dev DB dry-run + im_pre 实落（force 13 清 dirty → up to 14）
@@ -134,7 +148,8 @@ git push origin main --tags
 | 分支 | 用途 | 最新 commit | 状态 |
 |------|------|-------------|------|
 | `main` | 稳定主干 — M3 GA + **M4 GA**（用户身份模型重构） | `520a76e` test(m4): 重建测试集合 | ✅ M4 P1-P5 完整落地；本地 36 commits ahead origin（待 push） |
-| `im-backend-switch` (cses-client) | `ImApiAdapter` M1 能力 100% 覆盖 | `c0b3985c9` feat(im-api): M1 补齐 5 stub | ✅ V6 smoke 7/7 + M1 完整覆盖 |
+| `im-backend-switch` (cses-client, **历史**) | `ImApiAdapter` M1 能力 100% 覆盖 | `c0b3985c9` feat(im-api): M1 补齐 5 stub → 后续延续到 `7c8a0c972` | ✅ V6 smoke 7/7 + M1 完整覆盖；**已被 `tauri-new-im` 取代** |
+| `tauri-new-im` (cses-client, **当前**) | Phase 2-4 待落地：模板已收到 path 切换 + onChannelRead 6 处 + 砍 dead code + readBits 异步重构 | `836b899ab` fix: 全屏 | 工作目录 `/Users/mac28/workspace/angular/temp/cses-client`，待按 `docs/CSES_CLIENT_CUTOVER.md` 推进 |
 
 ### main 最近 commit（最新一轮：M4 GA）
 ```
@@ -243,7 +258,7 @@ e0ecb32 fix(gateway): push_consumer 走 PushTopicFor 与发送侧对齐
 
 HPA `minReplicas=3 → maxReplicas=20`，VU=800 时实际扩到 17 pod 触发 stop 保护 pre 集群。详细见 `server/docs/benchmark/2026-04-24-1343-summary.md` 和 `2026-04-24-1407-summary.md`。
 
-### Frontend（cses-client, `im-backend-switch` 分支）
+### Frontend（cses-client, 历史 `im-backend-switch` 分支 — 当前已切到 `tauri-new-im`）
 - Angular `apiFlavor` 开关 + `ImApiAdapter`：**M1 能力 100% 覆盖（11 方法全实现，0 stub）**：
   - 认证：`loginIm`
   - 频道：`listChannels`
@@ -518,7 +533,7 @@ cd server && make verify-all              # V1+V2（build + race unit）
 cd server && make verify-integration      # V3 testcontainers 集成
 
 # 客户端 V6 smoke
-cd /Users/mac28/workspace/angular/cses-client && node scripts/v6-smoke.mjs
+cd /Users/mac28/workspace/angular/temp/cses-client && node scripts/v6-smoke.mjs
 
 # ========== pre 集群操作 ==========
 

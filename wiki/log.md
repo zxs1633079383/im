@@ -177,6 +177,7 @@
 5. **新增 Go 代码总量 ~1187 行**（含 ~470 行测试 + ~670 行业务），符合方案预算 ~125 行业务（实际偏多 是因为做了独立文件 separation of concerns 而非塞进既有大文件，且响应包裹比原计划复杂）。
 
 **下一步移交**：
+- ⚠️ **cses-client 工作目录变更**：之前会话所有 grep / Read / agent audit 均在 `/Users/mac28/workspace/angular/temp/cses-client` branch `tauri-new-im` HEAD `836b899ab` 上跑，旧的 `angular/cses-client im-backend-switch 7c8a0c972` 是探路分支。Phase 2-4 在新路径落地。
 - cses-client 前端团队接手 docs/CSES_CLIENT_CUTOVER.md Phase 2/3/4：
   - Phase 2 模板已收到客户端切 path → POST /api/messages/:id/received
   - Phase 3 onChannelRead 6 处 path 切换 + 砍 onPostRead/inViewMsgRead dead code

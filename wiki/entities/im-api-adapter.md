@@ -73,12 +73,14 @@ WebSocket 同样双栈：`apiFlavor=im` 时 Rust 侧用 [[entities/im-seq-data-s
 2. **`ImEndpointNotMappedError`** —— 漏网调用 → 5 分钟在 route-table 补 mapping
 3. **WS upgrade 401** —— cookieId 没在 cses Redis → `redis-cli HGET User '"<cookieId>"'` 验
 
-## 当前进度（v0.7.2）
+## 当前进度（2026-05-01）
 
 - ✅ Angular 切换 import 完整
-- ✅ Mattermost 死代码全删（commit `7c8a0c972`）
+- ✅ Mattermost 死代码全删（历史 commit `7c8a0c972` on `im-backend-switch`）
 - ✅ tsc 干净，src-tauri 0 改动
-- ⏳ 等 Tauri client 联调（17692704771/123456 登录）
+- ✅ im 后端 Phase 1 落地：response_envelope 中间件 + `/api/messages/:id/received` + `/api/messages/read-stats`（commit `441ba37`/`66c2a67`/`ee32f7f`，已 push origin/main）
+- 🔄 **当前工作目录已切到** `/Users/mac28/workspace/angular/temp/cses-client` branch `tauri-new-im` HEAD `836b899ab`（不是 `angular/cses-client` / `im-backend-switch`）
+- ⏳ 等前端 Phase 2-4：模板已收到 path 切换 + onChannelRead 6 处 + 砍 dead code + readBits 异步重构
 
 ## 历史误解（2026-04-30 纠正，见 [[log]]）
 

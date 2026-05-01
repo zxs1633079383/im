@@ -2,9 +2,12 @@
 
 > 一份**可执行**的工程方案。读完它，前端、后端、Rust、QA、PM 各自知道做什么、什么时候做、出问题怎么办。
 >
-> 当前状态：im 后端 `v0.7.2-no-mattermost` 已部署 pre-7g，cses-client `im-backend-switch` HEAD `7c8a0c972` 已删 Mattermost 死代码，正在联调。本方案描述把剩余 ~37 条 cses-shape 调用、已读未读机制、模板消息已收到、隐性 bug 全部收尾的最终步骤。
+> 当前状态：im 后端 `v0.7.2-no-mattermost` 已部署 pre-7g。
 >
-> **Phase 1 状态：✅ 已完成**（2026-05-01）—— 全局响应包裹 + POST `/api/messages/:id/received` + GET `/api/messages/read-stats` 三件均已落地，commit `441ba37` `66c2a67` `ee32f7f`，go vet / golangci-lint / go test -race -short / go test -tags integration 全绿。Phase 2/3/4 待 cses-client 团队接手。
+> **cses-client 工作目录（2026-05-01 起）**：`/Users/mac28/workspace/angular/temp/cses-client` branch `tauri-new-im` HEAD `836b899ab`。
+> 旧的 `/Users/mac28/workspace/angular/cses-client` + `im-backend-switch` 分支 + `7c8a0c972` 是更早期的探路工作，本方案 Phase 2-4 全部在新工作目录上落地。
+>
+> **Phase 1 状态：✅ 已完成**（2026-05-01）—— 全局响应包裹 + POST `/api/messages/:id/received` + GET `/api/messages/read-stats` 三件均已落地，commit `441ba37` `66c2a67` `ee32f7f` + 文档 commit `65f0763` 已 push origin/main。go vet / golangci-lint / go test -race -short / go test -tags integration 全绿。Phase 2/3/4 待 cses-client 团队在 `temp/cses-client tauri-new-im` 分支上接手。
 >
 > 关联：wiki 入口 [comparisons/csesapi-vs-im-coverage](../wiki/comparisons/csesapi-vs-im-coverage.md) + [syntheses/min-cost-mattermost-cutover](../wiki/syntheses/min-cost-mattermost-cutover.md)。
 
