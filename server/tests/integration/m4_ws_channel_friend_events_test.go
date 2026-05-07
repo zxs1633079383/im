@@ -7,15 +7,12 @@ package integration
 //
 //   - a user is added to a group channel              → channel_event
 //   - a friend request is sent to the user            → friend_event
-//   - channel meta (notice / purpose / orient) flips  → channel_info_updated  (declared, NOT yet emitted)
-//   - caller pins / unpins a channel for themselves   → channel_top_updated   (declared, NOT yet emitted)
+//   - channel meta (notice / purpose / orient) flips  → channel_info_updated
+//   - caller pins / unpins a channel for themselves   → channel_top_updated
 //
-// channel_info_updated and channel_top_updated are declared on
-// internal/gateway/types.go (lines 59-65) but no handler currently emits
-// them — `grep -rn "TypeChannelInfoUpdated\|TypeChannelTopUpdated"` returns
-// only the const declarations themselves. Until the channel governance
-// PATCH handler grows the matching push hook, both happy paths stay
-// behind a t.Skip stub so coverage tracking sees the test name.
+// channel_info_updated and channel_top_updated push hooks landed in the
+// channel-governance handler on 2026-05-07; both tests now exercise the
+// real wire path end-to-end (no more t.Skip).
 //
 // Seed range 920-929 is reserved for D2.
 
@@ -91,36 +88,65 @@ func TestM4WSFriendEvent_HappyPath(t *testing.T) {
 	_ = userA // kept for symmetry / readability; recipient identity already asserted by frame delivery.
 }
 
-// TestM4WSChannelInfoUpdated_HappyPath — declared but not yet wired.
+// TestM4WSChannelInfoUpdated_HappyPath — A is a member of a group; owner B
+// PATCHes /api/channels/:id to flip the notice; A receives a
+// channel_info_updated frame carrying the refreshed channel snapshot.
 //
-// gateway.TypeChannelInfoUpdated ("channel_info_updated") is reserved on
-// internal/gateway/types.go:64 for the v0.7 channel-governance push
-// (notice / purpose / orient / permission flips). Today PATCH
-// /api/channels/:id only mutates the row and returns 200 — no
-// hub.PushToUser fan-out happens, so wiring a happy-path assertion would
-// hang at expectFrame. Skip until the handler gains the push hook.
-//
-// Reproduce the absence:
-//
-//	grep -rn 'TypeChannelInfoUpdated' --include='*.go' .
-//	# only the const declaration on types.go matches.
+// Wire path: imhttp.RegisterChannelGovernanceRoutes → broadcaster
+// (MessageEventBroadcaster) → harness localBroadcaster → hub.PushToUser →
+// A's WS conn (TypeChannelInfoUpdated + repo.Channel JSON).
 func TestM4WSChannelInfoUpdated_HappyPath(t *testing.T) {
-	t.Skip("channel_info_updated declared on gateway/types.go:64 but not yet emitted by any handler; PATCH /api/channels/:id only mutates and returns 200 — no hub.PushToUser. Re-enable once the channel-governance push hook lands.")
+	env := newM4Env(t)
+	cookieA, userA := env.seedUser(924)
+	cookieB, _ := env.seedUser(925)
+	chID := env.seedGroup(cookieB, "wsd-info-updated", userA)
+
+	wcA := wsDial(t, env, cookieA)
+	time.Sleep(100 * time.Millisecond)
+
+	env.expect.PATCH("/api/channels/" + pathInt64s(chID)).
+		WithHeader(middleware.MMCookieHeader, cookieB).
+		WithJSON(map[string]any{"notice": "after-patch"}).
+		Expect().Status(200)
+
+	frame := wcA.expectFrame(gateway.TypeChannelInfoUpdated, 5*time.Second)
+	var snap map[string]any
+	decodePayload(t, frame, &snap)
+	require.Equal(t, float64(chID), snap["id"], "channel_info_updated id must match")
+	require.Equal(t, "after-patch", snap["notice"], "channel_info_updated must carry new notice")
 }
 
-// TestM4WSChannelTopUpdated_HappyPath — declared but not yet wired.
+// TestM4WSChannelTopUpdated_HappyPath — caller pins their own membership row
+// (PATCH /api/channels/:id/members/:user_id with is_top=true); a parallel
+// WS conn of the same user receives a channel_top_updated frame for
+// multi-device sidebar sync.
 //
-// gateway.TypeChannelTopUpdated ("channel_top_updated") is reserved on
-// internal/gateway/types.go:61 for the v0.7 per-user channel-pin push.
-// Today PATCH /api/channels/:id/members/:user_id with {"is_top": true}
-// updates channel_members.is_top and returns {"status":"updated"} — no
-// hub.PushToUser fan-out happens. Skip until the governance handler
-// gains the matching push hook.
-//
-// Reproduce the absence:
-//
-//	grep -rn 'TypeChannelTopUpdated' --include='*.go' .
-//	# only the const declaration on types.go matches.
+// Wire path: imhttp.RegisterChannelGovernanceRoutes → userPusher
+// (UserEventPusher) → harness localUserEventPusher → hub.PushToUser →
+// caller's other WS conn (TypeChannelTopUpdated + channelTopPayload).
 func TestM4WSChannelTopUpdated_HappyPath(t *testing.T) {
-	t.Skip("channel_top_updated declared on gateway/types.go:61 but not yet emitted by any handler; PATCH /api/channels/:id/members/:user_id only mutates and returns 200 — no hub.PushToUser. Re-enable once the per-user pin push hook lands.")
+	env := newM4Env(t)
+	cookie, userID := env.seedUser(926)
+	_, peer := env.seedUser(927)
+	chID := env.seedGroup(cookie, "wsd-top-updated", peer)
+
+	// Two WS conns for the same user (different devices). The PATCH below
+	// is initiated via HTTP (acts like "device 1"); the listener (wcA2) is
+	// the second device that should observe the sync.
+	wcA2 := wsDial(t, env, cookie)
+	time.Sleep(100 * time.Millisecond)
+
+	env.expect.PATCH("/api/channels/"+pathInt64s(chID)+"/members/"+userID).
+		WithHeader(middleware.MMCookieHeader, cookie).
+		WithJSON(map[string]any{"is_top": true}).
+		Expect().Status(200)
+
+	frame := wcA2.expectFrame(gateway.TypeChannelTopUpdated, 5*time.Second)
+	var p struct {
+		ChannelID int64 `json:"channel_id"`
+		IsTop     bool  `json:"is_top"`
+	}
+	decodePayload(t, frame, &p)
+	require.Equal(t, chID, p.ChannelID, "channel_top_updated channel_id")
+	require.True(t, p.IsTop, "channel_top_updated is_top must be true")
 }

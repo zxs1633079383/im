@@ -223,9 +223,11 @@ func run() int {
 	imhttp.RegisterChannelRoutes(authedAPI, channelSvc, &hubChannelEventPusher{xpod: xpod})
 
 	// M2-A: fine-grained channel governance (patch, managers, pins, role/notify).
+	// v0.7.0: PATCH /channels/:id and PATCH /members/:user_id IsTop fan out
+	// channel_info_updated / channel_top_updated WS events through the
+	// message broadcaster + user pusher (declared just below).
 	governanceRepo := repo.NewChannelGovernanceRepo(gormDB)
 	governanceSvc := service.NewChannelGovernanceService(channelRepo, governanceRepo)
-	imhttp.RegisterChannelGovernanceRoutes(authedAPI, governanceSvc, &hubChannelEventPusher{xpod: xpod})
 
 	// Phase 7.4 cut-over: message endpoints. All three legacy hooks are
 	// preserved — Pusher fans new messages out to online members, ReadSyncer
@@ -233,6 +235,9 @@ func run() int {
 	// repo handles attachment linkage on send.
 	messageSvc := service.NewMessageService(messageRepo, channelRepo, fileRepo)
 	msgBroadcaster := &hubEventBroadcaster{xpod: xpod, svc: messageSvc}
+	userPusher := &hubUserEventPusher{xpod: xpod}
+	imhttp.RegisterChannelGovernanceRoutes(authedAPI, governanceSvc,
+		&hubChannelEventPusher{xpod: xpod}, msgBroadcaster, userPusher)
 	imhttp.RegisterMessageRoutes(authedAPI, messageSvc, imhttp.MessageRouteOpts{
 		Pusher:      &hubMessagePusher{xpod: xpod},
 		ReadSyncer:  &hubReadSyncer{xpod: xpod},
@@ -252,12 +257,11 @@ func run() int {
 	imhttp.RegisterUrgentRoutes(authedAPI, urgentSvc, msgBroadcaster)
 
 	// M2-D: approvals (request / approve / reject / cancel + list).
-	// The user-push adapter delivers approval_updated events to the
-	// requester + approver via the same cross-pod dispatch path used by
-	// friend / channel events.
+	// The user-push adapter (declared above for governance reuse) delivers
+	// approval_updated events to the requester + approver via the same
+	// cross-pod dispatch path used by friend / channel events.
 	approvalRepo := repo.NewApprovalRepo(gormDB)
 	approvalSvc := service.NewApprovalService(approvalRepo, channelRepo, governanceSvc)
-	userPusher := &hubUserEventPusher{xpod: xpod}
 	imhttp.RegisterApprovalRoutes(authedAPI, approvalSvc, userPusher)
 
 	// M2-E: notifications — per-user inbox/outbox + mark-read.
@@ -529,11 +533,31 @@ func (p *hubReactionPusher) BroadcastReaction(channelID int64, eventType imhttp.
 }
 
 // corsMiddleware adds permissive CORS headers for local Tauri development.
+//
+// Allow-Headers must explicitly list every custom header the webview sends —
+// browsers compare the preflight response against the request header list and
+// drop the actual call (status=0 Unknown Error) when any header is missing.
+// cses-client / cses-server stack carries cookieId for auth + userId/companyId
+// for tenant routing + X-Request-Id/X-Request-Source for tracing, so all of
+// them must be allowed; otherwise ImApiAdapter requests fail at preflight.
 func corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		// Reflect Origin (not "*") because Allow-Credentials=true makes "*" invalid
+		// in the fetch spec — webview drops the response with status=0 otherwise.
+		// Keep parity with internal/http/router.go corsMiddleware so /ws (which
+		// falls through this layer) and /api/* (handled by Gin) emit identical
+		// CORS contracts and don't fight each other on overlapping paths.
+		origin := r.Header.Get("Origin")
+		if origin == "" {
+			origin = "*"
+		}
+		w.Header().Set("Access-Control-Allow-Origin", origin)
+		w.Header().Set("Vary", "Origin")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, PATCH, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers",
+			"Content-Type, Authorization, cookieId, userId, companyId, X-Request-Id, X-Request-Source")
+		w.Header().Set("Access-Control-Allow-Credentials", "true")
+		w.Header().Set("Access-Control-Max-Age", "600")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
 			return

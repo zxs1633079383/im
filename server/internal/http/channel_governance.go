@@ -10,6 +10,28 @@ import (
 	"im-server/internal/service"
 )
 
+// Channel-governance WS events (v0.7.0+, types.go locked at 22 — see
+// docs/harness/C005). These const live here (not in channel.go) so the
+// governance file owns its emit-side surface end-to-end.
+const (
+	// EventChannelInfoUpdated fires after PATCH /channels/:id mutates any of
+	// notice / purpose / orient / permission / name. Fan-out: every channel
+	// member (broadcaster.BroadcastToMembers).
+	EventChannelInfoUpdated MessageEventType = "channel_info_updated"
+	// EventChannelTopUpdated fires after PATCH /channels/:id/members/:user_id
+	// flips the caller's is_top flag. Fan-out: only the caller (single-user
+	// state, multi-device sync). userPusher.PushToUser.
+	EventChannelTopUpdated MessageEventType = "channel_top_updated"
+)
+
+// channelTopPayload is the wire payload for channel_top_updated. Carries
+// channel_id + is_top so the receiving device can update its sidebar
+// without a fresh GET /channels.
+type channelTopPayload struct {
+	ChannelID int64 `json:"channel_id"`
+	IsTop     bool  `json:"is_top"`
+}
+
 // patchChannelReq is the body of PATCH /api/channels/:id. Every field is a
 // pointer so we can distinguish "omitted" from "explicit zero value". Props
 // arrives as a raw JSON object we pass through verbatim to the repo layer.
@@ -56,12 +78,17 @@ func (p patchChannelReq) toRepoFields() service.PatchChannelFields {
 
 // RegisterChannelGovernanceRoutes wires the M2 fine-grained channel endpoints.
 // authed must already have JWT middleware applied. svc is the governance
-// service; pusher is an optional ChannelEventPusher for notifying members of
-// manager/role changes (nil disables notifications).
+// service. The three optional hooks each disable their respective event when
+// nil (typical for the v0.7.0 happy-path integration tests):
+//   - pusher: ChannelEventPusher for manager/member events.
+//   - broadcaster: MessageEventBroadcaster for channel_info_updated fan-out.
+//   - userPusher: UserEventPusher for channel_top_updated single-user push.
 func RegisterChannelGovernanceRoutes(
 	authed *gin.RouterGroup,
 	svc *service.ChannelGovernanceService,
 	pusher ChannelEventPusher,
+	broadcaster MessageEventBroadcaster,
+	userPusher UserEventPusher,
 ) {
 	// PATCH /api/channels/:id — fine-grained field patch.
 	authed.PATCH("/channels/:id", func(c *gin.Context) {
@@ -89,6 +116,9 @@ func RegisterChannelGovernanceRoutes(
 		case err != nil:
 			c.JSON(500, gin.H{"error": "internal error"})
 		default:
+			if broadcaster != nil {
+				broadcaster.BroadcastToMembers(channelID, EventChannelInfoUpdated, ch)
+			}
 			c.JSON(200, ch)
 		}
 	})
@@ -337,6 +367,14 @@ func RegisterChannelGovernanceRoutes(
 			case err != nil:
 				c.JSON(500, gin.H{"error": "internal error"})
 				return
+			}
+			// Single-user multi-device sync: push the new is_top state to all
+			// of the caller's WS connections (other browser tabs / mobile etc.).
+			if userPusher != nil {
+				userPusher.PushToUser(uid, EventChannelTopUpdated, channelTopPayload{
+					ChannelID: channelID,
+					IsTop:     *in.IsTop,
+				})
 			}
 		}
 		c.JSON(200, gin.H{"status": "updated"})

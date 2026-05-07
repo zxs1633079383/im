@@ -220,7 +220,7 @@ func buildEngine(d buildEngineDeps) *gin.Engine {
 	imhttp.RegisterFriendRoutes(authed, friendSvc, friendPusher)
 
 	governanceSvc := service.NewChannelGovernanceService(d.channels, d.governance)
-	imhttp.RegisterChannelGovernanceRoutes(authed, governanceSvc, channelPusher)
+	imhttp.RegisterChannelGovernanceRoutes(authed, governanceSvc, channelPusher, msgBroadcaster, userPusher)
 
 	favoriteSvc := service.NewFavoriteService(d.favorites)
 	imhttp.RegisterFavoriteRoutes(authed, favoriteSvc)
