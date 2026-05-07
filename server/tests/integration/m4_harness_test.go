@@ -37,14 +37,17 @@ import (
 // when they need to assert on persisted state directly; HTTP behaviour is
 // asserted via expect.
 type m4env struct {
-	t        *testing.T
-	db       *gorm.DB
-	rdb      redis.UniversalClient
-	engine   *gin.Engine
-	expect   *httpexpect.Expect
-	channels repo.ChannelRepo
-	messages repo.MessageRepo
-	friends  repo.FriendshipRepo
+	t          *testing.T
+	db         *gorm.DB
+	rdb        redis.UniversalClient
+	engine     *gin.Engine
+	expect     *httpexpect.Expect
+	channels   repo.ChannelRepo
+	messages   repo.MessageRepo
+	friends    repo.FriendshipRepo
+	favorites  repo.FavoriteRepo
+	urgents    repo.UrgentRepo
+	governance repo.ChannelGovernanceRepo
 }
 
 // newM4Env builds a fresh environment. Container creation is the dominant
@@ -60,18 +63,33 @@ func newM4Env(t *testing.T) *m4env {
 	messageRepo := repo.NewMessageRepo(db, channelRepo)
 	friendRepo := repo.NewFriendshipRepo(db)
 	fileRepo := repo.NewFileRepo(db)
+	favoriteRepo := repo.NewFavoriteRepo(db)
+	urgentRepo := repo.NewUrgentRepo(db)
+	governanceRepo := repo.NewChannelGovernanceRepo(db)
 
-	engine := buildEngine(rdb, channelRepo, messageRepo, friendRepo, fileRepo)
+	engine := buildEngine(buildEngineDeps{
+		rdb:        rdb,
+		channels:   channelRepo,
+		messages:   messageRepo,
+		friends:    friendRepo,
+		files:      fileRepo,
+		favorites:  favoriteRepo,
+		urgents:    urgentRepo,
+		governance: governanceRepo,
+	})
 
 	return &m4env{
-		t:        t,
-		db:       db,
-		rdb:      rdb,
-		engine:   engine,
-		expect:   testutil.NewExpect(t, engine),
-		channels: channelRepo,
-		messages: messageRepo,
-		friends:  friendRepo,
+		t:          t,
+		db:         db,
+		rdb:        rdb,
+		engine:     engine,
+		expect:     testutil.NewExpect(t, engine),
+		channels:   channelRepo,
+		messages:   messageRepo,
+		friends:    friendRepo,
+		favorites:  favoriteRepo,
+		urgents:    urgentRepo,
+		governance: governanceRepo,
 	}
 }
 
@@ -107,39 +125,57 @@ func openTestRedis(t *testing.T) redis.UniversalClient {
 	return rdb
 }
 
+// buildEngineDeps bundles every repo m4 harness needs to wire. Add fields
+// here when a new endpoint family joins Batch-B/C/D/E so test files stay
+// untouched.
+type buildEngineDeps struct {
+	rdb        redis.UniversalClient
+	channels   repo.ChannelRepo
+	messages   repo.MessageRepo
+	friends    repo.FriendshipRepo
+	files      repo.FileRepo
+	favorites  repo.FavoriteRepo
+	urgents    repo.UrgentRepo
+	governance repo.ChannelGovernanceRepo
+}
+
 // buildEngine wires the Gin handler tree exactly the way cmd/gateway/main.go
-// does for the routes the M4 happy paths exercise: auth, channels (incl.
-// topics), messages, sync, friends. Real-time pushers are nil — happy
-// paths read response bodies + DB state, not WebSocket fan-out.
-func buildEngine(
-	rdb redis.UniversalClient,
-	channels repo.ChannelRepo,
-	messages repo.MessageRepo,
-	friends repo.FriendshipRepo,
-	files repo.FileRepo,
-) *gin.Engine {
+// does for the routes the M4 happy paths + Batch-B exercise: auth, channels,
+// messages (incl. template-received + read-stats), sync, friends, channel
+// governance, favorites, urgent. Real-time pushers / broadcasters are nil —
+// happy paths read response bodies + DB state, not WebSocket fan-out.
+func buildEngine(d buildEngineDeps) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	engine := gin.New()
 	engine.Use(gin.Recovery())
 
 	log := slog.Default()
-	imhttp.RegisterAuthRoutes(engine, middleware.MattermostCookieResolve(rdb, log))
+	imhttp.RegisterAuthRoutes(engine, middleware.MattermostCookieResolve(d.rdb, log))
 
 	authed := engine.Group("/api")
-	authed.Use(middleware.MattermostCookieResolve(rdb, log))
+	authed.Use(middleware.MattermostCookieResolve(d.rdb, log))
 	authed.Use(middleware.CookieRequired())
 
-	channelSvc := service.NewChannelService(channels, messages)
+	channelSvc := service.NewChannelService(d.channels, d.messages)
 	imhttp.RegisterChannelRoutes(authed, channelSvc, nil)
 
-	messageSvc := service.NewMessageService(messages, channels, files)
+	messageSvc := service.NewMessageService(d.messages, d.channels, d.files)
 	imhttp.RegisterMessageRoutes(authed, messageSvc, imhttp.MessageRouteOpts{})
 
-	syncSvc := service.NewSyncService(channels, messages)
+	syncSvc := service.NewSyncService(d.channels, d.messages)
 	imhttp.RegisterSyncRoutes(authed, syncSvc, log)
 
-	friendSvc := service.NewFriendService(friends)
+	friendSvc := service.NewFriendService(d.friends)
 	imhttp.RegisterFriendRoutes(authed, friendSvc, nil)
+
+	governanceSvc := service.NewChannelGovernanceService(d.channels, d.governance)
+	imhttp.RegisterChannelGovernanceRoutes(authed, governanceSvc, nil)
+
+	favoriteSvc := service.NewFavoriteService(d.favorites)
+	imhttp.RegisterFavoriteRoutes(authed, favoriteSvc)
+
+	urgentSvc := service.NewUrgentService(d.urgents, d.messages, d.channels, messageSvc, governanceSvc)
+	imhttp.RegisterUrgentRoutes(authed, urgentSvc, nil)
 
 	return engine
 }
@@ -161,4 +197,56 @@ func (e *m4env) seedRealUser() string {
 	e.t.Helper()
 	return testutil.CookieFixture(e.t, e.rdb,
 		testutil.RealCookieID, testutil.RealUserID, testutil.RealCompanyID)
+}
+
+// ---- Batch-B shared seed helpers --------------------------------------------
+//
+// These are the canonical fixtures the Batch-B integration tests use.  Every
+// helper opens a 5s context internally, mirrors how production handlers run,
+// and surfaces failures via require.NoError so tests fail fast on infra glitches
+// (testcontainer DNS, Redis flake, etc.) rather than mis-attributing them to
+// business bugs.
+
+// seedDM creates a DM between owner and peer (both already seedUser-ed) and
+// returns the channel id.
+func (e *m4env) seedDM(ownerCookie, peerID string) int64 {
+	e.t.Helper()
+	dm := e.expect.POST("/api/channels/dm").
+		WithHeader(middleware.MMCookieHeader, ownerCookie).
+		WithJSON(map[string]any{"peer_id": peerID}).
+		Expect().Status(201).JSON().Object()
+	return int64(dm.Value("id").Number().Raw())
+}
+
+// seedGroup creates a group channel owned by ownerCookie with the given member
+// IDs (owner is auto-added), returning the channel id.
+func (e *m4env) seedGroup(ownerCookie string, name string, memberIDs ...string) int64 {
+	e.t.Helper()
+	body := map[string]any{
+		"name":       name,
+		"member_ids": memberIDs,
+	}
+	resp := e.expect.POST("/api/channels").
+		WithHeader(middleware.MMCookieHeader, ownerCookie).
+		WithJSON(body).
+		Expect().Status(201).JSON().Object()
+	return int64(resp.Value("id").Number().Raw())
+}
+
+// seedMessage inserts a plain text message via the repo (bypassing HTTP) and
+// returns the persisted *repo.Message — Batch-B tests use this to set up
+// "this message exists" preconditions without paying the full
+// POST /messages cost when the message contents are not under test.
+func (e *m4env) seedMessage(channelID int64, senderID, content string) *repo.Message {
+	e.t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	m := &repo.Message{
+		ChannelID: channelID,
+		SenderID:  senderID,
+		MsgType:   repo.MsgTypeText,
+		Content:   content,
+	}
+	require.NoError(e.t, e.messages.Send(ctx, m))
+	return m
 }
