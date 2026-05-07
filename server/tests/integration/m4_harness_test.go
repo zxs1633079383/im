@@ -66,16 +66,28 @@ func newM4Env(t *testing.T) *m4env {
 	favoriteRepo := repo.NewFavoriteRepo(db)
 	urgentRepo := repo.NewUrgentRepo(db)
 	governanceRepo := repo.NewChannelGovernanceRepo(db)
+	announcementRepo := repo.NewAnnouncementRepo(db)
+	approvalRepo := repo.NewApprovalRepo(db)
+	notificationRepo := repo.NewNotificationRepo(db)
+	quickReplyRepo := repo.NewQuickReplyRepo(db)
+	reactionRepo := repo.NewReactionRepo(db)
+	scheduledRepo := repo.NewScheduledRepo(db)
 
 	engine := buildEngine(buildEngineDeps{
-		rdb:        rdb,
-		channels:   channelRepo,
-		messages:   messageRepo,
-		friends:    friendRepo,
-		files:      fileRepo,
-		favorites:  favoriteRepo,
-		urgents:    urgentRepo,
-		governance: governanceRepo,
+		rdb:           rdb,
+		channels:      channelRepo,
+		messages:      messageRepo,
+		friends:       friendRepo,
+		files:         fileRepo,
+		favorites:     favoriteRepo,
+		urgents:       urgentRepo,
+		governance:    governanceRepo,
+		announcements: announcementRepo,
+		approvals:     approvalRepo,
+		notifications: notificationRepo,
+		quickReplies:  quickReplyRepo,
+		reactions:     reactionRepo,
+		scheduledMsgs: scheduledRepo,
 	})
 
 	return &m4env{
@@ -129,14 +141,20 @@ func openTestRedis(t *testing.T) redis.UniversalClient {
 // here when a new endpoint family joins Batch-B/C/D/E so test files stay
 // untouched.
 type buildEngineDeps struct {
-	rdb        redis.UniversalClient
-	channels   repo.ChannelRepo
-	messages   repo.MessageRepo
-	friends    repo.FriendshipRepo
-	files      repo.FileRepo
-	favorites  repo.FavoriteRepo
-	urgents    repo.UrgentRepo
-	governance repo.ChannelGovernanceRepo
+	rdb            redis.UniversalClient
+	channels       repo.ChannelRepo
+	messages       repo.MessageRepo
+	friends        repo.FriendshipRepo
+	files          repo.FileRepo
+	favorites      repo.FavoriteRepo
+	urgents        repo.UrgentRepo
+	governance     repo.ChannelGovernanceRepo
+	announcements  repo.AnnouncementRepo
+	approvals      repo.ApprovalRepo
+	notifications  repo.NotificationRepo
+	quickReplies   repo.QuickReplyRepo
+	reactions      repo.ReactionRepo
+	scheduledMsgs  repo.ScheduledRepo
 }
 
 // buildEngine wires the Gin handler tree exactly the way cmd/gateway/main.go
@@ -184,6 +202,25 @@ func buildEngine(d buildEngineDeps) *gin.Engine {
 
 	urgentSvc := service.NewUrgentService(d.urgents, d.messages, d.channels, messageSvc, governanceSvc)
 	imhttp.RegisterUrgentRoutes(authed, urgentSvc, nil)
+
+	// Batch-C: announcement / approval / notification / quick_reply / reaction / scheduled
+	announcementSvc := service.NewAnnouncementService(d.announcements, d.channels, governanceSvc)
+	imhttp.RegisterAnnouncementRoutes(authed, announcementSvc, nil)
+
+	approvalSvc := service.NewApprovalService(d.approvals, d.channels, governanceSvc)
+	imhttp.RegisterApprovalRoutes(authed, approvalSvc, nil)
+
+	notificationSvc := service.NewNotificationService(d.notifications)
+	imhttp.RegisterNotificationRoutes(authed, notificationSvc, nil)
+
+	quickReplySvc := service.NewQuickReplyService(d.quickReplies)
+	imhttp.RegisterQuickReplyRoutes(authed, quickReplySvc)
+
+	reactionSvc := service.NewReactionService(d.reactions, d.messages, d.channels)
+	imhttp.RegisterReactionRoutes(authed, reactionSvc, nil)
+
+	scheduledSvc := service.NewScheduledService(d.scheduledMsgs, d.channels, messageSvc)
+	imhttp.RegisterScheduledRoutes(authed, scheduledSvc)
 
 	return engine
 }
