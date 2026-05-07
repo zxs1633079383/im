@@ -2,12 +2,13 @@
 
 > 一份**可执行**的工程方案。读完它，前端、后端、Rust、QA、PM 各自知道做什么、什么时候做、出问题怎么办。
 >
-> 当前状态：im 后端 `v0.7.2-no-mattermost` 已部署 pre-7g。
+> 当前状态：im 后端 `v0.7.3-batch-e-tests` production-ready（push origin，HEAD `1caac17`）。198 集成测试 611s 全绿（Batch-A/B/C/D/E + push hook + WS fixture）；C008 active CI gate 落地；channel_info_updated / channel_top_updated push hook 已补，22 WSMessageType 中 18 server→client 全部 active。pre 部署 `v1.0.0-pre-7g` → 待用户人工触发 `v1.0.0-pre-7h` 含本次 push hook。
 >
-> **cses-client 工作目录（2026-05-01 起）**：`/Users/mac28/workspace/angular/temp/cses-client` branch `tauri-new-im` HEAD `836b899ab`。
-> 旧的 `/Users/mac28/workspace/angular/cses-client` + `im-backend-switch` 分支 + `7c8a0c972` 是更早期的探路工作，本方案 Phase 2-4 全部在新工作目录上落地。
+> **cses-client 工作目录（2026-05-01 用户拍板锁定）**：`/Users/mac28/workspace/angular/cses-client` branch `im-backend-switch` HEAD `7c8a0c972`。
 >
-> **Phase 1 状态：✅ 已完成**（2026-05-01）—— 全局响应包裹 + POST `/api/messages/:id/received` + GET `/api/messages/read-stats` 三件均已落地，commit `441ba37` `66c2a67` `ee32f7f` + 文档 commit `65f0763` 已 push origin/main。go vet / golangci-lint / go test -race -short / go test -tags integration 全绿。Phase 2/3/4 待 cses-client 团队在 `temp/cses-client tauri-new-im` 分支上接手。
+> **历史更正**（2026-05-01）：本文档曾把 `temp/cses-client + tauri-new-im` 当作新工作目录，把 `im-backend-switch` 标为"探路"。事实是 `im-backend-switch` 上 14 个 commit `e0d037470..7c8a0c972` 是有效的 Phase 0/1 基础设施（apiFlavor 灰度、ImApiAdapter、route-table、字段名修正、ws-normalizer、Rust ImSeqDataSource/ImHttpClient skeleton、3 个 stub 端点彻底删除等），而 `tauri-new-im` ≡ `origin/tauri`，一行 cses-client 端基础设施都没有。用户拍板放弃 temp 路线、回到旧目录继续，本节为准。详见 im 项目 CLAUDE.md §0.1。
+>
+> **Phase 1 状态：✅ 已完成**（2026-05-01）—— im 后端三件套：全局响应包裹 + POST `/api/messages/:id/received` + GET `/api/messages/read-stats`，commit `441ba37` `66c2a67` `ee32f7f` + 文档 commit `65f0763` 已 push origin/main。go vet / golangci-lint / go test -race -short / go test -tags integration 全绿。Phase 2/3/4 在 `angular/cses-client + im-backend-switch` 分支上接续做。
 >
 > 关联：wiki 入口 [comparisons/csesapi-vs-im-coverage](../wiki/comparisons/csesapi-vs-im-coverage.md) + [syntheses/min-cost-mattermost-cutover](../wiki/syntheses/min-cost-mattermost-cutover.md)。
 
@@ -448,7 +449,7 @@ node scripts/v070-smoke.mjs
 
 **Owner**：im 项目 + cses-client 项目联合
 **Reviewer 候选**：用户本人 + cses-client-dev agent（落地前过一次）
-**Status**：Phase 1 ✅ DONE | Phase 2-4 ⏳ cses-client 团队接手
+**Status**：Phase 1 ✅ DONE | Phase 2-4 ⏳ 在 `angular/cses-client + im-backend-switch` 分支接续
 
 ---
 

@@ -117,7 +117,7 @@ internal/
 │   ├── topic.go                  # PushTopicFor(gatewayID, env) + localname 后缀
 │   ├── push_consumer.go          # 订阅本 gateway 的 push topic
 │   ├── tracing.go                # gateway Tracer
-│   ├── types.go                  # 12 + N WS 事件类型常量
+│   ├── types.go                  # 22 WS 事件类型常量（V1 12 + M1 2 + M2 4 + v0.7 4，详见 docs/harness/C005）
 │   └── *_test.go                 # producer cache / topic / hub 单测
 │
 └── testutil/
@@ -138,17 +138,50 @@ internal/
 | `008_m2_scheduled_messages.*` | 定时消息 |
 | `009_m2_quick_replies.*` | 快捷回复模板 |
 
-### 2.4 `server/tests/integration/` — 集成测试
+### 2.4 `server/tests/integration/` — 集成测试（2026-05-07 v0.7.3 全集 198 测试）
 
-| 文件 | 覆盖 |
-|------|------|
-| `v5_harness_test.go`          | 共享 env：testcontainers + 所有 recording fake |
-| `v5_single_flows_test.go`     | V5.1–V5.10 单接口 flow |
-| `v5_groups_test.go`           | G1–G10 模块组连续性（G5 需 V4 跳过） |
-| `v5_m1_coverage_test.go`      | M1 补覆盖（readers / announcement detail / approval detail） |
-| `v5_m2_*_test.go`             | M2 每个子模块独立测试（scheduled / notification / announcement / urgent / approval / quick-reply / broadcast） |
+> v5 老 fixture 体系已被 m4 + Batch-A/B/C/D/E 体系完全替代。`v5_*_test.go`
+> 历史文件在 M4 cascade 时清空，下面是当前 production-ready 的测试矩阵。
 
-### 2.5 `server/docs/` — 战略文档
+| 文件 | 测试函数数 | 覆盖范围 |
+|------|---|---|
+| `m4_harness_test.go` | — | 共享 harness：buildEngine（含 envelope middleware + 17 个 service register + WS handler + 5 个 push adapter）+ seedUser / seedDM / seedGroup / seedMessage / successBody / successBodyArray / errorBody helpers |
+| `m4_auth_smoke_test.go` | 2 | 张立超 cookie smoke + 401 missing |
+| `m4_channel_dm_test.go` / `_group_test.go` | 2 | DM / group channel 创建 |
+| `m4_friend_test.go` | 1 | friend request → accept |
+| `m4_message_sync_test.go` | 1 | send → /sync 拉回 |
+| `m4_topic_test.go` | 1 | makeTopic 子群聊 |
+| `m4_template_received_test.go` | 2 | 模板已收到 + idempotent 重点击 |
+| `m4_read_stats_test.go` | 3 | read-stats batch + bad input |
+| **Batch-B 5 case 矩阵**（130 测试）| | |
+| `m4_message_write_test.go` | 25 | POST messages / PATCH / DELETE / forward / batch (5 endpoint × 5 case) |
+| `m4_message_read_test.go` | 30 | GET messages / around / readers / replies / messages-after / channel read (6 × 5) |
+| `m4_channel_governance_test.go` | 40 | PATCH /channels/:id / managers / pins / member 8 × 5 |
+| `m4_favorite_urgent_test.go` | 35 | favorite 3 × 5 + urgent 4 × 5 |
+| **Batch-C 简化版**（27 测试，每路由 1 happy path）| | |
+| `m4_announcement_reaction_test.go` | 9 | announcement 6 + reaction 3 |
+| `m4_approval_test.go` | 7 | approval 7 |
+| `m4_notification_quickreply_test.go` | 8 | notification 4 + quick_reply 4 |
+| `m4_scheduled_test.go` | 3 | scheduled 3 |
+| **Batch-D WS 集成**（20 测试）| | |
+| `m4_ws_fixture_test.go` | 1 | wsClient / wsDial / writeFrame / expectFrame fixture + send_ack reference |
+| `m4_ws_message_events_test.go` | 3 | push_msg / msg_updated / msg_deleted |
+| `m4_ws_channel_friend_events_test.go` | 4 | channel_event / friend_event / channel_info_updated / channel_top_updated（最后两个 push hook 在 v0.7.3 commit `0be2a3f` 补齐）|
+| `m4_ws_governance_events_test.go` | 4 | announcement_posted / urgent_posted / approval_updated / notification_received |
+| `m4_ws_reaction_heartbeat_test.go` | 5 | reaction_added/removed / read_sync / pong (18s heartbeat) / push_ack |
+| **Batch-E 简化版**（6 测试）| | |
+| `m4_batch_e_test.go` | 6 | module / sync / presence × 2 / settings × 2 |
+
+合计 **198 测试函数**，`go test -tags integration -timeout 45m` ~611s 全绿。
+
+### 2.5 `server/scripts/` — 测试 / 部署脚本
+
+| 文件 | 用途 |
+|---|---|
+| `check-handler-coverage.sh` | C008 §4.1 CI gate：路由数 ≥ MIN_ROUTES (84) + 测试数 ≥ MIN_TESTS (190) + family 启发式扫描 |
+| `seed-mm-cookies.sh` / `-bulk.sh` | 张立超 cookieId 灌 Redis fixture |
+
+### 2.6 `server/docs/` — 战略文档
 
 | 文件 | 目的 |
 |------|------|
@@ -157,7 +190,7 @@ internal/
 | `OVERALL.md` | 后前端整合路线图 T0–T6（17 周）、`make verify-all` 收敛、V5.3.1 十组连续性场景 |
 | `TECH.md`    | 技术栈总览（栈选型、版本、跨子系统契约） |
 
-### 2.6 `client/` — Angular + Tauri 双端
+### 2.7 `client/` — Angular + Tauri 双端
 
 ```
 client/
