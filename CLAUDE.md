@@ -12,6 +12,17 @@
 - 当前所处阶段、分支/tag、下一步决策点见 `SESSION.md`。
 - 技术栈、目录地图、文件职能见 `docs/ARCHITECTURE.md`。
 
+### 0.1 cses-client 工作目录（锁定，2026-05-01 用户拍板）
+
+**唯一权威工作目录**：`/Users/mac28/workspace/angular/cses-client`
+**唯一权威分支**：`im-backend-switch`（HEAD `7c8a0c972`，与 `origin/im-backend-switch` 同步）
+
+> **历史**：曾尝试切换到 `/Users/mac28/workspace/angular/temp/cses-client` + `tauri-new-im`，但 `tauri-new-im` 是从 `origin/tauri` 直切出来的，**完全没有**任何 cses-client 端的 Phase 0/1 基础设施（apiFlavor 切换、ImApiAdapter、route-table、字段名 imGatewayHttp、ws-normalizer、Rust ImSeqDataSource skeleton、isWrappedResponse 适配），而这些基础设施全部以 14 个有效 commit `e0d037470..7c8a0c972` 形态落在 `im-backend-switch` 上。
+>
+> **结论**（2026-05-01 用户口头拍板，本节固化）：放弃 temp/cses-client + tauri-new-im 路线，回到 `angular/cses-client` + `im-backend-switch` 继续做 Phase 2-4。所有 SESSION.md / cutover 文档里 "已切到 temp/" 的措辞均作废，本节为准。
+>
+> **后续提及 cses-client 工作目录**：一律指 `/Users/mac28/workspace/angular/cses-client` + `im-backend-switch`，无歧义。引用旧 `temp/cses-client` 仅作历史 commit 检索用途。
+
 ---
 
 ## 1. 写 Go 代码的绝对规则（高性能 / 高吞吐 / 高稳定）
@@ -81,10 +92,37 @@ Skill(skill="go-concurrency-patterns")
 ## 3. Git / 分支 / 提交约束
 
 - 主分支：`main`。功能分支：`feature/im-m{N}` 或 `feature/<topic>`。
-- 提交信息：`<type>(<scope>): <subject>`，type ∈ feat/fix/refactor/docs/test/chore/perf/ci。
+- 提交信息：`<type>(<scope>): <subject>`，type ∈ feat/fix/refactor/docs/test/chore/perf/ci。**description / body 必须中文**。
 - 小步提交：每个逻辑单元一次 commit。
 - PR 前：`make verify-all` 必须绿；CI 必须绿。
 - 详见用户全局 `~/.claude/rules/common/git-workflow.md`。
+
+### 3.1 模块划分 + Tag 策略（多 Phase 大改）
+
+跨多文件 / 多 Phase / 多天的大型切换（如 csesapi → im、Mattermost 下线、cses-client cutover Phase 2-4）：
+
+- **一个 Phase = 一个模块 = 一个 tag**：每完成一个独立可验证的模块就立即 tag，方便 review + 回滚定位。
+- **Commit scope 必须带模块 + Phase 编号**：`refactor(message-v3/template-received): Phase 2 切 path 到 im REST`。
+- **Tag 命名**：`v<base>-phase<N>-<module-slug>` / `v<base>-rc<N>` / `v<base>-final` / `v<base>-client-verified`。
+- **每个 tag 必带 message**：覆盖 commit 范围 + 验证状态（lint / test / 手工）。
+- **顺序铁律**：模块完成 → commit → tag → 推 tag → 再下一个模块。禁止"先做完再补 tag"。
+
+完整规范见 `~/.claude/rules/common/git-workflow.md` §「模块划分与 Tag 策略」。
+
+### 3.2 cses-client cutover 实战 tag 序列
+
+| Phase | 模块 | tag |
+|---|---|---|
+| Phase 1 ✅ | im 后端三件套（全局响应包裹 + POST received + GET read-stats）| **`v0.7.3-im-backend-base` @ `9679a36`（2026-05-03 已打，本地，未 push）** |
+| Phase 2 | 模板已收到 path 化 | `v0.7.3-phase2-template-received` |
+| Phase 3a | onChannelRead 6 处切 | `v0.7.3-phase3-channel-read`（合并 3a/b/c） |
+| Phase 3b | 砍 onPostRead + inViewMsgRead | 同上 |
+| Phase 3c | Rust handle_post_read 删 | 同上 |
+| Phase 4a | message-status 异步 | `v0.7.3-phase4-read-stats-ui`（合并 4a/b/c/d） |
+| Phase 4b | 加急弹窗 2 处异步 | 同上 |
+| Phase 4c | mention 清理 read_sync | 同上 |
+| Phase 4d | 33 处 readBits 清理 | 同上 |
+| 验证 | 联调 / smoke / k6 | `v0.7.3-client-verified` |
 
 ---
 
