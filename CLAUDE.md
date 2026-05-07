@@ -245,7 +245,7 @@ cat docs/harness/README.md | head -40     # 看 active 索引
 | C005 | WSMessageType 锁定 22 种（含 contradiction 待用户拍板）；新增走 V2 RFC | active |
 | C006 | httpexpect v2 路径禁拼 `?q=`，必须 `.WithQuery` | active |
 | C007 | 全局 responseEnvelope 中间件已生效，handler 禁止再 wrap status/data | active |
-| C008 | 76 端点 × 5 case + 16 WS × 6 case 是 100% 覆盖率硬门 | drafting |
+| C008 | 84 路由 + 22 WSMessageType 必有匹配 TestM4* 集成测试，CI gate 卡 grep | active |
 
 ### 8.5 引用规范
 

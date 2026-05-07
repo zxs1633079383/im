@@ -19,7 +19,7 @@
 | [C005](C005-ws-event-types-locked.md) | WSMessageType 锁定 22 种（含 contradiction 待用户拍板）；新增走 V2 RFC | active | logs/2026-04-22.json#L65 | 2 |
 | [C006](C006-httpexpect-query-encoding.md) | httpexpect v2 路径禁拼 `?q=`，必须 `.WithQuery` | active | logs/2026-04-26.json#L33 | 1（commit 43c05ab） |
 | [C007](C007-response-envelope-no-double-wrap.md) | 全局 responseEnvelope 中间件已生效，handler 禁止再 wrap status/data | active | logs/2026-05-01.json#L120 | 1 |
-| [C008](C008-handler-coverage-gate.md) | 76 端点 × 5 case + 16 WS × 6 case 是 100% 覆盖率硬门 | drafting | logs/2026-05-07.json#L1（本次会话） | 1（rules/golang/testing.md 落地清单） |
+| [C008](C008-handler-coverage-gate.md) | 84 路由 + 22 WSMessageType 必有匹配的 TestM4* 集成测试，CI gate 卡 grep | active | logs/2026-05-07.json#L1（本次会话） | 1（rules/golang/testing.md 落地清单） |
 | [C009](C009-test-helper-tracks-middleware-shape.md) | 加 / 改 middleware 必须 sweep 所有 test helper（Run #1 ~120 fail 教训） | active | logs/2026-05-07.json#L1（envelope 注入事故） | 1 |
 
 > 新条目命名规范：`C{NNN}-{kebab-case-slug}.md`，编号严格递增，删除条目用 `status: deprecated` 不删除文件。

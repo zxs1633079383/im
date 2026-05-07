@@ -92,7 +92,7 @@ mocks:
 #
 # `make verify-all` runs V1 + V2. V3 is opt-in via `make verify-integration`.
 # -----------------------------------------------------------------------------
-.PHONY: verify-all verify-build verify-unit verify-integration
+.PHONY: verify-all verify-build verify-unit verify-integration check-handler-coverage
 
 verify-all: verify-build verify-unit
 	@echo "V1 + V2 GREEN. integration/smoke/cluster require a running docker-compose."
@@ -107,8 +107,16 @@ verify-unit:
 	@echo "==> V2 unit tests"
 	go test -race -short ./...
 
-verify-integration:
-	@echo "==> V3 integration (requires docker-compose running pg+redis+pulsar)"
-	@echo "    (V5 group scenarios spin up one Postgres testcontainer per test;"
-	@echo "     600s timeout accommodates the container start-up overhead)"
-	go test -race -tags=integration -timeout 600s ./...
+# C008 §4.1/§4.3: route + test count gate.  Runs first so a regression on
+# the handler/test surface fails loudly before we burn 10+ min on testcontainer
+# setup. Bump MIN_ROUTES / MIN_TESTS in scripts/check-handler-coverage.sh as
+# new endpoints + tests land.
+check-handler-coverage:
+	@echo "==> C008 handler-coverage gate"
+	@./scripts/check-handler-coverage.sh
+
+verify-integration: check-handler-coverage
+	@echo "==> V3 integration (requires docker / testcontainers)"
+	@echo "    (each test spins up one Postgres + Redis testcontainer pair;"
+	@echo "     45m timeout accommodates the full Batch-A/B/C/D/E surface)"
+	go test -race -tags=integration -timeout 45m ./...

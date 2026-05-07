@@ -4,6 +4,26 @@
 
 ---
 
+## [2026-05-07] activate | C008 drafting → active
+
+由 Batch-A/B/C/D/E 落地（Batch-E autonomous agent 跑中）+ `scripts/check-handler-coverage.sh`
+写完 + Makefile `check-handler-coverage` target 落地触发升级。
+
+**晋升达成的条件**：
+- Batch-B 130 case 进 tests/integration/（commit `3d39889`，tag `v0.7.3-batch-b-tests`）
+- 后续 Batch-A/C/D 共 ~189 测试 + Batch-E 6 测试（agent 跑中）= ≈195 测试函数
+- `server/scripts/check-handler-coverage.sh` exec gate（routes ≥84 / tests ≥190 / family 启发式扫描）
+- `server/Makefile::check-handler-coverage` target 已接入 `verify-integration` 前置
+
+**晋升 active → merged 还需**：
+- 30 天零 CI 失败计时
+- 行覆盖率 100% 独立 task（按 ~/.claude/rules/golang/testing.md，单独 autonomous 工程）
+- inline 进 `~/.claude/rules/golang/testing.md` § 接口组覆盖
+
+**Source log**：`logs/2026-05-07.json`（本会话 Batch-A→E 全程）
+
+---
+
 ## [2026-05-07] create | C009 — test helper 与 middleware shape 同步
 
 由 Run #1（envelope middleware 注入但漏扫 seedDM/seedGroup 导致 ~120 fail，但 `tail -100` 仅捕末尾 2 fail）固化为 active harness。
