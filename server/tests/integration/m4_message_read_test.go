@@ -39,10 +39,10 @@ func TestM4MessageList_C1_HappyPath(t *testing.T) {
 	channelID := env.seedDM(cookieA, bID)
 	env.seedMessage(channelID, aID, "hello list")
 
-	resp := env.expect.GET("/api/channels/" + strconv.FormatInt(channelID, 10) + "/messages").
+	resp := successBody(env.expect.GET("/api/channels/" + strconv.FormatInt(channelID, 10) + "/messages").
 		WithHeader(middleware.MMCookieHeader, cookieA).
 		WithQuery("limit", 50).
-		Expect().Status(200).JSON().Object()
+		Expect().Status(200))
 
 	resp.Value("messages").Array().Length().IsEqual(1)
 	resp.Value("messages").Array().Value(0).Object().Value("sender_id").IsEqual(aID)
@@ -56,8 +56,8 @@ func TestM4MessageList_C2_CookieMissing(t *testing.T) {
 	channelID := env.seedDM(cookieA, bID)
 	env.seedMessage(channelID, aID, "hidden")
 
-	body := env.expect.GET("/api/channels/" + strconv.FormatInt(channelID, 10) + "/messages").
-		Expect().Status(401).JSON().Object()
+	body := errorBody(env.expect.GET("/api/channels/" + strconv.FormatInt(channelID, 10) + "/messages").
+		Expect().Status(401))
 	body.Value("error").String().NotEmpty()
 }
 
@@ -110,11 +110,11 @@ func TestM4MessageAround_C1_HappyPath(t *testing.T) {
 	env.seedMessage(channelID, aID, "around-anchor")
 
 	tsMs := time.Now().Add(time.Hour).UnixMilli()
-	resp := env.expect.GET("/api/channels/"+strconv.FormatInt(channelID, 10)+"/messages/around").
+	resp := successBody(env.expect.GET("/api/channels/"+strconv.FormatInt(channelID, 10)+"/messages/around").
 		WithHeader(middleware.MMCookieHeader, cookieA).
 		WithQuery("timestamp", tsMs).
 		WithQuery("limit", 20).
-		Expect().Status(200).JSON().Object()
+		Expect().Status(200))
 
 	resp.Value("messages").Array().NotEmpty()
 	resp.Value("has_older").Boolean()
@@ -167,9 +167,9 @@ func TestM4MessageAround_C5_MissingTimestamp(t *testing.T) {
 	_, bID := env.seedUser(220)
 	channelID := env.seedDM(cookieA, bID)
 
-	body := env.expect.GET("/api/channels/" + strconv.FormatInt(channelID, 10) + "/messages/around").
+	body := errorBody(env.expect.GET("/api/channels/" + strconv.FormatInt(channelID, 10) + "/messages/around").
 		WithHeader(middleware.MMCookieHeader, cookieA).
-		Expect().Status(400).JSON().Object()
+		Expect().Status(400))
 	body.Value("error").String().NotEmpty()
 }
 
@@ -183,10 +183,10 @@ func TestM4MessageReaders_C1_HappyPath(t *testing.T) {
 	channelID := env.seedDM(cookieA, bID)
 	msg := env.seedMessage(channelID, aID, "to-be-read")
 
-	resp := env.expect.GET("/api/messages/" + strconv.FormatInt(msg.ID, 10) + "/readers").
+	resp := successBody(env.expect.GET("/api/messages/" + strconv.FormatInt(msg.ID, 10) + "/readers").
 		WithHeader(middleware.MMCookieHeader, cookieA).
 		WithQuery("limit", 50).
-		Expect().Status(200).JSON().Object()
+		Expect().Status(200))
 
 	resp.Value("readers").Array()
 	resp.ContainsKey("next_cursor")
@@ -261,9 +261,9 @@ func TestM4MessageReplies_C1_HappyPath(t *testing.T) {
 		}).
 		Expect().Status(201)
 
-	resp := env.expect.GET("/api/messages/" + strconv.FormatInt(root.ID, 10) + "/replies").
+	resp := successBody(env.expect.GET("/api/messages/" + strconv.FormatInt(root.ID, 10) + "/replies").
 		WithHeader(middleware.MMCookieHeader, cookieA).
-		Expect().Status(200).JSON().Object()
+		Expect().Status(200))
 	resp.Value("messages").Array().Length().IsEqual(1)
 	resp.Value("messages").Array().Value(0).Object().Value("content").IsEqual("first reply")
 }
@@ -329,10 +329,10 @@ func TestM4MessageAfter_C1_HappyPath(t *testing.T) {
 	env.seedMessage(channelID, aID, "after-1")
 	env.seedMessage(channelID, aID, "after-2")
 
-	resp := env.expect.GET("/api/messages/" + strconv.FormatInt(first.ID, 10) + "/after").
+	resp := successBody(env.expect.GET("/api/messages/" + strconv.FormatInt(first.ID, 10) + "/after").
 		WithHeader(middleware.MMCookieHeader, cookieA).
 		WithQuery("limit", 50).
-		Expect().Status(200).JSON().Object()
+		Expect().Status(200))
 	resp.Value("messages").Array().Length().IsEqual(2)
 }
 
@@ -396,9 +396,9 @@ func TestM4ChannelRead_C1_HappyPath(t *testing.T) {
 	channelID := env.seedDM(cookieA, bID)
 	env.seedMessage(channelID, aID, "msg1")
 
-	resp := env.expect.POST("/api/channels/" + strconv.FormatInt(channelID, 10) + "/read").
+	resp := successBody(env.expect.POST("/api/channels/" + strconv.FormatInt(channelID, 10) + "/read").
 		WithHeader(middleware.MMCookieHeader, cookieA).
-		Expect().Status(200).JSON().Object()
+		Expect().Status(200))
 	resp.Value("seq").Number().Ge(1)
 }
 

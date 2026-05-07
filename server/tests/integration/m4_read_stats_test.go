@@ -26,10 +26,10 @@ func TestM4ReadStatsBatch_HappyPath(t *testing.T) {
 	cookieSender, senderID := env.seedUser(50)
 	cookieRecv, recvID := env.seedUser(51)
 
-	dm := env.expect.POST("/api/channels/dm").
+	dm := successBody(env.expect.POST("/api/channels/dm").
 		WithHeader(middleware.MMCookieHeader, cookieSender).
 		WithJSON(map[string]any{"peer_id": recvID}).
-		Expect().Status(201).JSON().Object()
+		Expect().Status(201))
 	channelID := int64(dm.Value("id").Number().Raw())
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -55,10 +55,10 @@ func TestM4ReadStatsBatch_HappyPath(t *testing.T) {
 		Expect().Status(200)
 
 	idsParam := strconv.FormatInt(msg1.ID, 10) + "," + strconv.FormatInt(msg2.ID, 10)
-	resp := env.expect.GET("/api/messages/read-stats").
+	resp := successBody(env.expect.GET("/api/messages/read-stats").
 		WithHeader(middleware.MMCookieHeader, cookieSender).
 		WithQuery("ids", idsParam).
-		Expect().Status(200).JSON().Object()
+		Expect().Status(200))
 
 	stats := resp.Value("stats").Array()
 	stats.Length().IsEqual(2)
@@ -92,17 +92,17 @@ func TestM4ReadStatsBatch_NonMemberFiltered(t *testing.T) {
 	_, idC := env.seedUser(54)
 
 	// A and B share a DM; C is unrelated.
-	dmAB := env.expect.POST("/api/channels/dm").
+	dmAB := successBody(env.expect.POST("/api/channels/dm").
 		WithHeader(middleware.MMCookieHeader, cookieA).
 		WithJSON(map[string]any{"peer_id": idB}).
-		Expect().Status(201).JSON().Object()
+		Expect().Status(201))
 	channelAB := int64(dmAB.Value("id").Number().Raw())
 
 	// A and C share another DM; B is not a member.
-	dmAC := env.expect.POST("/api/channels/dm").
+	dmAC := successBody(env.expect.POST("/api/channels/dm").
 		WithHeader(middleware.MMCookieHeader, cookieA).
 		WithJSON(map[string]any{"peer_id": idC}).
-		Expect().Status(201).JSON().Object()
+		Expect().Status(201))
 	channelAC := int64(dmAC.Value("id").Number().Raw())
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -114,10 +114,10 @@ func TestM4ReadStatsBatch_NonMemberFiltered(t *testing.T) {
 
 	// B asks for both — only the AB one comes back.
 	idsParam := strconv.FormatInt(visible.ID, 10) + "," + strconv.FormatInt(hidden.ID, 10)
-	resp := env.expect.GET("/api/messages/read-stats").
+	resp := successBody(env.expect.GET("/api/messages/read-stats").
 		WithHeader(middleware.MMCookieHeader, cookieB).
 		WithQuery("ids", idsParam).
-		Expect().Status(200).JSON().Object()
+		Expect().Status(200))
 
 	stats := resp.Value("stats").Array()
 	stats.Length().IsEqual(1)

@@ -21,14 +21,13 @@ func TestM4ChannelCreateGroup(t *testing.T) {
 	_, member1 := env.seedUser(21)
 	_, member2 := env.seedUser(22)
 
-	created := env.expect.POST("/api/channels").
+	created := successBody(env.expect.POST("/api/channels").
 		WithHeader(middleware.MMCookieHeader, cookieOwner).
 		WithJSON(map[string]any{
 			"name":       "m4-group-happy",
 			"member_ids": []string{member1, member2},
 		}).
-		Expect().Status(201).
-		JSON().Object()
+		Expect().Status(201))
 
 	created.Value("name").IsEqual("m4-group-happy")
 	created.Value("creator_id").IsEqual(ownerID)

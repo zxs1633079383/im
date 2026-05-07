@@ -22,11 +22,10 @@ func TestM4ChannelCreateDM(t *testing.T) {
 	_, userB := env.seedUser(11)
 
 	// First call → 201 + persisted DM with team_id == caller.companyId.
-	created := env.expect.POST("/api/channels/dm").
+	created := successBody(env.expect.POST("/api/channels/dm").
 		WithHeader(middleware.MMCookieHeader, cookieA).
 		WithJSON(map[string]any{"peer_id": userB}).
-		Expect().Status(201).
-		JSON().Object()
+		Expect().Status(201))
 
 	created.Value("type").Number().IsEqual(1) // ChannelTypeDM
 	createdID := int64(created.Value("id").Number().Raw())
@@ -39,10 +38,9 @@ func TestM4ChannelCreateDM(t *testing.T) {
 		"team_id should equal caller.companyId frozen at create time")
 
 	// Second call with same peer → 200 + same channel id (idempotent).
-	repeat := env.expect.POST("/api/channels/dm").
+	repeat := successBody(env.expect.POST("/api/channels/dm").
 		WithHeader(middleware.MMCookieHeader, cookieA).
 		WithJSON(map[string]any{"peer_id": userB}).
-		Expect().Status(200).
-		JSON().Object()
+		Expect().Status(200))
 	repeat.Value("id").Number().IsEqual(float64(createdID))
 }

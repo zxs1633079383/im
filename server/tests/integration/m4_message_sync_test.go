@@ -22,22 +22,22 @@ func TestM4MessageSendThenSync(t *testing.T) {
 
 	// Two-sided DM creation: sender posts, then peer pulls. Both must end
 	// up as members of the same channel for /sync to return data.
-	dm := env.expect.POST("/api/channels/dm").
+	dm := successBody(env.expect.POST("/api/channels/dm").
 		WithHeader(middleware.MMCookieHeader, cookieSender).
 		WithJSON(map[string]any{"peer_id": recvID}).
-		Expect().Status(201).JSON().Object()
+		Expect().Status(201))
 	channelID := int64(dm.Value("id").Number().Raw())
 
 	// Send a message; the response is the persisted repo.Message — assert on
 	// the M4-shaped TEXT user-id fields directly.
-	sent := env.expect.POST("/api/channels/"+strconv.FormatInt(channelID, 10)+"/messages").
+	sent := successBody(env.expect.POST("/api/channels/"+strconv.FormatInt(channelID, 10)+"/messages").
 		WithHeader(middleware.MMCookieHeader, cookieSender).
 		WithJSON(map[string]any{
 			"content":     "hello from m4",
 			"msg_type":    1,
 			"visible_to":  []string{senderID, recvID},
 		}).
-		Expect().Status(201).JSON().Object()
+		Expect().Status(201))
 
 	sent.Value("sender_id").IsEqual(senderID)
 	sent.Value("team_id").IsEqual(testutil.RealCompanyID)
@@ -46,12 +46,12 @@ func TestM4MessageSendThenSync(t *testing.T) {
 	sent.Value("visible_to").Array().ContainsAll(senderID, recvID)
 
 	// Receiver pulls via /sync from cursor=0 → must see the message.
-	sync := env.expect.POST("/api/sync").
+	sync := successBody(env.expect.POST("/api/sync").
 		WithHeader(middleware.MMCookieHeader, cookieRecv).
 		WithJSON(map[string]any{
 			"channels": []map[string]any{{"id": channelID, "seq": 0}},
 		}).
-		Expect().Status(200).JSON().Object()
+		Expect().Status(200))
 
 	channels := sync.Value("channels").Array()
 	channels.Length().IsEqual(1)

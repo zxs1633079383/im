@@ -49,13 +49,13 @@ func TestM4ChannelPatch_C1_HappyPath(t *testing.T) {
 	_, m1 := env.seedUser(301)
 	chID := env.seedGroup(cookieOwner, "g3-patch-happy", m1)
 
-	body := env.expect.PATCH("/api/channels/" + pathInt64s(chID)).
+	body := successBody(env.expect.PATCH("/api/channels/" + pathInt64s(chID)).
 		WithHeader(middleware.MMCookieHeader, cookieOwner).
 		WithJSON(map[string]any{
 			"name":   "g3-patch-renamed",
 			"notice": "be nice",
 		}).
-		Expect().Status(200).JSON().Object()
+		Expect().Status(200))
 	body.Value("name").IsEqual("g3-patch-renamed")
 	body.Value("notice").IsEqual("be nice")
 }
@@ -125,14 +125,14 @@ func TestM4ChannelAddManager_C1_HappyPath(t *testing.T) {
 	_, m1 := env.seedUser(311)
 	chID := env.seedGroup(cookieOwner, "g3-add-mgr-happy", m1)
 
-	env.expect.POST("/api/channels/" + pathInt64s(chID) + "/managers/" + m1).
+	successBody(env.expect.POST("/api/channels/"+pathInt64s(chID)+"/managers/"+m1).
 		WithHeader(middleware.MMCookieHeader, cookieOwner).
-		Expect().Status(201).
-		JSON().Object().Value("status").IsEqual("manager_added")
+		Expect().Status(201)).
+		Value("status").IsEqual("manager_added")
 
-	mgrs := env.expect.GET("/api/channels/" + pathInt64s(chID) + "/managers").
+	mgrs := successBody(env.expect.GET("/api/channels/" + pathInt64s(chID) + "/managers").
 		WithHeader(middleware.MMCookieHeader, cookieOwner).
-		Expect().Status(200).JSON().Object()
+		Expect().Status(200))
 	mgrs.Value("managers").Array().ContainsAll(m1)
 }
 
@@ -203,14 +203,14 @@ func TestM4ChannelRemoveManager_C1_HappyPath(t *testing.T) {
 		WithHeader(middleware.MMCookieHeader, cookieOwner).
 		Expect().Status(201)
 
-	env.expect.DELETE("/api/channels/" + pathInt64s(chID) + "/managers/" + m1).
+	successBody(env.expect.DELETE("/api/channels/"+pathInt64s(chID)+"/managers/"+m1).
 		WithHeader(middleware.MMCookieHeader, cookieOwner).
-		Expect().Status(200).
-		JSON().Object().Value("status").IsEqual("manager_removed")
+		Expect().Status(200)).
+		Value("status").IsEqual("manager_removed")
 
-	mgrs := env.expect.GET("/api/channels/" + pathInt64s(chID) + "/managers").
+	mgrs := successBody(env.expect.GET("/api/channels/" + pathInt64s(chID) + "/managers").
 		WithHeader(middleware.MMCookieHeader, cookieOwner).
-		Expect().Status(200).JSON().Object()
+		Expect().Status(200))
 	mgrs.Value("managers").Array().NotContainsAny(m1)
 }
 
@@ -279,9 +279,9 @@ func TestM4ChannelListManagers_C1_HappyPath(t *testing.T) {
 	_, m1 := env.seedUser(331)
 	chID := env.seedGroup(cookieOwner, "g3-list-mgr-happy", m1)
 
-	mgrs := env.expect.GET("/api/channels/" + pathInt64s(chID) + "/managers").
+	mgrs := successBody(env.expect.GET("/api/channels/" + pathInt64s(chID) + "/managers").
 		WithHeader(middleware.MMCookieHeader, cookieOwner).
-		Expect().Status(200).JSON().Object()
+		Expect().Status(200))
 	mgrs.Value("managers").Array().Length().IsEqual(0)
 }
 
@@ -345,14 +345,14 @@ func TestM4ChannelPinMessage_C1_HappyPath(t *testing.T) {
 	chID := env.seedGroup(cookieOwner, "g3-pin-happy", m1)
 	msg := env.seedMessage(chID, ownerID, "pin me")
 
-	env.expect.POST("/api/channels/" + pathInt64s(chID) + "/pins/" + pathInt64s(msg.ID)).
+	successBody(env.expect.POST("/api/channels/"+pathInt64s(chID)+"/pins/"+pathInt64s(msg.ID)).
 		WithHeader(middleware.MMCookieHeader, cookieOwner).
-		Expect().Status(201).
-		JSON().Object().Value("status").IsEqual("pinned")
+		Expect().Status(201)).
+		Value("status").IsEqual("pinned")
 
-	pins := env.expect.GET("/api/channels/" + pathInt64s(chID) + "/pins").
+	pins := successBody(env.expect.GET("/api/channels/" + pathInt64s(chID) + "/pins").
 		WithHeader(middleware.MMCookieHeader, cookieOwner).
-		Expect().Status(200).JSON().Object()
+		Expect().Status(200))
 	pins.Value("pins").Array().ContainsAll(float64(msg.ID))
 }
 
@@ -424,14 +424,14 @@ func TestM4ChannelUnpinMessage_C1_HappyPath(t *testing.T) {
 		WithHeader(middleware.MMCookieHeader, cookieOwner).
 		Expect().Status(201)
 
-	env.expect.DELETE("/api/channels/" + pathInt64s(chID) + "/pins/" + pathInt64s(msg.ID)).
+	successBody(env.expect.DELETE("/api/channels/"+pathInt64s(chID)+"/pins/"+pathInt64s(msg.ID)).
 		WithHeader(middleware.MMCookieHeader, cookieOwner).
-		Expect().Status(200).
-		JSON().Object().Value("status").IsEqual("unpinned")
+		Expect().Status(200)).
+		Value("status").IsEqual("unpinned")
 
-	pins := env.expect.GET("/api/channels/" + pathInt64s(chID) + "/pins").
+	pins := successBody(env.expect.GET("/api/channels/" + pathInt64s(chID) + "/pins").
 		WithHeader(middleware.MMCookieHeader, cookieOwner).
-		Expect().Status(200).JSON().Object()
+		Expect().Status(200))
 	pins.Value("pins").Array().Length().IsEqual(0)
 }
 
@@ -499,9 +499,9 @@ func TestM4ChannelListPins_C1_HappyPath(t *testing.T) {
 	_, m1 := env.seedUser(362)
 	chID := env.seedGroup(cookieOwner, "g3-listpin-happy", m1)
 
-	pins := env.expect.GET("/api/channels/" + pathInt64s(chID) + "/pins").
+	pins := successBody(env.expect.GET("/api/channels/" + pathInt64s(chID) + "/pins").
 		WithHeader(middleware.MMCookieHeader, cookieOwner).
-		Expect().Status(200).JSON().Object()
+		Expect().Status(200))
 	pins.Value("pins").Array().Length().IsEqual(0)
 }
 
@@ -563,11 +563,11 @@ func TestM4ChannelPatchMember_C1_HappyPath(t *testing.T) {
 	_, m1 := env.seedUser(371)
 	chID := env.seedGroup(cookieOwner, "g3-patch-mem-happy", m1)
 
-	env.expect.PATCH("/api/channels/" + pathInt64s(chID) + "/members/" + ownerID).
+	successBody(env.expect.PATCH("/api/channels/"+pathInt64s(chID)+"/members/"+ownerID).
 		WithHeader(middleware.MMCookieHeader, cookieOwner).
 		WithJSON(map[string]any{"is_top": true}).
-		Expect().Status(200).
-		JSON().Object().Value("status").IsEqual("updated")
+		Expect().Status(200)).
+		Value("status").IsEqual("updated")
 }
 
 // TestM4ChannelPatchMember_C2_CookieMissing — 401 without header.

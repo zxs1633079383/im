@@ -150,6 +150,14 @@ func buildEngine(d buildEngineDeps) *gin.Engine {
 	engine.Use(gin.Recovery())
 
 	log := slog.Default()
+
+	// Mirror cmd/gateway/main.go::buildRouter — every JSON response gets
+	// wrapped into the cses-shape {status,data?,error?} envelope so test
+	// assertions exercise the same body shape the cses-client receives in
+	// production. See docs/harness/C007 §4.2 (handler 单测必须断言 envelope
+	// 后的最终 body) and internal/http/response_envelope.go for the contract.
+	engine.Use(imhttp.ResponseEnvelope())
+
 	imhttp.RegisterAuthRoutes(engine, middleware.MattermostCookieResolve(d.rdb, log))
 
 	authed := engine.Group("/api")
@@ -208,28 +216,29 @@ func (e *m4env) seedRealUser() string {
 // business bugs.
 
 // seedDM creates a DM between owner and peer (both already seedUser-ed) and
-// returns the channel id.
+// returns the channel id. Drills through the success envelope wrapper.
 func (e *m4env) seedDM(ownerCookie, peerID string) int64 {
 	e.t.Helper()
-	dm := e.expect.POST("/api/channels/dm").
+	dm := successBody(e.expect.POST("/api/channels/dm").
 		WithHeader(middleware.MMCookieHeader, ownerCookie).
 		WithJSON(map[string]any{"peer_id": peerID}).
-		Expect().Status(201).JSON().Object()
+		Expect().Status(201))
 	return int64(dm.Value("id").Number().Raw())
 }
 
 // seedGroup creates a group channel owned by ownerCookie with the given member
-// IDs (owner is auto-added), returning the channel id.
+// IDs (owner is auto-added), returning the channel id. Drills through the
+// success envelope wrapper.
 func (e *m4env) seedGroup(ownerCookie string, name string, memberIDs ...string) int64 {
 	e.t.Helper()
 	body := map[string]any{
 		"name":       name,
 		"member_ids": memberIDs,
 	}
-	resp := e.expect.POST("/api/channels").
+	resp := successBody(e.expect.POST("/api/channels").
 		WithHeader(middleware.MMCookieHeader, ownerCookie).
 		WithJSON(body).
-		Expect().Status(201).JSON().Object()
+		Expect().Status(201))
 	return int64(resp.Value("id").Number().Raw())
 }
 
@@ -249,4 +258,41 @@ func (e *m4env) seedMessage(channelID int64, senderID, content string) *repo.Mes
 	}
 	require.NoError(e.t, e.messages.Send(ctx, m))
 	return m
+}
+
+// ---- Envelope assertion helpers ---------------------------------------------
+//
+// Every 2xx response is wrapped by the responseEnvelope middleware as
+// {"status":"success","data":<original-body>}; every non-2xx becomes
+// {"status":"error","error":"<message>"}. Tests should call successBody /
+// successBodyArray to drill into the data sub-tree, and use the raw
+// expect chain for non-2xx (the wrapper still surfaces top-level "error",
+// so .Value("error") on a 4xx body keeps working without changes).
+//
+// See docs/harness/C007 §3 / response_envelope.go for the contract.
+
+// successBody asserts a 2xx envelope shape and returns the data sub-object.
+func successBody(resp *httpexpect.Response) *httpexpect.Object {
+	obj := resp.JSON().Object()
+	obj.Value("status").IsEqual("success")
+	return obj.Value("data").Object()
+}
+
+// successBodyArray asserts a 2xx envelope and returns the data sub-array.
+// Use this for endpoints whose data field is a JSON array (rare today; most
+// list endpoints wrap their array under {items: [...]}/{stats: [...]} etc.).
+func successBodyArray(resp *httpexpect.Response) *httpexpect.Array {
+	obj := resp.JSON().Object()
+	obj.Value("status").IsEqual("success")
+	return obj.Value("data").Array()
+}
+
+// errorBody asserts a non-2xx envelope shape and returns the wrapper object;
+// callers can chain .Value("error").String()... to assert on the message.
+// 4xx assertions that already used .Value("error") keep working — the
+// envelope re-emits the top-level error field unchanged.
+func errorBody(resp *httpexpect.Response) *httpexpect.Object {
+	obj := resp.JSON().Object()
+	obj.Value("status").IsEqual("error")
+	return obj
 }

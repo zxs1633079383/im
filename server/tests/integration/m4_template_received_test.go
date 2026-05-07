@@ -27,10 +27,10 @@ func TestM4TemplateReceived_HappyPath(t *testing.T) {
 	cookieSender, senderID := env.seedUser(40)
 	cookieRecv, recvID := env.seedUser(41)
 
-	dm := env.expect.POST("/api/channels/dm").
+	dm := successBody(env.expect.POST("/api/channels/dm").
 		WithHeader(middleware.MMCookieHeader, cookieSender).
 		WithJSON(map[string]any{"peer_id": recvID}).
-		Expect().Status(201).JSON().Object()
+		Expect().Status(201))
 	channelID := int64(dm.Value("id").Number().Raw())
 
 	// Seed a template message directly via the repo. Send() doesn't accept
@@ -51,18 +51,18 @@ func TestM4TemplateReceived_HappyPath(t *testing.T) {
 	msgID := msg.ID
 
 	// Receiver clicks "received" — server appends recvID to userIds.
-	body := env.expect.POST("/api/messages/"+strconv.FormatInt(msgID, 10)+"/received").
+	body := successBody(env.expect.POST("/api/messages/"+strconv.FormatInt(msgID, 10)+"/received").
 		WithHeader(middleware.MMCookieHeader, cookieRecv).
-		Expect().Status(200).JSON().Object()
+		Expect().Status(200))
 	body.Value("id").Number().IsEqual(float64(msgID))
 
 	props := decodeTemplateProps(t, body)
 	require.Equal(t, []any{recvID}, props["userIds"])
 
 	// Idempotent re-click — userIds should not duplicate.
-	body2 := env.expect.POST("/api/messages/"+strconv.FormatInt(msgID, 10)+"/received").
+	body2 := successBody(env.expect.POST("/api/messages/"+strconv.FormatInt(msgID, 10)+"/received").
 		WithHeader(middleware.MMCookieHeader, cookieRecv).
-		Expect().Status(200).JSON().Object()
+		Expect().Status(200))
 	props2 := decodeTemplateProps(t, body2)
 	require.Equal(t, []any{recvID}, props2["userIds"], "re-click must be idempotent")
 }
@@ -74,10 +74,10 @@ func TestM4TemplateReceived_NotTemplate(t *testing.T) {
 	cookieSender, senderID := env.seedUser(42)
 	cookieRecv, recvID := env.seedUser(43)
 
-	dm := env.expect.POST("/api/channels/dm").
+	dm := successBody(env.expect.POST("/api/channels/dm").
 		WithHeader(middleware.MMCookieHeader, cookieSender).
 		WithJSON(map[string]any{"peer_id": recvID}).
-		Expect().Status(201).JSON().Object()
+		Expect().Status(201))
 	channelID := int64(dm.Value("id").Number().Raw())
 
 	// A plain message — no props.

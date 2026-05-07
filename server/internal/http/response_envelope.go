@@ -28,6 +28,15 @@ import (
 // Concurrency: each request gets its own envelopeWriter (no shared state).
 // Body buffering is bounded by gin's max request size + handler discipline;
 // no goroutines are spawned.
+// ResponseEnvelope returns the responseEnvelope middleware. Exported so
+// integration tests in tests/integration/ can wire the same envelope contract
+// production uses (see router.go::r.Use(responseEnvelope())). Keeping the
+// unexported responseEnvelope as the implementation lets us tighten / rewrite
+// internals without breaking test imports.
+//
+// See docs/harness/C007 for the no-double-wrap contract.
+func ResponseEnvelope() gin.HandlerFunc { return responseEnvelope() }
+
 func responseEnvelope() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if shouldSkipEnvelope(c.Request.URL.Path) {

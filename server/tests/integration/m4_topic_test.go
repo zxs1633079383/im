@@ -22,24 +22,24 @@ func TestM4CreateTopic(t *testing.T) {
 	cookieOwner, ownerID := env.seedUser(50)
 	_, member1 := env.seedUser(51)
 
-	parent := env.expect.POST("/api/channels").
+	parent := successBody(env.expect.POST("/api/channels").
 		WithHeader(middleware.MMCookieHeader, cookieOwner).
 		WithJSON(map[string]any{
 			"name":       "m4-topic-parent",
 			"member_ids": []string{member1},
 		}).
-		Expect().Status(201).JSON().Object()
+		Expect().Status(201))
 	parentID := int64(parent.Value("id").Number().Raw())
 
 	// Anchor a real message so the topic gets a stable root_message_id.
-	anchor := env.expect.POST("/api/channels/"+strconv.FormatInt(parentID, 10)+"/messages").
+	anchor := successBody(env.expect.POST("/api/channels/"+strconv.FormatInt(parentID, 10)+"/messages").
 		WithHeader(middleware.MMCookieHeader, cookieOwner).
 		WithJSON(map[string]any{"content": "anchor", "msg_type": 1}).
-		Expect().Status(201).JSON().Object()
+		Expect().Status(201))
 	rootMessageID := int64(anchor.Value("id").Number().Raw())
 
 	// POST /api/channels/:id/topics with member_user_ids subset of parent.
-	topic := env.expect.
+	topic := successBody(env.expect.
 		POST("/api/channels/"+strconv.FormatInt(parentID, 10)+"/topics").
 		WithHeader(middleware.MMCookieHeader, cookieOwner).
 		WithJSON(map[string]any{
@@ -47,7 +47,7 @@ func TestM4CreateTopic(t *testing.T) {
 			"name":            "m4-topic-child",
 			"member_user_ids": []string{member1},
 		}).
-		Expect().Status(201).JSON().Object()
+		Expect().Status(201))
 
 	topic.Value("name").IsEqual("m4-topic-child")
 	topic.Value("creator_id").IsEqual(ownerID)

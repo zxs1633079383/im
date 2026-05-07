@@ -27,9 +27,9 @@ func TestM4FriendRequestAccept(t *testing.T) {
 		Expect().Status(201)
 
 	// Addressee lists pending → 1 entry, ids round-trip as TEXT.
-	pending := env.expect.GET("/api/friends/pending").
+	pending := successBodyArray(env.expect.GET("/api/friends/pending").
 		WithHeader(middleware.MMCookieHeader, cookieAddr).
-		Expect().Status(200).JSON().Array()
+		Expect().Status(200))
 	pending.Length().IsEqual(1)
 	row := pending.Value(0).Object()
 	row.Value("requester_id").IsEqual(requester)
@@ -38,11 +38,11 @@ func TestM4FriendRequestAccept(t *testing.T) {
 	require.NotZero(t, friendshipID)
 
 	// Addressee accepts → 200, status flips on the row.
-	env.expect.POST("/api/friends/accept").
+	successBody(env.expect.POST("/api/friends/accept").
 		WithHeader(middleware.MMCookieHeader, cookieAddr).
 		WithJSON(map[string]any{"friendship_id": friendshipID}).
-		Expect().Status(200).
-		JSON().Object().Value("status").IsEqual("accepted")
+		Expect().Status(200)).
+		Value("status").IsEqual("accepted")
 
 	got, err := env.friends.GetFriendship(context.Background(), requester, addressee)
 	require.NoError(t, err)
