@@ -164,6 +164,7 @@ ls docs/ server/docs/                     # 找对应小节
 2. 更新 `SESSION.md` §1（分支/commit）、§2（完成项）、§3（新待决）。
 3. 如果发现新的重复 pattern / 决策，追加到 `docs/GOAL.md §4 硬约束` 或在 MEMORY 里登记。
 4. 如果有 30min+ 耗时的任务，按用户全局规则做 `retro-30min` 复盘并写入 `/workspace/java/logs/{date}.json`。
+5. 如果踩到了**新的重复坑**（≥ 3 次复现 / 用户明确说"沉淀下来" / Spec 拍板的硬约束），按 §8 流程沉淀进 `docs/harness/`。
 
 ---
 
@@ -174,6 +175,80 @@ ls docs/ server/docs/                     # 找对应小节
 | `docs/GOAL.md` | 全局目标 + 里程碑 + 硬约束 |
 | `docs/ARCHITECTURE.md` | 技术栈 + 目录 / 文件地图 + 关键数据流 |
 | `SESSION.md` | 当前会话状态 + 待决分叉（每次会话更新） |
+| **`docs/harness/`** | **踩坑沉淀的可执行契约（带 grep / CI gate / 单测）—— 见 §8** |
 | `server/docs/BACKEND.md` | M1–M6 详细契约（§3.3 /api/sync、§4.1 AllocSeqAndInsert、§5 跨 pod 推送、§十一 OTel） |
 | `server/Makefile` | `verify-all` / `verify-build` / `verify-unit` / `verify-integration` |
 | `~/.claude/skills/go-concurrency-patterns/SKILL.md` | **写 Go 的唯一标准** |
+
+---
+
+## 8. Harness Engineering（`docs/harness/`）
+
+**Harness ≠ 文档**：每条都是**可执行的踩坑契约**，带 grep / CI gate / 单测验证，确保同一坑不再被踩。所有 Go / Angular / Tauri Rust 改动**默认加载** `docs/harness/` 下所有 active 条目。
+
+### 8.1 启动加载
+
+会话开局必读：
+
+```bash
+ls docs/harness/                          # 看有哪些条目
+cat docs/harness/README.md | head -40     # 看 active 索引
+```
+
+任何符合条目 §1 触发场景的改动 → 强制按 §3 Required 落地，按 §4 Verification 自检。
+
+### 8.2 触发条件（**什么情况下要新建 harness**）
+
+满足**任意一条**就要沉淀：
+
+| 触发 | 处置 |
+|---|---|
+| **≥ 3 次复现**（同一 root cause 在 `/workspace/java/logs/{date}.json` 被记 ≥ 3 次） | 必须沉淀；不再"下次注意" |
+| 用户**明确说**"沉淀下来 / 写到 harness / 别再让我说第二遍" | 立即沉淀 |
+| Spec / RFC 拍板的**硬约束**（`docs/GOAL.md §4` / `M{N}_SPEC.md §决策点`） | 创建并指向 spec 锚点 |
+| **跨项目重复**（≥ 2 个项目 logs/ 出现同类） | 沉淀 + `~/.claude/rules/{lang}/` inline 候选 |
+| CI / grep gate 已经能机械检测但还没 harness | 反向沉淀（gate 已就位 → 文档化 why hard fail） |
+
+**禁止触发**：
+- ❌ 单次踩坑 + 非用户/Spec 拍板 → SESSION.md "已知债务"即可
+- ❌ 纯风格偏好 → 走 `coding-style.md`
+- ❌ 临时 workaround → commit message + 代码注释即可
+
+### 8.3 升级 / 弃用条件（Lifecycle）
+
+| 状态 | 进入条件 | 退出条件 |
+|---|---|---|
+| `drafting` | 刚创建未实战命中 | 第 1 次 active 命中 → `active` |
+| `active` | rec ≥ 1 + grep gate 接管 | 见下两栏 |
+| `merged` | **30 天零新复现** + grep/CI gate 稳定 + 规则已 inline 进 `~/.claude/rules/{lang}/{file}.md` | 终态（保留作历史） |
+| `deprecated` | 场景已不存在（模块删 / 协议换 / lib 消失） | 终态（不删文件，frontmatter `status: deprecated`） |
+
+**晋升 active → merged 的强制 checklist**（README.md §4 同步）：
+- [ ] §4 grep 命令存在且 CI 中 `grep ... \| wc -l == 0` 才放行
+- [ ] §5 复现日志 ≥ 1 条且最后一条 ≥ 30 天前
+- [ ] 规则原文已 inline 进 `~/.claude/rules/{lang}/*.md`
+- [ ] frontmatter `status: merged` + `inline_target:` 指向 inline 锚点
+
+**弃用 active → deprecated 的强制 checklist**：
+- [ ] 场景源代码已删除（grep 0 条引用）或被替换协议覆盖
+- [ ] `docs/harness/log.md` 写一条 `## [YYYY-MM-DD] deprecate | C{NNN} | <原因>`
+- [ ] frontmatter `status: deprecated`，文件保留不删
+
+### 8.4 当前在册 harness（详见 `docs/harness/README.md`）
+
+| 编号 | 标题 | 状态 |
+|---|---|---|
+| C001 | `repo.MessageRepo.AllocSeqAndInsert` 是消息写入唯一入口 | active |
+| C002 | 跨 pod 推送必须走 `gateway.CrossPodPush` / `CrossPodBroadcast` | active |
+| C003 | Pulsar topic 必须经 `PushTopicFor`，本地必带 USER/HOSTNAME 后缀 | active |
+| C004 | routing TTL 45s 与心跳 15s × 3 耦合，改一边必同时改另一边 | active |
+| C005 | WSMessageType 锁定 22 种（含 contradiction 待用户拍板）；新增走 V2 RFC | active |
+| C006 | httpexpect v2 路径禁拼 `?q=`，必须 `.WithQuery` | active |
+| C007 | 全局 responseEnvelope 中间件已生效，handler 禁止再 wrap status/data | active |
+| C008 | 76 端点 × 5 case + 16 WS × 6 case 是 100% 覆盖率硬门 | drafting |
+
+### 8.5 引用规范
+
+会话里引用：`harness/C001 §3` / `harness/C008 §4.4 Batch-B`。
+PR 描述里引用：`docs/harness/C001-allocseq-and-insert-only-message-write-path.md`。
+日志里引用：`logs/{YYYY-MM-DD}.json#L{行号}` —— harness §5 Recurrence Log 的标准格式。
