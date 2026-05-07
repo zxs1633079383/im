@@ -1,12 +1,12 @@
-# C005 — WS 事件类型锁定 V1 12 + M2 4 = 16；新增必须升 V2 + 前后端同步签发契约
+# C005 — WS 事件类型锁定 V1 12 + M1 2 + M2 4 + v0.7 4 = **22**；新增必须升 V2 + 前后端同步签发契约
 
 ```yaml
 ---
 id: C005
-title: WSMessageType 16 种锁定，新增 / 字段变更必须走 V2 升级流程
+title: WSMessageType 锁定 22 种（V1 12 + M1 2 + M2 4 + v0.7 4），新增 / 字段变更必须走 V2 升级流程
 status: active
 created: 2026-05-07
-last_recurred: 2026-04-22
+last_recurred: 2026-04-30
 recurrence_count: 2
 source_logs:
   - logs/2026-04-22.json#L65
@@ -33,9 +33,13 @@ inline_target: server/docs/BACKEND.md#§十一  # WS 协议契约节（待补）
 - Rust `im_handlers.rs` 的 dispatch match arm
 - 关键词 grep：`WSMessageType` / `TypePush` / `TypeMsg` / `MsgType:` / 字符串字面量 `"push_msg"` / `"msg_updated"` / 等
 
-## 2. 锁定的 16 种事件（V1 12 + M2 4）
+## 2. 锁定的 22 种事件（V1 12 + M1 2 + M2 4 + v0.7 4）
 
-### V1（12 种）
+> **2026-05-07 用户拍板（选项 A）**：把原"V1+M2=16"措辞升级为"V1+M1+M2+v0.7=**22**"，这是最准确的事实陈述（与 `types.go` 实测一致）。新增任何 type 必须走 V2 RFC。
+>
+> 项目根 `CLAUDE.md §1.6` 仍写"V1 12 + M2 4 = 16 锁定"措辞 → **待修正**，下次 governance commit 同步。
+
+### V1（12 种，v0.1 GA）
 
 | Type | 方向 | 用途 |
 |---|---|---|
@@ -50,32 +54,42 @@ inline_target: server/docs/BACKEND.md#§十一  # WS 协议契约节（待补）
 | `read_sync` | server→client | 同用户在另一设备标已读 |
 | `friend_event` | server→client | 好友请求 / 接受 / 拒绝 |
 | `channel_event` | server→client | 用户被拉入新 channel |
-| `msg_updated` | server→client | 消息编辑（M1） |
+| `msg_updated` | server→client | 消息编辑（实际于 M1 加入但占 V1 槽位） |
 
-### M2 / v0.6 / v0.7 增量（保持类型数 = 4 不超）
+### M1 增量（2 种，与 V1 同发布周期）
 
-| Type | 用途 | 加入版本 |
+| Type | 方向 | 用途 |
 |---|---|---|
-| `msg_deleted` | 消息撤回 | M1 |
-| `announcement_posted` | 频道公告新发布 | M2 |
-| `urgent_posted` | 加急消息 | M2 |
-| `approval_updated` | 审批 create/approve/reject/cancel | M2 |
-| `notification_received` | 新通知 | M2 |
-| `reaction_added` | 表情 reaction 新增 | v0.7.0 |
-| `reaction_removed` | 表情 reaction 删除 | v0.7.0 |
-| `channel_top_updated` | 频道置顶（per-user）| v0.7.0 |
-| `channel_info_updated` | 频道 notice/purpose/orient/permission 更新 | v0.7.0 |
+| `msg_deleted` | server→client | 消息撤回 / 软删除 |
+| （`msg_updated` 列入 V1 表） | — | — |
 
-> **现状审计（2026-05-07）**：types.go 实际定义 = 22 种，超出"V1+M2=16"的口径声明。**需在本 harness 第 5 节追加 contradiction 处理**：
->
-> - 用户 / SESSION.md / 项目根 CLAUDE.md 反复出现"V1 12 + M2 4 = 16 锁定"的措辞
-> - 实际代码已扩展（v0.7.0 / v0.7.2 加了 reaction × 2 + channel_top + channel_info = 22 总数）
-> - **当前选项**（待用户拍板）：
->   - 选项 A：把"V1+M2=16 锁定"措辞升级为"V1+M2+v0.7=22 锁定"
->   - 选项 B：把 v0.7 新增声明为"V1.5 演进"（仍兼容 V1 客户端 fallback）
->   - 选项 C：正式启动 V2 重切（破坏性升级，全客户端必须更新）
->
-> 在用户拍板前，本 harness §3 的"绝对禁止"覆盖 **22 种 ≤ N ≤ 22**，即不允许再加。
+> 注：`msg_updated` 历史归 V1 表，`msg_deleted` 单列 M1。两者一起构成「消息生命周期」最小事件集。
+
+### M2 增量（4 种，公告 / 加急 / 审批 / 通知）
+
+| Type | 方向 | 用途 |
+|---|---|---|
+| `announcement_posted` | server→client | 频道公告新发布 |
+| `urgent_posted` | server→client | 加急消息 |
+| `approval_updated` | server→client | 审批 create/approve/reject/cancel |
+| `notification_received` | server→client | 新通知 |
+
+### v0.7 增量（4 种，cses-client cutover 配套）
+
+| Type | 方向 | 用途 |
+|---|---|---|
+| `reaction_added` | server→client | 表情 reaction 新增（替代 mattermost quickReply） |
+| `reaction_removed` | server→client | 表情 reaction 删除 |
+| `channel_top_updated` | server→client | 频道置顶（per-user 状态） |
+| `channel_info_updated` | server→client | 频道 notice/purpose/orient/permission 更新 |
+
+### 总数
+
+`12 (V1) + 2 (M1) + 4 (M2) + 4 (v0.7) = 22`
+
+`types.go` 实测：22 种 const ✅ 一致。
+
+新增任何 type → **N > 22 即触发 V2 RFC 流程**（§4 verification 脚本卡死）。
 
 ## 3. 错误模式（Anti-Pattern）
 
@@ -221,21 +235,18 @@ diff <(echo "$BACKEND") <(echo "$FRONTEND") || echo "客户端归一化表与后
 | 1 | 2026-04-22 | 试图加 `typing` 事件，后端 commit const 但客户端没改 → 输入框无 typing indicator        | logs/2026-04-22.json#L65 | 回滚 + 用户决策"typing 延后到 V2"（SESSION.md 决策冻结点 #4）          |
 | 2 | 2026-04-30 | v0.7.0 加 `reaction_added/removed`，cses-client ws-normalizer 漏翻译，联调 reaction 静默丢 | logs/2026-04-30.json#L40 | 客户端补翻译表（cses-client commit `8802f0950`） |
 
-### 6.1 待解决 contradiction（重要）
+### 6.1 已解决 contradiction（2026-05-07）
 
-**冲突**：用户 / SESSION.md / 项目根 CLAUDE.md 反复声明"V1 12 + M2 4 = 16 锁定"，但 `types.go` 实测 22 种 const。
+**历史冲突**：用户 / SESSION.md / 项目根 CLAUDE.md 反复声明"V1 12 + M2 4 = 16 锁定"，但 `types.go` 实测 22 种 const。
 
-**事实证据**：
-- `git log` 显示 v0.7.0 commit `8cf1a3b` 加 reaction × 2、`channel_top_updated` × 1、`channel_info_updated` × 1 = +4 → 16 + 4 = 20
-- 加上原有 `msg_deleted` / `announcement_posted` / `urgent_posted` / `approval_updated` / `notification_received` 已超出 V1 12 种
-- 实际锁定数应是 **22**（V1 12 + M1 编辑/撤回 2 + M2 4 + v0.7 扩展 4）
+**用户拍板（2026-05-07，选项 A）**：把"V1+M2=16"措辞升级为 **"V1+M1+M2+v0.7=22"**（最准确）。本 §2 已重写。
 
-**待用户拍板**：
-- A：把"V1+M2=16"措辞升级为 **"V1+M1+M2+v0.7 = 22"**（最准确）
-- B：把 v0.7 扩展声明为 V1.5（兼容旧客户端）
-- C：正式启动 V2 RFC
+**待同步修正**：
+- 项目根 `CLAUDE.md §1.6` 仍写"WS 事件类型锁死 V1 12 + M2 4 = 16 种"——下次 governance commit 修正为"WS 事件类型锁死 V1+M1+M2+v0.7 = 22 种"
+- `SESSION.md §2 决策冻结点 #4` 同步修正
+- `server/docs/BACKEND.md §十一`（待新建）使用新口径
 
-→ 拍板前 §5.2 检查脚本以 `APPROVED=22` 为准，新增任何 type 必须本 harness §6 复现日志加一行 + 用户明确同意。
+**verification 脚本以 22 为准**：见 §5.2，`APPROVED=22`，超出即触发 V2 RFC 流程。
 
 ## 7. 反例与边界（Don't Over-Apply）
 

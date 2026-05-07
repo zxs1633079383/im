@@ -66,7 +66,7 @@ Skill(skill="go-concurrency-patterns")
 - **所有跨 pod 推送走 `gateway.CrossPodPush(...)`**。不得在 service 里直接拿 `hub.PushToUser`——这会丢异 pod 用户。
 - **Pulsar topic 命名 `PushTopicFor(gatewayID, env)`**。本地调试环境**必须**追加 `.{localname}` 后缀避免窜台。
 - **Redis routing TTL = 45s**，心跳 15s × 3 容错。动这两个数必须同时动，不能单边。
-- **WS 事件类型锁死 V1 12 + M2 4 = 16 种**。新增类型要升 V2 + 前后端同步改动。
+- **WS 事件类型锁死 V1 12 + M1 2 + M2 4 + v0.7 4 = 22 种**（2026-05-07 用户拍板修正口径，详见 `docs/harness/C005`）。新增类型 → 走 V2 RFC + 前后端同步改动。
 
 ### 1.7 错误处理
 - `errors.Is` / `errors.As` 判类型；不做字符串匹配。
