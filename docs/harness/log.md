@@ -4,6 +4,21 @@
 
 ---
 
+## [2026-05-07] create | C009 — test helper 与 middleware shape 同步
+
+由 Run #1（envelope middleware 注入但漏扫 seedDM/seedGroup 导致 ~120 fail，但 `tail -100` 仅捕末尾 2 fail）固化为 active harness。
+
+**关键教训**：
+- middleware 注入是高风险操作 → 必须先 sweep 所有 test helper / fixture 是否依赖旧 shape
+- 集成测试输出禁止 `| tail` —— full log 必须落 file，否则中间 fail 信号丢失
+- 编译 + vet 全绿 ≠ 测试全绿，shape 错位是运行时错
+
+**晋升路径**：CI 接管 §4.1 grep + 30 天零复现 → inline 进 `~/.claude/rules/golang/testing.md`
+
+**Source log**：`logs/2026-05-07.json`（本会话 envelope alignment 阶段）
+
+---
+
 ## [2026-05-07] create | C001-C008 + 框架搭建
 
 由会话 `fb6d6037` 用户要求"构建 harness Engineering 在 docs/harness 文件夹下"触发，三轮迭代落地。
