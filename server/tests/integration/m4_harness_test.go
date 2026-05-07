@@ -15,6 +15,7 @@ package integration
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"testing"
 	"time"
@@ -25,6 +26,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 
+	"im-server/internal/gateway"
 	imhttp "im-server/internal/http"
 	"im-server/internal/middleware"
 	"im-server/internal/repo"
@@ -48,6 +50,8 @@ type m4env struct {
 	favorites  repo.FavoriteRepo
 	urgents    repo.UrgentRepo
 	governance repo.ChannelGovernanceRepo
+	hub        *gateway.Hub
+	routing    *gateway.Routing
 }
 
 // newM4Env builds a fresh environment. Container creation is the dominant
@@ -73,6 +77,9 @@ func newM4Env(t *testing.T) *m4env {
 	reactionRepo := repo.NewReactionRepo(db)
 	scheduledRepo := repo.NewScheduledRepo(db)
 
+	hub := gateway.NewHub()
+	routing := repo.NewRouting(rdb, "test-gw")
+
 	engine := buildEngine(buildEngineDeps{
 		rdb:           rdb,
 		channels:      channelRepo,
@@ -88,6 +95,8 @@ func newM4Env(t *testing.T) *m4env {
 		quickReplies:  quickReplyRepo,
 		reactions:     reactionRepo,
 		scheduledMsgs: scheduledRepo,
+		hub:           hub,
+		routing:       routing,
 	})
 
 	return &m4env{
@@ -102,6 +111,8 @@ func newM4Env(t *testing.T) *m4env {
 		favorites:  favoriteRepo,
 		urgents:    urgentRepo,
 		governance: governanceRepo,
+		hub:        hub,
+		routing:    routing,
 	}
 }
 
@@ -141,20 +152,22 @@ func openTestRedis(t *testing.T) redis.UniversalClient {
 // here when a new endpoint family joins Batch-B/C/D/E so test files stay
 // untouched.
 type buildEngineDeps struct {
-	rdb            redis.UniversalClient
-	channels       repo.ChannelRepo
-	messages       repo.MessageRepo
-	friends        repo.FriendshipRepo
-	files          repo.FileRepo
-	favorites      repo.FavoriteRepo
-	urgents        repo.UrgentRepo
-	governance     repo.ChannelGovernanceRepo
-	announcements  repo.AnnouncementRepo
-	approvals      repo.ApprovalRepo
-	notifications  repo.NotificationRepo
-	quickReplies   repo.QuickReplyRepo
-	reactions      repo.ReactionRepo
-	scheduledMsgs  repo.ScheduledRepo
+	rdb           redis.UniversalClient
+	channels      repo.ChannelRepo
+	messages      repo.MessageRepo
+	friends       repo.FriendshipRepo
+	files         repo.FileRepo
+	favorites     repo.FavoriteRepo
+	urgents       repo.UrgentRepo
+	governance    repo.ChannelGovernanceRepo
+	announcements repo.AnnouncementRepo
+	approvals     repo.ApprovalRepo
+	notifications repo.NotificationRepo
+	quickReplies  repo.QuickReplyRepo
+	reactions     repo.ReactionRepo
+	scheduledMsgs repo.ScheduledRepo
+	hub           *gateway.Hub
+	routing       *gateway.Routing
 }
 
 // buildEngine wires the Gin handler tree exactly the way cmd/gateway/main.go
@@ -182,45 +195,65 @@ func buildEngine(d buildEngineDeps) *gin.Engine {
 	authed.Use(middleware.MattermostCookieResolve(d.rdb, log))
 	authed.Use(middleware.CookieRequired())
 
+	// WS push adapters: every Batch-D event reaches the connected wsClient
+	// through these. Single-pod harness — no Pulsar fan-out.
+	msgBroadcaster := &localBroadcaster{hub: d.hub, channels: d.channels}
+	userPusher := &localUserEventPusher{hub: d.hub}
+	channelPusher := &localChannelEventPusher{hub: d.hub}
+	friendPusher := &localFriendEventPusher{hub: d.hub}
+	reactionPusher := &localReactionPusher{hub: d.hub, channels: d.channels}
+
 	channelSvc := service.NewChannelService(d.channels, d.messages)
-	imhttp.RegisterChannelRoutes(authed, channelSvc, nil)
+	imhttp.RegisterChannelRoutes(authed, channelSvc, channelPusher)
 
 	messageSvc := service.NewMessageService(d.messages, d.channels, d.files)
-	imhttp.RegisterMessageRoutes(authed, messageSvc, imhttp.MessageRouteOpts{})
+	imhttp.RegisterMessageRoutes(authed, messageSvc, imhttp.MessageRouteOpts{
+		Broadcaster: msgBroadcaster,
+		Pusher:      &localMessagePusher{hub: d.hub},
+		ReadSyncer:  &localReadSyncPusher{hub: d.hub},
+	})
 
 	syncSvc := service.NewSyncService(d.channels, d.messages)
 	imhttp.RegisterSyncRoutes(authed, syncSvc, log)
 
 	friendSvc := service.NewFriendService(d.friends)
-	imhttp.RegisterFriendRoutes(authed, friendSvc, nil)
+	imhttp.RegisterFriendRoutes(authed, friendSvc, friendPusher)
 
 	governanceSvc := service.NewChannelGovernanceService(d.channels, d.governance)
-	imhttp.RegisterChannelGovernanceRoutes(authed, governanceSvc, nil)
+	imhttp.RegisterChannelGovernanceRoutes(authed, governanceSvc, channelPusher)
 
 	favoriteSvc := service.NewFavoriteService(d.favorites)
 	imhttp.RegisterFavoriteRoutes(authed, favoriteSvc)
 
 	urgentSvc := service.NewUrgentService(d.urgents, d.messages, d.channels, messageSvc, governanceSvc)
-	imhttp.RegisterUrgentRoutes(authed, urgentSvc, nil)
+	imhttp.RegisterUrgentRoutes(authed, urgentSvc, msgBroadcaster)
 
 	// Batch-C: announcement / approval / notification / quick_reply / reaction / scheduled
 	announcementSvc := service.NewAnnouncementService(d.announcements, d.channels, governanceSvc)
-	imhttp.RegisterAnnouncementRoutes(authed, announcementSvc, nil)
+	imhttp.RegisterAnnouncementRoutes(authed, announcementSvc, msgBroadcaster)
 
 	approvalSvc := service.NewApprovalService(d.approvals, d.channels, governanceSvc)
-	imhttp.RegisterApprovalRoutes(authed, approvalSvc, nil)
+	imhttp.RegisterApprovalRoutes(authed, approvalSvc, userPusher)
 
 	notificationSvc := service.NewNotificationService(d.notifications)
-	imhttp.RegisterNotificationRoutes(authed, notificationSvc, nil)
+	imhttp.RegisterNotificationRoutes(authed, notificationSvc, userPusher)
 
 	quickReplySvc := service.NewQuickReplyService(d.quickReplies)
 	imhttp.RegisterQuickReplyRoutes(authed, quickReplySvc)
 
 	reactionSvc := service.NewReactionService(d.reactions, d.messages, d.channels)
-	imhttp.RegisterReactionRoutes(authed, reactionSvc, nil)
+	imhttp.RegisterReactionRoutes(authed, reactionSvc, reactionPusher)
 
 	scheduledSvc := service.NewScheduledService(d.scheduledMsgs, d.channels, messageSvc)
 	imhttp.RegisterScheduledRoutes(authed, scheduledSvc)
+
+	// Batch-D: WebSocket handler. Mirrors cmd/gateway/main.go::buildRouter
+	// with cookie auth + send support enabled. JWT secret left blank since
+	// the M4 cookieId path is the production wire shape.
+	wsHandler := gateway.NewWsHandler(d.hub, d.routing, "", "test-gw", d.channels, log)
+	wsHandler = wsHandler.WithCookieAuth(d.rdb).
+		WithSendSupport(d.messages, d.channels)
+	engine.GET("/ws", gin.WrapH(wsHandler))
 
 	return engine
 }
@@ -332,4 +365,120 @@ func errorBody(resp *httpexpect.Response) *httpexpect.Object {
 	obj := resp.JSON().Object()
 	obj.Value("status").IsEqual("error")
 	return obj
+}
+
+// ---- WS push adapters --------------------------------------------------------
+//
+// Production wires HTTP handler push hooks through cmd/gateway/main.go's
+// hubEventBroadcaster / hubUserEventPusher / hubFriendEventPusher etc., which
+// route through crossPodDeps for Pulsar fan-out. The integration harness is
+// single-pod, so we adapt directly via hub.PushToUser + channel.ListMembers.
+
+// localBroadcaster fans MessageEventBroadcaster events to every member of
+// channelID by calling hub.PushToUser. Since gateway.WSMessageType and
+// imhttp.MessageEventType are both string aliases, the conversion is
+// 1-to-1 and the wire frame ends up the same as production.
+type localBroadcaster struct {
+	hub      *gateway.Hub
+	channels repo.ChannelRepo
+}
+
+func (b *localBroadcaster) BroadcastToMembers(channelID int64, eventType imhttp.MessageEventType, payload any) {
+	members, err := b.channels.ListMembers(context.Background(), channelID)
+	if err != nil {
+		return
+	}
+	for _, m := range members {
+		b.hub.PushToUser(m.UserID, gateway.WSMessageType(eventType), payload)
+	}
+}
+
+// localUserEventPusher pushes a per-user event (approvals / notifications)
+// straight to the user's local conns.
+type localUserEventPusher struct {
+	hub *gateway.Hub
+}
+
+func (p *localUserEventPusher) PushToUser(userID string, eventType imhttp.MessageEventType, payload any) {
+	p.hub.PushToUser(userID, gateway.WSMessageType(eventType), payload)
+}
+
+// localChannelEventPusher pushes channel-add events as gateway.TypeChannelEvent
+// frames carrying gateway.ChannelEventPayload.
+type localChannelEventPusher struct {
+	hub *gateway.Hub
+}
+
+func (p *localChannelEventPusher) PushChannelEvent(targetUserID string, eventType string, channelID int64, name string) {
+	p.hub.PushToUser(targetUserID, gateway.TypeChannelEvent, gateway.ChannelEventPayload{
+		EventType: eventType,
+		ChannelID: channelID,
+		Name:      name,
+	})
+}
+
+// localFriendEventPusher pushes friend events as gateway.TypeFriendEvent frames.
+type localFriendEventPusher struct {
+	hub *gateway.Hub
+}
+
+func (p *localFriendEventPusher) PushFriendEvent(targetUserID, eventType, fromUserID string) {
+	p.hub.PushToUser(targetUserID, gateway.TypeFriendEvent, gateway.FriendEventPayload{
+		EventType:  eventType,
+		FromUserID: fromUserID,
+	})
+}
+
+// localReactionPusher fans reaction events to every member of the channel
+// (matching production hubReactionPusher.BroadcastReaction shape).
+type localReactionPusher struct {
+	hub      *gateway.Hub
+	channels repo.ChannelRepo
+}
+
+func (p *localReactionPusher) BroadcastReaction(channelID int64, eventType imhttp.ReactionEventType, payload any) {
+	members, err := p.channels.ListMembers(context.Background(), channelID)
+	if err != nil {
+		return
+	}
+	for _, m := range members {
+		p.hub.PushToUser(m.UserID, gateway.WSMessageType(eventType), payload)
+	}
+}
+
+// localMessagePusher implements imhttp.MessagePusher for new-message fan-out
+// (TypePushMsg). Builds the gateway.PushMsgPayload identical to production's
+// hubMessagePusher and fans to every userID on the local hub.
+type localMessagePusher struct {
+	hub *gateway.Hub
+}
+
+func (p *localMessagePusher) BroadcastMessage(channelID int64, userIDs []string, msg *repo.Message) {
+	payload := gateway.PushMsgPayload{
+		PushID:    fmt.Sprintf("test-%d-%d", msg.ChannelID, msg.ID),
+		ChannelID: msg.ChannelID,
+		Seq:       msg.Seq,
+		ServerID:  msg.ID,
+		SenderID:  msg.SenderID,
+		Content:   msg.Content,
+		MsgType:   msg.MsgType,
+		VisibleTo: []string(msg.VisibleTo),
+		CreatedAt: msg.CreatedAt,
+	}
+	for _, uid := range userIDs {
+		p.hub.PushToUser(uid, gateway.TypePushMsg, payload)
+	}
+}
+
+// localReadSyncPusher implements imhttp.ReadSyncPusher: same-user multi-device
+// read sync. Pushes ReadSyncPayload onto every conn the user has on this hub.
+type localReadSyncPusher struct {
+	hub *gateway.Hub
+}
+
+func (p *localReadSyncPusher) PushReadSync(userID string, channelID, readSeq int64) {
+	p.hub.PushToUser(userID, gateway.TypeReadSync, gateway.ReadSyncPayload{
+		ChannelID: channelID,
+		ReadSeq:   readSeq,
+	})
 }

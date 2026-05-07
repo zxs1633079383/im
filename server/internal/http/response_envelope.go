@@ -70,6 +70,11 @@ func shouldSkipEnvelope(path string) bool {
 	switch path {
 	case "/healthz", "/readyz", "/metrics":
 		return true
+	case "/ws":
+		// WebSocket upgrade hijacks the underlying conn; the envelope writer's
+		// buffered body would dead-end on a hijacked connection. Skip wrap so
+		// the upgrade and ongoing frames flow straight through.
+		return true
 	}
 	return false
 }
