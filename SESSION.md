@@ -3,7 +3,7 @@
 > 这份文档是"会话快照"：每次会话结束前更新一次，下次会话开局只要先读它 + `docs/GOAL.md` + `CLAUDE.md` 就能无缝接着干。
 > **更新原则**：事实先写（分支/tag/commit），决策次之，待办最后。过时信息必须删除，不留历史沉积。
 
-Last updated: 2026-05-07（**im 后端集成测试全集落地**：v0.7.3 系列 7 个 tag 已 push origin，198 集成测试全绿 611s。Batch-A/B/C/D/E 完整覆盖 84 路由 + 22 WSMessageType（其中 18 server→client active + 含 channel_info_updated/channel_top_updated 顺势补的 push hook 实测）。C008 harness drafting → active 升级，CI gate `make check-handler-coverage` 已落地（routes ≥84 / tests ≥190）。后续：① 单元测试 100% 行覆盖率 autonomous（task #28，独立 2-3w 工程）② pre 部署 + 联调 + smoke + k6（task #29，**等用户人工触发**）③ cses-client cutover Phase 2-4（用户 2026-05-01 决策的工作目录 `/Users/mac28/workspace/angular/cses-client + im-backend-switch + 7c8a0c972`，本会话未触动）。详见本文件 §0 / §1 / §2）
+Last updated: 2026-05-07（**im 后端 production-ready ✅**：v0.7.3 系列 7 tag push origin，198 集成测试 611s 全绿，84 路由 + 22 WSMessageType（18 server→client active）+ C008 active CI gate。**后端到此为止 — 用户决策单元测试 100% 行覆盖率列 TODO，不阻塞**。剩下两项**真阻塞**：① cses-client cutover Phase 2-4（前端工作目录 `/Users/mac28/workspace/angular/cses-client + im-backend-switch + 7c8a0c972`，剩 onChannelRead 6 处 + 砍 dead code + readBits 33 处异步重构）② pre 部署 v1.0.0-pre-7h + k6 + smoke（**等用户人工触发**）。详见本文件 §0 / §1 / §3）
 
 ---
 
@@ -11,7 +11,7 @@ Last updated: 2026-05-07（**im 后端集成测试全集落地**：v0.7.3 系列
 
 **复制粘贴这句话开新会话即可**：
 
-> im 后端集成测试 198 case 全绿，v0.7.3 系列 7 tag pushed origin（im-backend-base / harness-base / batch-b-tests / batch-b-envelope / batch-c-tests / batch-d-tests / batch-e-tests），HEAD `75de7de`。下一步选：① **task #28 单元测试 100% 行覆盖率 autonomous**（service 0.3% / repo 2.9% / gateway 6.7% / http 3.4% 是巨大空白，按 ~/.claude/rules/golang/testing.md 拉到 100% 估 2-3w 工程，分 package 分批 commit）；② **task #29 等用户触发 pre 部署**（v1.0.0-pre-7h 镜像 + k6 send P95 ≤ 400ms baseline + 张立超 cookie smoke）；③ **cses-client cutover Phase 2-4**（cd `/Users/mac28/workspace/angular/cses-client` branch `im-backend-switch` HEAD `7c8a0c972`，剩 onChannelRead 6 处 + 砍 dead code + readBits 33 处异步重构）。后端 base 镜像 + harness + 测试都齐了，剩前端 + 部署。读本文件 §1（tag 全景）+ §3（待决）+ `docs/harness/C008` 看 100% 覆盖路径。
+> im 后端已 production-ready：v0.7.3 系列 7 tag push origin（im-backend-base / harness-base / batch-b-tests / batch-b-envelope / batch-c-tests / batch-d-tests / batch-e-tests），HEAD `43e1181`。198 集成测试 611s 全绿，C005 §2 锁定 22 WSMessageType 中 18 server→client 有 active happy path，C008 harness active 卡 CI gate。**后端不补单元测试**（task #30 列 TODO，2-3w 独立冲刺，不阻塞）。剩两项真阻塞 cses-client 联调：① **cses-client Phase 2-4**（cd `/Users/mac28/workspace/angular/cses-client` branch `im-backend-switch` HEAD `7c8a0c972`，onChannelRead 6 处 path 切换 + 砍 onPostRead/inViewMsgRead dead code + readBits 33 处 → 异步 read-stats UI 重构，3-5d）；② **pre 部署 v1.0.0-pre-7h + k6 + smoke 性能基线**（用户人工触发，0.5d）。后端 base + harness + 测试 + push hook 都齐了。读本文件 §1（tag 全景）+ §3（待决） + `docs/CSES_CLIENT_CUTOVER.md`（前端 Phase 2-4 详单）。
 
 ### 三仓库 origin 状态（联调依赖）
 | 仓库 | branch | HEAD | 验证 |
@@ -77,14 +77,16 @@ yarn start                                            # = tauri:dev，自动起 
 
 **全集成验证**：`go test -tags integration -timeout 45m ./tests/integration/...` → ok 611.330s / 198 case PASS / 0 FAIL（含 Batch-A 12 + B 130 + C 27 + D 20 + E 6 + WS ref 1 + push hook 2）
 
-### 当前 backlog（2026-05-07 排序）
+### 当前 backlog（2026-05-07 用户拍板后排序）
 
 | Task | 量级 | 阻塞 cses-client 联调 | 谁做 |
 |---|---|---|---|
-| #28 单元测试覆盖率 100%（service 0.3% / repo 2.9% / gateway 6.7% / http 3.4%）| 2-3w | 否 | 我 autonomous 分批 |
-| #29 pre 部署 v1.0.0-pre-7h + k6 + smoke | 0.5d | **是** | **等用户人工触发** |
-| cses-client Phase 2-4（onChannelRead 6 + 砍 dead code + readBits 33 异步重构）| 3-5d | **是 ⭐** | 等用户决策（本会话未触动）|
-| search/file 集成测试 | 后续 | 否 | cses Java 迁移到 im 后再补 |
+| **cses-client Phase 2-4**（onChannelRead 6 + 砍 dead code + readBits 33 异步重构）| 3-5d | **是 ⭐** | 等用户决策启动 |
+| **#29 pre 部署 v1.0.0-pre-7h + k6 + smoke** | 0.5d | **是** | **等用户人工触发** |
+| #30 [TODO 不阻塞] 单元测试 100% 行覆盖率 | 2-3w | 否 | 用户拍板列 TODO（service 0.3% / repo 2.9% / gateway 6.7% / http 3.4%；集成测试已间接覆盖 happy path，单测主要补错误分支 + 边界）。后续单独冲刺 |
+| [TODO 不阻塞] search/file 集成测试 | 后续 | 否 | cses Java 拥有，迁移到 im 后再补 |
+
+**用户决策（2026-05-07）**：后端到此为止，不补单元测试。下次会话进入"颗粒度对齐 cses-client" + pre 部署阶段。
 
 ### v0.6.1 已经做掉的（不要重做）
 - ✅ Step ① migration 014 dev DB dry-run + im_pre 实落（force 13 清 dirty → up to 14）
