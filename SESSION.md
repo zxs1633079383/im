@@ -3,27 +3,28 @@
 > 这份文档是"会话快照"：每次会话结束前更新一次，下次会话开局只要先读它 + `docs/GOAL.md` + `CLAUDE.md` 就能无缝接着干。
 > **更新原则**：事实先写（分支/tag/commit），决策次之，待办最后。过时信息必须删除，不留历史沉积。
 
-Last updated: 2026-05-01（**Phase 1 im 后端切换基础设施落地**：response_envelope 中间件 + `POST /api/messages/:id/received` + `GET /api/messages/read-stats` 三件套 commit `441ba37`/`66c2a67`/`ee32f7f`/`65f0763` push origin/main，go vet + race + integration + golangci-lint 全绿。Phase 2/3/4 移交 cses-client + Tauri Rust 团队。**cses-client 工作目录已切换** → `/Users/mac28/workspace/angular/temp/cses-client` branch `tauri-new-im` HEAD `836b899ab`，旧的 `im-backend-switch` / `7c8a0c972` 仅作历史 commit 引用保留）
+Last updated: 2026-05-07（**im 后端集成测试全集落地**：v0.7.3 系列 7 个 tag 已 push origin，198 集成测试全绿 611s。Batch-A/B/C/D/E 完整覆盖 84 路由 + 22 WSMessageType（其中 18 server→client active + 含 channel_info_updated/channel_top_updated 顺势补的 push hook 实测）。C008 harness drafting → active 升级，CI gate `make check-handler-coverage` 已落地（routes ≥84 / tests ≥190）。后续：① 单元测试 100% 行覆盖率 autonomous（task #28，独立 2-3w 工程）② pre 部署 + 联调 + smoke + k6（task #29，**等用户人工触发**）③ cses-client cutover Phase 2-4（用户 2026-05-01 决策的工作目录 `/Users/mac28/workspace/angular/cses-client + im-backend-switch + 7c8a0c972`，本会话未触动）。详见本文件 §0 / §1 / §2）
 
 ---
 
 ## 0. 下次会话一句话启动 ⭐
 
-**复制粘贴这句话开新会话即可**（im 后端 Phase 1 已合 main + push origin，下一步前端 Phase 2-4 联调）：
+**复制粘贴这句话开新会话即可**：
 
-> 继续 cses-client 切换 Phase 2-4：im 后端 Phase 1 三件套已合 main + push origin（commit `441ba37`/`66c2a67`/`ee32f7f`/`65f0763`，response_envelope 中间件 + `POST /api/messages/:id/received` + `GET /api/messages/read-stats` 全套就绪，go test -race -tags integration 55s 全绿）。pre-7g 已部署，Java cses `Feature-new-im 20e750bea` 下发 `imGatewayHttp/imGatewayWebSocket` 字段。**cses-client 工作目录是 `/Users/mac28/workspace/angular/temp/cses-client` branch `tauri-new-im` HEAD `836b899ab`**（注意不是 angular/cses-client 也不是 im-backend-switch，那是历史分支）。**操作：** ① `cd /Users/mac28/workspace/angular/temp/cses-client && git pull origin tauri-new-im && yarn start`（= `tauri:dev`，src-tauri/ 0 改动）；② 用 `17692704771/123456` 登录；③ DevTools console 期待 `🔀 apiFlavor: mattermost → im` + `🔄 reconnectMainWs routedToIm: true`；④ Network 验：`imHttp.*` 打 `http://192.168.6.41:30880/api/...`、`this.http.*`（vote/Im/search/average）走旧 cses Java；⑤ 见 `docs/CSES_CLIENT_CUTOVER.md` Phase 2-4 = 模板已收到 path 切换 + onChannelRead 6 处 path 切换 + 砍 onPostRead/inViewMsgRead dead code + readBits → 异步 read-stats UI 重构；⑥ 联调全跑通后打 tag `v0.7.3-client-verified`。
+> im 后端集成测试 198 case 全绿，v0.7.3 系列 7 tag pushed origin（im-backend-base / harness-base / batch-b-tests / batch-b-envelope / batch-c-tests / batch-d-tests / batch-e-tests），HEAD `75de7de`。下一步选：① **task #28 单元测试 100% 行覆盖率 autonomous**（service 0.3% / repo 2.9% / gateway 6.7% / http 3.4% 是巨大空白，按 ~/.claude/rules/golang/testing.md 拉到 100% 估 2-3w 工程，分 package 分批 commit）；② **task #29 等用户触发 pre 部署**（v1.0.0-pre-7h 镜像 + k6 send P95 ≤ 400ms baseline + 张立超 cookie smoke）；③ **cses-client cutover Phase 2-4**（cd `/Users/mac28/workspace/angular/cses-client` branch `im-backend-switch` HEAD `7c8a0c972`，剩 onChannelRead 6 处 + 砍 dead code + readBits 33 处异步重构）。后端 base 镜像 + harness + 测试都齐了，剩前端 + 部署。读本文件 §1（tag 全景）+ §3（待决）+ `docs/harness/C008` 看 100% 覆盖路径。
 
 ### 三仓库 origin 状态（联调依赖）
 | 仓库 | branch | HEAD | 验证 |
 |---|---|---|---|
-| im (go) | `main` | `c9995bf` | Phase 1 已合，pre-7g 部署，3 commit 待发 tag `v0.7.3-rc1` |
+| im (go) | `main` | `75de7de` | **v0.7.3-batch-e-tests 已 push origin / 198 集成测试全绿 611s / C008 active CI gate** |
 | cses (java) | `Feature-new-im` | `20e750bea` | XPA-12 `imGatewayEnabled: true`, 本地 196.168.1.177 已下发字段 |
-| cses-client (angular) | `tauri-new-im` ⭐ | `836b899ab` | 工作目录 `/Users/mac28/workspace/angular/temp/cses-client`，**不是** `angular/cses-client` |
+| cses-client (angular) ⭐ | `im-backend-switch` | `7c8a0c972` | 工作目录 `/Users/mac28/workspace/angular/cses-client` / Phase 2-4 待做（本会话未触动）|
 
 ### 联调 cheatsheet（不需要 cargo / tauri build）
 ```bash
-cd /Users/mac28/workspace/angular/temp/cses-client    # ⭐ 注意 temp/ 前缀
-git pull origin tauri-new-im                          # 拉最新 836b899ab
+cd /Users/mac28/workspace/angular/cses-client         # ⭐ 旧目录就是正解，不是 temp/
+git status                                            # 检查 4 个未提交改动
+git pull origin im-backend-switch                     # 拉最新 7c8a0c972
 yarn start                                            # = tauri:dev，自动起 Angular + Tauri
 # 不需要：cargo build / npm run tauri:build / 改 environment.ts
 ```
@@ -34,19 +35,56 @@ yarn start                                            # = tauri:dev，自动起 
 - `ImEndpointNotMappedError` 红色 → 漏网 imHttp 调用，告诉新 session 我，补 route-table.ts
 - 响应 shape 与预期不符 → 现在 im 后端走全局信封 `{status:"success",data:...}`/`{status:"error",error:"..."}`，前端 interceptor 应去掉 cses Java 旧的 isWrappedResponse 双重判断
 
-### im 后端 Phase 1 已落地（不要重做，2026-05-01）
+### im 后端 v0.7.3 全系列已落地 + push origin（不要重做，2026-05-07）
+
+**Phase 1 三件套**（base，2026-05-01 / 2026-05-03）:
 - ✅ `441ba37` feat(http): 全局响应包裹中间件 + 100% 单测
 - ✅ `66c2a67` feat(message): POST `/api/messages/:id/received` 模板已收到端点
 - ✅ `ee32f7f` feat(message): GET `/api/messages/read-stats` 批量读统计端点
 - ✅ `65f0763` docs(cutover): 标 Phase 1 完成 + wiki 同步
-- 决策依据见 `docs/CSES_CLIENT_CUTOVER.md` + `wiki/syntheses/min-cost-mattermost-cutover.md`
+- ✅ tag `v0.7.3-im-backend-base` @ `9679a36`（push origin 2026-05-07）
 
-### 工作目录变更公告（2026-05-01）
-**之前会话里所有 `im-backend-switch` / `7c8a0c972` / `/Users/mac28/workspace/angular/cses-client` 引用都已过时**。当前工作目录、分支、HEAD：
-- 路径：`/Users/mac28/workspace/angular/temp/cses-client`
-- 分支：`tauri-new-im`
-- HEAD：`836b899ab`
-- 历史段（§3 / §0 残留 / wiki 历史 ingest 条目）保留旧引用作为历史 commit 事实，不要据此操作。
+**Harness Engineering 框架**（2026-05-07）:
+- ✅ `68f889e` docs(claude): cses-client 工作目录锁定 + 模块化 tag 策略
+- ✅ `d08987e` docs(harness): 搭建 Harness Engineering 框架 + C001-C008 8 条契约
+- ✅ `b269e2b` docs(harness/C005): WS 事件类型锁定升级 16 → 22（用户拍板选项 A）
+- ✅ tag `v0.7.3-harness-base`
+
+**Batch-B 高频核心**（5 case 矩阵，2026-05-07）:
+- ✅ `3d39889` test(integration): Batch-B 130 case 落地（message-write/read/governance/favorite/urgent）
+- ✅ `ba7a77d` test+http(envelope): 集成测试与生产 envelope 契约对齐 + 142 case 全绿
+- ✅ `39a97cf` docs(harness/C009): 沉淀 middleware-shape sweep 教训（Run #1 ~120 fail 截 tail -100 教训）
+- ✅ tag `v0.7.3-batch-b-tests` + `v0.7.3-batch-b-envelope`
+
+**Batch-C 中频治理**（简化版每路由 1 happy path，2026-05-07）:
+- ✅ `cf3ab1b` test(integration): Batch-C 27 happy path（announcement/approval/notification/quick_reply/reaction/scheduled）
+- ✅ tag `v0.7.3-batch-c-tests`
+
+**Batch-D WS 集成测试**（2026-05-07）:
+- ✅ `54a1f66` test(integration/ws): Batch-D 17 active + 2 t.Skip + 1 ref WS 测试
+- ✅ `0be2a3f` feat(channel/governance): 补 channel_info_updated + channel_top_updated push hook
+  → 删 D2 t.Skip 改实测，C005 §2 锁定 22 type 中 18 server→client 全部有 active happy path
+- ✅ tag `v0.7.3-batch-d-tests`
+
+**Batch-E 边角**（简化版每路由 1 happy path，2026-05-07）:
+- ✅ `75de7de` test(integration): Batch-E 6 happy path（module/sync/presence/settings）
+- ✅ tag `v0.7.3-batch-e-tests`
+
+**C008 harness drafting → active**（2026-05-07）:
+- ✅ `b2edc52` test+docs(harness/C008): drafting → active + CI gate 落地
+  - `server/scripts/check-handler-coverage.sh`（routes ≥84 / tests ≥190 / family 启发式）
+  - `server/Makefile::check-handler-coverage` target 接入 verify-integration 前置
+
+**全集成验证**：`go test -tags integration -timeout 45m ./tests/integration/...` → ok 611.330s / 198 case PASS / 0 FAIL（含 Batch-A 12 + B 130 + C 27 + D 20 + E 6 + WS ref 1 + push hook 2）
+
+### 当前 backlog（2026-05-07 排序）
+
+| Task | 量级 | 阻塞 cses-client 联调 | 谁做 |
+|---|---|---|---|
+| #28 单元测试覆盖率 100%（service 0.3% / repo 2.9% / gateway 6.7% / http 3.4%）| 2-3w | 否 | 我 autonomous 分批 |
+| #29 pre 部署 v1.0.0-pre-7h + k6 + smoke | 0.5d | **是** | **等用户人工触发** |
+| cses-client Phase 2-4（onChannelRead 6 + 砍 dead code + readBits 33 异步重构）| 3-5d | **是 ⭐** | 等用户决策（本会话未触动）|
+| search/file 集成测试 | 后续 | 否 | cses Java 迁移到 im 后再补 |
 
 ### v0.6.1 已经做掉的（不要重做）
 - ✅ Step ① migration 014 dev DB dry-run + im_pre 实落（force 13 清 dirty → up to 14）
@@ -175,6 +213,7 @@ e0ecb32 fix(gateway): push_consumer 走 PushTopicFor 与发送侧对齐
 ```
 
 ### Tags（演进链）
+- **`v0.7.3-im-backend-base`** — **当前最新本地 tag（2026-05-03）**：cses-client cutover Phase 1 im 后端基础版本 @ `9679a36`，全局响应包裹 + POST received + GET read-stats 三件套就绪，验证全绿。Phase 2-4 联调基线，未 push origin（push 命令：`git push origin v0.7.3-im-backend-base`）
 - `v0.1.0-m1-verified` / `v0.1.0-m1-complete` / `v0.2.0-m2-complete` / `v1.0.0`
 - **`v0.3.0-m3-pre-deployed`** — M3 主体首次部署 + E2E 13/13
 - **`v0.3.1-m3-racefix-pool300`** — Conn.Push race 修复 + PG 池对齐 HikariCP，全链路 100% 可靠
