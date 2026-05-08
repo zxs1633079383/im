@@ -186,8 +186,8 @@ internal/
 | 文件 | 目的 |
 |------|------|
 | `BACKEND.md` | M1–M6 里程碑 + 契约（§3.3 /api/sync、§4.1 AllocSeqAndInsert、§5 跨 pod 推送、§十一 OTel 覆盖） |
-| `../docs/CSES_CLIENT_INTEGRATION_GUIDE.md` | **cses-client × im 后端对接契约**（84 路由 + 22 WSMessageType + envelope + apiFlavor + cses Java 路径对照 + 联调 cheatsheet） |
-| `../docs/IM_DATA_MODEL_REFERENCE.md` | **entity / DTO / payload 字段字典**（13 数据库实体 + 各 family request/response DTO + 22 WS payload + enums + 可空性规则）|
+| `../docs/CSES_CLIENT_内部对接契约.md` | **cses-client × im 后端对接契约**（84 路由 + 22 WSMessageType + envelope + apiFlavor + cses Java 路径对照 + 联调 cheatsheet） |
+| `../docs/IM_DATA_MODEL_新版数据模型字典.md` | **entity / DTO / payload 字段字典**（13 数据库实体 + 各 family request/response DTO + 22 WS payload + enums + 可空性规则）|
 | `FRONTEND.md`| 前端切换计划 F0–F5、WS 事件重命名表（V1 12 + V2 候选 3）、Rust Tauri 改造 |
 | `OVERALL.md` | 后前端整合路线图 T0–T6（17 周）、`make verify-all` 收敛、V5.3.1 十组连续性场景 |
 | `TECH.md`    | 技术栈总览（栈选型、版本、跨子系统契约） |

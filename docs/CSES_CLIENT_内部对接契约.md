@@ -12,7 +12,7 @@
 > - 22 WS type 中 18 server→client 全有 active happy path
 >
 > **关联文档**：
-> - `docs/IM_DATA_MODEL_REFERENCE.md` — **entity / DTO / payload 字段字典**（本文是 endpoint contract，那篇是 schema reference）
+> - `docs/IM_DATA_MODEL_新版数据模型字典.md` — **entity / DTO / payload 字段字典**（本文是 endpoint contract，那篇是 schema reference）
 > - `docs/CSES_CLIENT_CUTOVER.md` — 客户端 cutover 4 Phase 计划（Phase 1 ✅，Phase 2-4 ⏳）
 > - `docs/HTTP_WS_MAP.md` — HTTP ↔ WS 推送对应矩阵
 > - `docs/harness/C005` — WS 22 type 锁定决策
@@ -569,6 +569,306 @@ cd server && go test -tags integration -timeout 45m ./tests/integration/...
 
 ---
 
+## 12. 客户端 entry 细粒度迁移对照（v0.7.3 与之前 stale shape 的差异）
+
+> **背景**：cses-client 仓库 `src/app/core/im-api/message.types.ts` 写于 M3 时期，部分 entity 字段已经因 v0.6 (M4 用户身份模型重构) + v0.7 (envelope + WS 22 type) 演进而 stale。本节按 entity 列出**实测**差异 + ts 类型 before/after，cses-client 端按本节直接改 `message.types.ts` / `sync.types.ts` / 对应 service。
+
+### 12.1 ImMessage（重点修：user-id 全转 string）
+
+> 文件：`src/app/core/im-api/message.types.ts:25-52`
+
+| 字段 | 客户端**当前** ts 类型（M3 stale） | im 后端 v0.7.3 实际 | 改造 |
+|---|---|---|---|
+| `id` | `number` | `int64` → JS `number` | ✅ 不改（int64 ≤ 2^53 安全） |
+| `channel_id` | `number` | `int64` | ✅ 不改 |
+| `seq` | `number` | `int64` | ✅ 不改 |
+| **`sender_id`** | `number` | **`string` (mm UserID 24-hex)** | ⚠️ **必改 → `string`** |
+| `msg_type` | `'text'\|'image'\|'file'\|'system'\|'phantom'\|string` | **`number` (1=text/2=image/3=file/4=system/99=phantom)** | ⚠️ **必改 → `number`**（后端是 int16 数字，不是字符串枚举） |
+| `content` | `string` | `string` | ✅ |
+| `reply_to` | `number?` | `*int64` | ✅ |
+| `file_ids` | `number[]?` | **不在 messages 字段里** | ⚠️ 删除字段 → 走 `GET /api/messages/:id/attachments` 单独拉 |
+| **`visible_to`** | `number[]?` | **`string[]?` (mm UserIDs)** | ⚠️ **必改 → `string[]`** |
+| **`created_at`** | `number` (unix ms) | **`string` (RFC3339)** | ⚠️ **必改 → `string`**，client `new Date(created_at)` 解析 |
+| `updated_at` | `number?\|null` | `*time.Time` (RFC3339) | ⚠️ **必改 → `string?`** |
+| `deleted` | `boolean?` | `bool, omitempty` | ✅ |
+| **`server_msg_id`** | `string?` | **不在 message 字段里**（仅 send_ack payload 有）| ⚠️ 删除 |
+| **新增 `team_id`** | — | `string?` (mm CompanyID frozen) | ⚠️ **加** |
+| **新增 `is_urgent`** | — | `bool, omitempty` | ⚠️ **加** |
+| **新增 `props`** | — | `string?` (JSONB raw text，需二次 `JSON.parse`) | ⚠️ **加** |
+| **新增 `forwarded_from`** | — | `*int64` | ⚠️ **加** |
+| **新增 `deleted_at`** | — | `string?` | ⚠️ **加** |
+
+**修后正确版**：
+
+```typescript
+export interface ImMessage {
+    id: number;                       // int64
+    channel_id: number;
+    seq: number;
+    client_msg_id?: string;            // M1 idempotency, ≤36 chars
+    sender_id: string;                 // mm UserID 24-hex  ⚠️ 不是 number
+    team_id?: string;                  // frozen at write
+    msg_type: number;                  // 1/2/3/4/99（不是字符串）
+    content: string;
+    visible_to?: string[];             // mm UserIDs
+    reply_to?: number;
+    forwarded_from?: number;
+    created_at: string;                // RFC3339
+    updated_at?: string;
+    deleted?: boolean;
+    deleted_at?: string;
+    is_urgent?: boolean;
+    props?: string;                    // JSONB raw — 需 JSON.parse
+}
+```
+
+### 12.2 ImChannel（重点修：creator_id + 大量字段补全）
+
+> 文件：`src/app/core/im-api/message.types.ts:55-68`
+
+```typescript
+// ❌ stale：creator_id 是 number、字段缺一大半
+export interface ImChannel {
+    id: number;
+    type: number;
+    name: string;
+    avatar_url?: string;
+    seq: number;
+    creator_id?: number | null;
+    created_at: string | number;
+    updated_at?: string | number | null;
+}
+
+// ✅ v0.7.3 正确版（按 docs/IM_DATA_MODEL_新版数据模型字典.md §2.1 1:1 对齐）
+export interface ImChannel {
+    id: number;
+    type: number;                  // 1=DM / 2=Group
+    name: string;
+    avatar_url: string;             // not null default ""
+    seq: number;
+    creator_id: string;             // mm UserID 24-hex（M4 起 not null）
+    team_id?: string;               // mm CompanyID frozen
+    notice: string;
+    purpose: string;
+    picture_url: string;
+    props: string;                  // JSONB raw — 需 JSON.parse
+    orient: number;                 // int16
+    permission: number;             // 0=open/1=approval/2=closed
+    is_top: boolean;                // channel-level pin
+    root_id?: number;               // M3 子群聊：父 channel
+    root_message_id?: number;       // M3 子群聊：分叉点
+    created_at: string;             // RFC3339（不再是 number 兼容）
+    updated_at: string;
+}
+```
+
+### 12.3 ImLoginResponse / ImLoginRequest（**整段删除**）
+
+> 文件：`src/app/core/im-api/message.types.ts:82-100`
+
+cses-client M4 起鉴权完全走 cookieId（cses Java 登录 → 写 Redis hash → im 读）。`POST /api/login` / `POST /api/register` 在 v0.7.x 后端**返 410 Gone**。
+
+```typescript
+// ❌ 全删
+export interface ImLoginResponse { ... }
+export interface ImLoginRequest { ... }
+
+// ✅ 替代：GET /api/me 拿当前用户（透传 MMUser from Redis）
+export interface ImMe {
+    userId: string;        // mm UserID 24-hex
+    companyId: string;
+    orgId: string;
+    name: string;
+    avatarUrl?: string;
+    // 其他 mm User 字段...（透传 cses 写入的 hash）
+}
+```
+
+### 12.4 ImChannelWithPreview（响应 shape 不一样）
+
+> v0.7.3 `GET /api/channels` 实际返回 `Channel[]`（`Channel` entity 直接列表），**不是** `ImChannelWithPreview[]`。预览 / 未读 走 `GET /api/messages/read-stats`（异步） + `GET /api/channels/:id/messages?limit=1`（最近一条）拼装。
+
+```typescript
+// ❌ 客户端旧假设：单接口拿全套预览
+GET /api/channels → ImChannelWithPreview[]
+
+// ✅ v0.7.3 实际：分两步拼装
+GET /api/channels → ImChannel[]
+// 然后 client side 自己 batch:
+GET /api/messages/read-stats?ids=<最近消息 ids> → ReadStat[]
+// + 每个频道的 last_msg 走 sync 增量或 list 拉最新一条
+```
+
+### 12.5 ImReader（字段名小改）
+
+> 文件：`src/app/core/im-api/message.types.ts:155-161`
+
+| 客户端 stale | v0.7.3 后端 | 改造 |
+|---|---|---|
+| `user_id: number` | `user_id: string` | ⚠️ 必改 |
+| `read_at: number` | `read_at: string` (RFC3339) | ⚠️ 必改 |
+
+### 12.6 GetReadersResponse 分页
+
+`next_cursor` 当前 v0.7.3 后端实际无分页支持（`GET /api/messages/:id/readers` 一次返全列表）。客户端**先按非分页处理**，未来后端加 cursor 时再补。
+
+### 12.7 SendMessageRequest（msg_type 类型差异）
+
+> 文件：`src/app/core/im-api/message.types.ts:103-109`
+
+```typescript
+// ❌ stale
+export interface SendMessageRequest {
+    msg_type?: ImMsgType;          // 'text' | 'image' | ...
+    content: string;
+    reply_to?: number;
+    file_ids?: number[];
+    visible_to?: number[];          // ← number[]
+}
+
+// ✅ v0.7.3
+export interface SendMessageRequest {
+    content: string;
+    msg_type?: number;              // 1/2/3/4，默认 1
+    visible_to?: string[];          // mm UserIDs
+    reply_to?: number;
+    client_msg_id?: string;          // idempotency UUID
+    file_ids?: number[];             // 附件，独立加进 messages 后用 message_attachments join
+    quick_reply_id?: number;         // v0.7.0 替代 cses /posts/quickReply
+}
+```
+
+### 12.8 FetchMessagesParams（query 参数名 → before/limit）
+
+> 文件：`src/app/core/im-api/message.types.ts:112-117`
+
+```typescript
+// ❌ stale 假设了三种 cursor
+{ after_seq, before_seq, around_seq, limit }
+
+// ✅ v0.7.3 实际：按用途拆三个 endpoint
+GET /api/channels/:id/messages?before=<seq>&limit=N    // 翻页
+GET /api/channels/:id/messages/around?timestamp=<ms>&radius=N  // 跳转上下文（用 timestamp 不是 seq！）
+GET /api/messages/:id/after?limit=N                            // 从某 msg seq 之后增量
+```
+
+### 12.9 FetchMessagesResponse / has_older / has_newer 字段
+
+> 文件：`src/app/core/im-api/message.types.ts:119-126`
+
+后端实际响应 shape 是 `{messages, has_more, next_before?}`（**单方向 has_more**，不是双向 has_older/has_newer）。
+
+### 12.10 sync 类型（`src/app/core/im-api/sync.types.ts`）
+
+```typescript
+// ✅ v0.7.3 sync wire 格式
+export interface SyncRequest {
+    channels: { id: number; seq: number }[];
+}
+
+export interface SyncResponse {
+    channels: SyncChannelEntry[];
+}
+
+export interface SyncChannelEntry {
+    id: number;
+    server_seq: number;             // 当前 server 此 channel 最大 seq
+    messages: ImMessage[];           // 增量补回（seq > client.seq）
+}
+```
+
+### 12.11 WS 帧（`src/app/core/im-api/ws-normalizer.ts`）
+
+cses-client 已经有 22 type 翻译表（`ws-normalizer.ts:156-164` 透传 channel_top_updated / channel_info_updated）。**关键 trap**：
+
+```typescript
+// ❌ 错误：用 gateway.WSFrame{}（Go 类型，[]byte 字段会 base64）
+const frame: WSFrame = JSON.parse(rawText);  // payload 是 base64 string ❌
+
+// ✅ 正确：用匿名 wire 类型 payload 是 raw JSON object
+interface WireFrame<P = unknown> {
+    type: string;
+    payload?: P;   // 不是 string 不是 base64，是 JSON object
+}
+const frame = JSON.parse(rawText) as WireFrame<PushMsgPayload>;
+// frame.payload 直接是 {push_id, channel_id, seq, ...} 对象
+```
+
+### 12.12 envelope 解包（`src/app/core/im-api/im-api.adapter.ts`）
+
+```typescript
+// ❌ 错误：把 cses Java 老栈 isWrappedResponse 双重判断保留
+if (response.isWrappedResponse) {
+    return response.data;
+} else if (response.data?.data) {
+    return response.data.data;   // 兼容老栈 ← 这层删掉
+}
+
+// ✅ v0.7.3 正确：单层 envelope，统一解
+async function unwrap<T>(resp: Response): Promise<T> {
+    const env = await resp.json() as { status: 'success'|'error'; data?: T; error?: string };
+    if (env.status === 'error') {
+        throw new ImApiError(resp.status, env.error || 'unknown');
+    }
+    return env.data as T;
+}
+```
+
+### 12.13 onChannelRead / onPostRead（**post-level read 已废**）
+
+```typescript
+// ❌ stale 假设：post-level 已读
+POST /post/{id}/read              // ← 后端不存在，返 404
+
+// ✅ v0.7.3：只有 channel-level
+POST /api/channels/:id/read        // body 为空，server 用当前 channel.Seq
+// 想看具体哪条已读 / 谁未读：
+GET /api/messages/read-stats?ids=1,2,3  // 异步批量查
+```
+
+cses-client cutover Phase 3 / 4 重构 33 处 `readBits` → 异步 `read-stats` UI 就是为了这个。
+
+### 12.14 模板"已收到"（path 化）
+
+```typescript
+// ❌ cses 老 path
+POST /post/templateReceived  body:{postId, channelId}
+
+// ✅ v0.7.3
+POST /api/messages/:id/received  body:{}
+// channelId 由 server 用 message.channel_id 推出，不需传
+```
+
+### 12.15 在线状态（单接口 → 批量）
+
+```typescript
+// ❌ cses 老 path（单频道）
+POST /channel/:id/onlineStatus
+
+// ✅ v0.7.3 batch
+GET /api/channels/online-status?channel_ids=1,2,3&include_users=true
+// 用 .WithQuery 不要拼 ?，C006 规则
+```
+
+### 12.16 Phase 2-4 客户端代码改造路径（按依赖序）
+
+| 步骤 | 文件 | 改动 |
+|---|---|---|
+| **1** | `src/app/core/im-api/message.types.ts` | 按 §12.1-12.10 改造所有字段类型（user-id number→string / created_at number→RFC3339 / msg_type 字符串→数字 / 加 props/team_id/is_urgent 等）|
+| **2** | `src/app/core/im-api/im-api.adapter.ts` | envelope unwrap 单层化（§12.12）；删 isWrappedResponse 双重判断 |
+| **3** | `src/app/core/im-api/route-table.ts` | 砍 cses 老 path 翻译（不留兼容层），未翻译端点 throw `ImEndpointNotMappedError`（已有）|
+| **4** | `src/app/core/im-api/ws-normalizer.ts` | 验证 22 type 全在翻译表里（已基本 OK，删 `imWs:post:read` 翻译）|
+| **5** | `src/pages/message-v3/service/message.service.ts` | 6 处 onChannelRead 切 path（§12.13）|
+| **6** | `chat-content-base.component.ts` | 砍 onPostRead / inViewMsgRead dead code |
+| **7** | `src-tauri/src/websocket/im_handlers.rs` | 删 `handle_post_read` (~100 行) |
+| **8** | `message-status.component.ts` + 加急弹窗 2 处 + mention 清理 | 异步 read-stats UI 重构（§12.13 后半 + cutover Phase 4）|
+| **9** | 33 处 `readBits` 引用 | 删除 / 替换 |
+| **10** | 联调 + smoke + k6 → tag `v0.7.3-client-verified` | |
+
+详见 `docs/CSES_CLIENT_CUTOVER.md` Phase 2-4 章节。
+
+---
+
 **Owner**：im 项目 + cses-client 项目联合
-**最后更新**：2026-05-08（v0.7.3-backend-final 完成时同步）
-**下次更新触发**：v0.7.4 / v0.8.x 任何路由 / WS type / envelope 变更
+**最后更新**：2026-05-08（v0.7.3-backend-final + §12 细粒度迁移对照）
+**下次更新触发**：v0.7.4 / v0.8.x 任何路由 / WS type / envelope / entry 字段变更

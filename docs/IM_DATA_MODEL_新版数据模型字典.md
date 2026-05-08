@@ -1,7 +1,7 @@
 # im 后端 Entry / Schema Reference
 
 > 给 cses-client 团队 / 联调 QA / cses Java 桥接团队的**数据模型字典**。
-> 配套 `docs/CSES_CLIENT_INTEGRATION_GUIDE.md`（路由 + WS 协议）使用：那篇是 endpoint
+> 配套 `docs/CSES_CLIENT_内部对接契约.md`（路由 + WS 协议）使用：那篇是 endpoint
 > contract，本篇是 **payload 字段类型 / 序列化形式 / 枚举值** 详表。
 >
 > **当前后端版本**：`v0.7.3-backend-final`（HEAD `048c5b4`）
@@ -650,7 +650,7 @@ interface UpdateSettingsReq {
 
 ## 4. WebSocket Payload
 
-> 全部走 `{type, payload}` wire 格式（**payload 是 raw JSON object 不是 base64**，详见 `CSES_CLIENT_INTEGRATION_GUIDE.md §5.1` trap）。
+> 全部走 `{type, payload}` wire 格式（**payload 是 raw JSON object 不是 base64**，详见 `CSES_CLIENT_内部对接契约.md §5.1` trap）。
 
 ### 4.1 client → server
 
@@ -830,7 +830,7 @@ interface ReactionPayload {
 
 ### 5.10 WSMessageType（22 种锁定，C005）
 
-详见 `CSES_CLIENT_INTEGRATION_GUIDE.md §5`。简表：
+详见 `CSES_CLIENT_内部对接契约.md §5`。简表：
 
 ```
 client→server (4): ping, send, push_ack, sync

@@ -3,15 +3,15 @@
 > 这份文档是"会话快照"：每次会话结束前更新一次，下次会话开局只要先读它 + `docs/GOAL.md` + `CLAUDE.md` 就能无缝接着干。
 > **更新原则**：事实先写（分支/tag/commit），决策次之，待办最后。过时信息必须删除，不留历史沉积。
 
-Last updated: 2026-05-07（**im 后端 production-ready ✅**：v0.7.3 系列 7 tag push origin，198 集成测试 611s 全绿，84 路由 + 22 WSMessageType（18 server→client active）+ C008 active CI gate。**后端到此为止 — 用户决策单元测试 100% 行覆盖率列 TODO，不阻塞**。剩下两项**真阻塞**：① cses-client cutover Phase 2-4（前端工作目录 `/Users/mac28/workspace/angular/cses-client + im-backend-switch + 7c8a0c972`，剩 onChannelRead 6 处 + 砍 dead code + readBits 33 处异步重构）② pre 部署 v1.0.0-pre-7h + k6 + smoke（**等用户人工触发**）。详见本文件 §0 / §1 / §3）
+Last updated: 2026-05-08（**im 后端正式收尾，进入对接 cses-client 阶段**。v0.7.3 系列 8 tag push origin（含 `v0.7.3-backend-final`），198 集成测试 611s 全绿。两份**对接契约文档**已沉淀完成 — `docs/CSES_CLIENT_内部对接契约.md`（12 节 endpoint contract，§12 客户端 entry 细粒度迁移对照表 v0.7.3 vs M3 stale shape）+ `docs/IM_DATA_MODEL_新版数据模型字典.md`（17 entity + DTO + 22 WS payload + enums + 可空性规则）。**用户决策不补单元测试**（task #30 TODO 不阻塞）。剩三项**真阻塞**：① cses-client cutover Phase 2-4（按 §12.16 10 步走，3-5d）② pre 部署 v1.0.0-pre-7h（等用户人工触发）③ 联调 + smoke + k6。详见本文件 §0 / §3）
 
 ---
 
 ## 0. 下次会话一句话启动 ⭐
 
-**复制粘贴这句话开新会话即可**：
+**复制粘贴这句话开新会话即可**（进入对接 cses-client 阶段）：
 
-> im 后端已 production-ready：v0.7.3 系列 7 tag push origin（im-backend-base / harness-base / batch-b-tests / batch-b-envelope / batch-c-tests / batch-d-tests / batch-e-tests），HEAD `43e1181`。198 集成测试 611s 全绿，C005 §2 锁定 22 WSMessageType 中 18 server→client 有 active happy path，C008 harness active 卡 CI gate。**后端不补单元测试**（task #30 列 TODO，2-3w 独立冲刺，不阻塞）。剩两项真阻塞 cses-client 联调：① **cses-client Phase 2-4**（cd `/Users/mac28/workspace/angular/cses-client` branch `im-backend-switch` HEAD `7c8a0c972`，onChannelRead 6 处 path 切换 + 砍 onPostRead/inViewMsgRead dead code + readBits 33 处 → 异步 read-stats UI 重构，3-5d）；② **pre 部署 v1.0.0-pre-7h + k6 + smoke 性能基线**（用户人工触发，0.5d）。后端 base + harness + 测试 + push hook 都齐了。读本文件 §1（tag 全景）+ §3（待决） + `docs/CSES_CLIENT_CUTOVER.md`（前端 Phase 2-4 详单）。
+> im 后端 production-ready，开始对接 cses-client。HEAD（im 仓）`<最新 commit>`，v0.7.3-backend-final tag pushed origin。**两份对接契约**已就位：`docs/CSES_CLIENT_内部对接契约.md`（12 节，§4 84 路由全表 / §5 22 WS type / §7 cses Java vs im 路径对照 / §12 客户端 entry 细粒度迁移对照表）+ `docs/IM_DATA_MODEL_新版数据模型字典.md`（17 entity + 字段类型 + 可空性 + 枚举）。**cses-client 工作目录**锁定 `/Users/mac28/workspace/angular/cses-client` branch `im-backend-switch` HEAD `7c8a0c972`，按内部对接契约 §12.16 10 步推进 Phase 2-4：① 改 `message.types.ts`（user-id number→string / created_at unix→RFC3339 / msg_type 字符串→数字 / 加 team_id/props/is_urgent，详见 §12.1-12.10）② envelope unwrap 单层化删 isWrappedResponse（§12.12）③ route-table.ts 砍翻译层 ④ ws-normalizer 22 type 验全 ⑤ onChannelRead 6 处切 ⑥ 砍 onPostRead/inViewMsgRead ⑦ Rust handle_post_read 删 ⑧ message-status / 加急 / mention 异步重构 ⑨ 33 readBits 清理 ⑩ tag `v0.7.3-client-verified`。**等用户触发**：pre 部署 v1.0.0-pre-7h + k6 性能基线。读 §1 tag 全景 / §3 backlog / 两份契约文档 / `docs/CSES_CLIENT_CUTOVER.md` 4 Phase 计划。
 
 ### 三仓库 origin 状态（联调依赖）
 | 仓库 | branch | HEAD | 验证 |
@@ -77,16 +77,35 @@ yarn start                                            # = tauri:dev，自动起 
 
 **全集成验证**：`go test -tags integration -timeout 45m ./tests/integration/...` → ok 611.330s / 198 case PASS / 0 FAIL（含 Batch-A 12 + B 130 + C 27 + D 20 + E 6 + WS ref 1 + push hook 2）
 
-### 当前 backlog（2026-05-07 用户拍板后排序）
+### 当前 backlog（2026-05-08 进入对接阶段）
 
-| Task | 量级 | 阻塞 cses-client 联调 | 谁做 |
+| Task | 量级 | 阻塞联调 | 谁做 |
 |---|---|---|---|
-| **cses-client Phase 2-4**（onChannelRead 6 + 砍 dead code + readBits 33 异步重构）| 3-5d | **是 ⭐** | 等用户决策启动 |
+| **cses-client Phase 2-4**（10 步对接，按内部对接契约 §12.16）| 3-5d | **是 ⭐** | cses-client 端按 §12 改 ts 类型 + service + ws + Rust handler |
 | **#29 pre 部署 v1.0.0-pre-7h + k6 + smoke** | 0.5d | **是** | **等用户人工触发** |
-| #30 [TODO 不阻塞] 单元测试 100% 行覆盖率 | 2-3w | 否 | 用户拍板列 TODO（service 0.3% / repo 2.9% / gateway 6.7% / http 3.4%；集成测试已间接覆盖 happy path，单测主要补错误分支 + 边界）。后续单独冲刺 |
+| #30 [TODO 不阻塞] 单元测试 100% 行覆盖率 | 2-3w | 否 | 后续单独冲刺（service 0.3% / repo 2.9% / gateway 6.7% / http 3.4%；集成测试已间接覆盖 happy path，单测主要补错误分支） |
 | [TODO 不阻塞] search/file 集成测试 | 后续 | 否 | cses Java 拥有，迁移到 im 后再补 |
+| [TODO 不阻塞] HTTP_WS_MAP.md 刷新 22 type 矩阵 | 0.5d | 否 | 文档熵管理，下次顺势 |
+| [TODO 不阻塞] wiki/ ingest（C001-C009 + Batch-A-E）| 0.5d | 否 | 早安复盘 |
 
-**用户决策（2026-05-07）**：后端到此为止，不补单元测试。下次会话进入"颗粒度对齐 cses-client" + pre 部署阶段。
+**关键文档（cses-client 端必读）**：
+- `docs/CSES_CLIENT_内部对接契约.md` — endpoint contract（12 节）
+  - §4 84 路由全清单（含每路由触发的 WS event）
+  - §5 22 WSMessageType 协议（client→server 4 + server→client 18 + payload struct）
+  - §7 cses Java vs im 路径对照表（25+ 条）
+  - §8 11 条已知坑 / 边界
+  - §9 联调 cheatsheet
+  - **§12 客户端 entry 细粒度迁移对照（v0.7.3 vs M3 stale shape）— 16 个 sub-section**
+- `docs/IM_DATA_MODEL_新版数据模型字典.md` — schema reference（8 节）
+  - §1 ID 类型 / 序列化约定
+  - §2 17 个 Domain Entity 字段全表
+  - §3 各 family request/response DTO
+  - §4 22 WS payload TypeScript interface
+  - §5 10 套 Enum
+  - §6 envelope 包装契约 + interceptor 模板
+  - §7 可空性规则（pointer / GORM default / JSONB 二次解析陷阱）
+
+**用户决策（2026-05-07/08）**：后端不补单元测试。下次会话进入"颗粒度对接 cses-client" + pre 部署阶段。
 
 ### v0.6.1 已经做掉的（不要重做）
 - ✅ Step ① migration 014 dev DB dry-run + im_pre 实落（force 13 清 dirty → up to 14）
