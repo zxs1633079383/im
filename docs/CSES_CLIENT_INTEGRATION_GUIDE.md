@@ -12,6 +12,7 @@
 > - 22 WS type 中 18 server→client 全有 active happy path
 >
 > **关联文档**：
+> - `docs/IM_DATA_MODEL_REFERENCE.md` — **entity / DTO / payload 字段字典**（本文是 endpoint contract，那篇是 schema reference）
 > - `docs/CSES_CLIENT_CUTOVER.md` — 客户端 cutover 4 Phase 计划（Phase 1 ✅，Phase 2-4 ⏳）
 > - `docs/HTTP_WS_MAP.md` — HTTP ↔ WS 推送对应矩阵
 > - `docs/harness/C005` — WS 22 type 锁定决策
