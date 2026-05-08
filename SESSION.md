@@ -79,9 +79,15 @@ yarn start                                            # = tauri:dev，自动起 
 
 ### 当前 backlog（2026-05-08 进入对接阶段）
 
-| Task | 量级 | 阻塞联调 | 谁做 |
-|---|---|---|---|
-| **cses-client Phase 2-4**（10 步对接，按内部对接契约 §12.16）| 3-5d | **是 ⭐** | cses-client 端按 §12 改 ts 类型 + service + ws + Rust handler |
+> ⚠️ **两个仓库的 tag namespace 区分**：
+> - **im 后端仓库**（本仓）tag 已封顶 `v0.7.3-backend-final`，84 路由 + 22 WSMessageType + 198 测试全完成，**无 Phase 2/3/4 概念**
+> - **cses-client 仓库**（`/Users/mac28/workspace/angular/cses-client`）tag 命名 `v0.7.3-phase2a/2b/3/4-*`，是**前端 cutover** 4 阶段，目前 Phase 2 ✅ / Phase 3 ⚠️ 半完成（21 处 dead code 残留）/ Phase 4 ❌ 未启动
+
+| Task | 仓库 | 量级 | 阻塞联调 | 谁做 |
+|---|---|---|---|---|
+| **cses-client Phase 3 收尾**（21 处 dead code + Rust `handle_post_read` 100 行 + IPC `imWs:post:read` 订阅删）| cses-client | 0.5d | 是 | cses-client 端 |
+| **cses-client Phase 4**（message-status 异步 / 加急 2 处 / mention 改 read_sync / 33 readBits / 26 imHttp 老 path rewrite）| cses-client | 2-3d | **是 ⭐** | cses-client 端按内部对接契约 §10.2 + §12.16 |
+| **#29 pre 部署 v1.0.0-pre-7h + k6 + smoke** | im 后端 | 0.5d | **是** | **等用户人工触发** |
 | **#29 pre 部署 v1.0.0-pre-7h + k6 + smoke** | 0.5d | **是** | **等用户人工触发** |
 | #30 [TODO 不阻塞] 单元测试 100% 行覆盖率 | 2-3w | 否 | 后续单独冲刺（service 0.3% / repo 2.9% / gateway 6.7% / http 3.4%；集成测试已间接覆盖 happy path，单测主要补错误分支） |
 | [TODO 不阻塞] search/file 集成测试 | 后续 | 否 | cses Java 拥有，迁移到 im 后再补 |

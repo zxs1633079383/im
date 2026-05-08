@@ -547,17 +547,50 @@ cd server && go test -tags integration -timeout 45m ./tests/integration/...
 
 ---
 
-## 10. 后续路线（cses-client cutover Phase 2-4）
+## 10. 后续路线（**cses-client 仓库**的 cutover，im 后端已收尾）
 
-详见 `docs/CSES_CLIENT_CUTOVER.md`。本文档只关心**契约**，cutover 计划是另一份。
+> ⚠️ **重要澄清**：本节描述的 Phase 2/3/4 全部是 **cses-client 仓库** (`/Users/mac28/workspace/angular/cses-client`) 的工作，**不是 im 后端**。im 后端 84 路由 / 22 WSMessageType / 198 集成测试全部完成（tag `v0.7.3-backend-final`），endpoint 端已 **production-ready**，**不需要再做 Phase 2/3/4**。
+>
+> 详见 `docs/CSES_CLIENT_CUTOVER.md` 的 cutover 计划。本文档只关心**契约**。
 
-| Phase | 范围 | 预期 tag |
-|---|---|---|
-| Phase 1 ✅ | im 后端三件套（envelope 中间件 + POST received + GET read-stats）| `v0.7.3-im-backend-base` 已 push origin |
-| Phase 2 ⏳ | 模板已收到 path 化 + optimistic + WS 对账 | `v0.7.3-phase2-template-received` |
-| Phase 3 ⏳ | onChannelRead 6 处切 + 砍 onPostRead/inViewMsgRead dead code + Rust handle_post_read 删 | `v0.7.3-phase3-channel-read` |
-| Phase 4 ⏳ | message-status 异步 + 加急 2 处 + mention 改 read_sync + 33 readBits 清理 | `v0.7.3-phase4-read-stats-ui` |
-| 验证 ⏳ | 联调全过 + smoke 全绿 + k6 性能基线 | `v0.7.3-client-verified` |
+### 10.1 im 后端仓库 tag 链（已完结，本仓 push origin）
+
+```
+v0.7.3-im-backend-base       Phase 1 三件套（envelope 中间件 + POST received + GET read-stats）
+v0.7.3-harness-base          C001-C008 框架
+v0.7.3-batch-b-tests         130 集成测试（5 case 矩阵）
+v0.7.3-batch-b-envelope      envelope 契约对齐
+v0.7.3-batch-c-tests         27 happy（announcement/approval/notification/quick_reply/reaction/scheduled）
+v0.7.3-batch-d-tests         20 WS 测试（含 channel_info+top push hook）
+v0.7.3-batch-e-tests         6 happy（module/sync/presence/settings）
+v0.7.3-backend-final  ⭐     im 后端 production-ready 总封 tag
+```
+
+### 10.2 cses-client 仓库 tag 链（前端 cutover 进行中）
+
+> ⚠️ 这些 tag 在 **cses-client 仓库** branch `im-backend-switch`，不在本 im 后端仓库。
+
+| Phase | 范围 | cses-client 仓库 tag | 当前状态 |
+|---|---|---|---|
+| Phase 2a ✅ | apiFlavor=im 登录后从 im-server 拉频道列表覆盖 hash 缓存 | `v0.7.3-phase2a-channel-cache-from-im` | 已打 (commit `7203e5bc9`) |
+| Phase 2b ✅ | 模板已收到 path 化 + optimistic + WS 对账 | `v0.7.3-phase2b-template-received` | 已打 (commit `10cd3efcc`) |
+| Phase 3 ⚠️ | onChannelRead 6 处切 + 砍 post 级 dead code | `v0.7.3-phase3-channel-read` | 已打 (commit `e70bcd3c0`) — 但 grep 仍 21 处 onPostRead/inViewMsgRead/handle_post_read 残留 + Rust `handle_post_read` 100 行未删 |
+| Phase 4 ❌ | message-status 异步 + 加急 2 处 + mention 改 read_sync + 33 处 readBits 清理 + 26 处 imHttp 老 path rewrite | `v0.7.3-phase4-read-stats-ui` | **未启动**（`read-stats` / `getReadStats` 集成 0 处 / readBits[ 索引访问还有 3 处） |
+| 联调 + smoke + k6 ❌ | 三件套验证后打 | `v0.7.3-client-verified` | 未启动 |
+
+**Phase 4 未做的具体清单**（按 §12.16 10 步走）：
+
+1. message-status.component.ts 异步 read-stats 重构（`computed` → `signal + effect` 异步加载）
+2. 加急弹窗 2 处（`message.component.ts:380-413` + `messageContainerShared.service.ts:504-527`）异步化
+3. messageWindowGlabal mention 清理改订阅 `read_sync` WS 事件
+4. 33 处 `readBits` 引用清理（type.d.ts / event.type.ts 字段声明 + 业务逻辑访问）
+5. 26 处 imHttp 老 cses-shape 路径 rewrite（`/posts/*` 12 处 + `/channel/*` 14 处）
+6. Rust `src-tauri/src/websocket/im_handlers.rs::handle_post_read` 删 ~100 行
+7. `imWs:post:read` IPC 事件订阅删 ~10 行（`ipcEventHandler.service.ts:126,278`）
+8. 9 个 cses-client 本地 commit push origin
+9. 联调全跑通（smoke 7/7 / 三件套全绿 / 张立超 cookie 端到端）
+10. k6 send P95 ≤ 400ms 性能基线
+11. tag `v0.7.3-client-verified`
 
 ---
 
