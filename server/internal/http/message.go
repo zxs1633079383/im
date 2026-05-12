@@ -42,6 +42,16 @@ const (
 	EventMsgUpdated MessageEventType = "msg_updated"
 	// EventMsgDeleted is fired when a message is soft-deleted (revoke).
 	EventMsgDeleted MessageEventType = "msg_deleted"
+	// EventChannelClosed is fired when an owner解散群聊 (v0.7.3 gap #1+#3).
+	EventChannelClosed MessageEventType = "channel_closed"
+	// EventChannelMemberUpdated is fired on add / remove / nickname (gap #4+#5).
+	EventChannelMemberUpdated MessageEventType = "channel_member_updated"
+	// EventScheduleCreated is pushed to the sender's other devices when a
+	// scheduled message is enqueued (v0.7.3 gap #7).
+	EventScheduleCreated MessageEventType = "schedule_created"
+	// EventScheduleCanceled is pushed to the sender's other devices when a
+	// pending scheduled message is cancelled (v0.7.3 gap #7).
+	EventScheduleCanceled MessageEventType = "schedule_canceled"
 )
 
 // MessageEventBroadcaster fans arbitrary WS events out to every member of a

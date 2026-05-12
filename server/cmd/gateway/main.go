@@ -244,6 +244,17 @@ func run() int {
 		Broadcaster: msgBroadcaster,
 		Logger:      log,
 	})
+	// v0.7.3 gap #1+#3: DELETE /channels/:id + channel_closed WS broadcast.
+	imhttp.RegisterChannelCloseRoute(authedAPI, channelSvc, msgBroadcaster, log)
+	// v0.7.3 gap #2: reply branch pagination (replyFirstLevelId + pageSize +
+	// offset) used by cses-client `reply-root-message.component.ts`.
+	imhttp.RegisterReplyBranchRoute(authedAPI, messageSvc, log)
+	// v0.7.3 gap #4: AddMember/RemoveMember/LeaveChannel post-state snapshot
+	// broadcast (channel_member_updated). The service hooks accept the same
+	// broadcaster so the http layer stays nil-safe.
+	channelSvc.AttachMemberBroadcaster(msgBroadcaster)
+	// v0.7.3 gap #5: PATCH /channels/:id/members/:user_id/nickname + WS push.
+	imhttp.RegisterMemberNicknameRoute(authedAPI, channelSvc, msgBroadcaster, log)
 
 	// M2-B: channel announcements. Re-uses the message broadcaster so
 	// announcement_posted fans out to the same member set as msg_updated.
@@ -272,6 +283,9 @@ func run() int {
 	// M2-F: scheduled messages — CRUD + background worker.
 	scheduledRepo := repo.NewScheduledRepo(gormDB)
 	scheduledSvc := service.NewScheduledService(scheduledRepo, channelRepo, messageSvc)
+	// v0.7.3 gap #7: schedule_created / schedule_canceled WS broadcast to the
+	// sender's other devices so `hasSchedulePost` stays in sync.
+	scheduledSvc.AttachUserPusher(userPusher)
 	scheduledWorker := service.NewScheduledWorker(scheduledSvc, log, service.ScheduledWorkerConfig{})
 	imhttp.RegisterScheduledRoutes(authedAPI, scheduledSvc)
 
@@ -420,6 +434,7 @@ func (p *hubMessagePusher) BroadcastMessage(channelID int64, userIDs []string, m
 	}
 	payload := gateway.PushMsgPayload{
 		PushID:    fmt.Sprintf("http-%d-%d", msg.ChannelID, msg.Seq),
+		Type:      gateway.NoticeTypeForMsgType(msg.MsgType),
 		ChannelID: msg.ChannelID,
 		Seq:       msg.Seq,
 		ServerID:  msg.ID,
@@ -427,6 +442,7 @@ func (p *hubMessagePusher) BroadcastMessage(channelID int64, userIDs []string, m
 		Content:   msg.Content,
 		MsgType:   msg.MsgType,
 		VisibleTo: []string(msg.VisibleTo),
+		Props:     gateway.DerefStringPtr(msg.Props),
 		CreatedAt: msg.CreatedAt,
 	}
 	p.xpod.broadcast(userIDs, strconv.FormatInt(channelID, 10),
@@ -480,6 +496,33 @@ type hubUserEventPusher struct {
 
 func (p *hubUserEventPusher) PushToUser(userID string, eventType imhttp.MessageEventType, payload any) {
 	p.xpod.dispatch(userID, gateway.WSMessageType(eventType), payload)
+}
+
+// PushUserEvent satisfies service.ScheduledEventPusher. Same wire path as
+// PushToUser but eventType is a plain string so the service package can
+// stay decoupled from imhttp.MessageEventType. (v0.7.3 gap #7.)
+func (p *hubUserEventPusher) PushUserEvent(userID string, eventType string, payload any) {
+	p.xpod.dispatch(userID, gateway.WSMessageType(eventType), payload)
+}
+
+// BroadcastMemberEvent satisfies service.ChannelMemberBroadcaster. Fans the
+// channel_member_updated payload to every member by re-using the existing
+// ListMembers + crossPodBroadcast path. (v0.7.3 gap #4 + #5.)
+func (b *hubEventBroadcaster) BroadcastMemberEvent(channelID int64, eventType string, payload any) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	members, err := b.svc.ListMembers(ctx, channelID)
+	if err != nil {
+		b.xpod.log.Warn("broadcast member event: list members failed",
+			"error", err, "channel_id", channelID)
+		return
+	}
+	uids := make([]string, 0, len(members))
+	for _, m := range members {
+		uids = append(uids, m.UserID)
+	}
+	b.xpod.broadcast(uids, strconv.FormatInt(channelID, 10),
+		gateway.WSMessageType(eventType), payload)
 }
 
 // hubEventBroadcaster implements imhttp.MessageEventBroadcaster. It fans
