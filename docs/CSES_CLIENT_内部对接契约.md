@@ -3,13 +3,14 @@
 > **谁读这个**：cses-client（Angular + Tauri）端 / 联调 QA / cses Java 桥接团队。
 > **不读什么**：im 后端内部架构（看 `docs/ARCHITECTURE.md`）/ 后端开发流程（看 `docs/GOAL.md` + `CLAUDE.md`）。
 >
-> **当前后端状态**（2026-05-08）：`v0.7.3-backend-final` production-ready
-> - 84 路由 + 22 WSMessageType 全实现
-> - 198 集成测试全绿（Batch-A 12 + B 130 + C 27 + D 20 + E 6 + push hook 2 + ws ref 1）
+> **当前后端状态**（2026-05-12）：`v0.7.3-backend-final` + cses-client 9 gap 补丁
+> - **87 路由 + 26 WSMessageType 全实现**（v0.7.3-backend-final 84+22，加 cses-client 9 gap 落地：DELETE channels/:id、GET /messages/:id/replies/branch、PATCH /channels/:id/members/:user_id/nickname；channel_closed / channel_member_updated / schedule_created / schedule_canceled）
+> - 198 集成测试全绿（Batch-A 12 + B 130 + C 27 + D 20 + E 6 + push hook 2 + ws ref 1，新增 gap 端点单测在 P1 补）
 > - 9 条 active harness（C001-C009 CI gate 卡死契约）
 > - envelope `{status, data?, error?}` 全局统一
 > - cookieId 单栈鉴权 + LRU 30s 缓存
-> - 22 WS type 中 18 server→client 全有 active happy path
+> - 26 WS type 中 22 server→client 全有 active happy path
+> - **push_msg payload 新增 `type` + `props` 字段**：msg_type=4 系统消息自动带 `type:"NOTICE"`（gap #9 字段对齐），cses-client Rust message_service 现有 `data.type == "NOTICE"` 分支无需改造即可识别
 >
 > **关联文档**：
 > - `docs/IM_DATA_MODEL_新版数据模型字典.md` — **entity / DTO / payload 字段字典**（本文是 endpoint contract，那篇是 schema reference）
@@ -175,6 +176,8 @@ GET /ws            WebSocket upgrade（hijack underlying conn，envelope 无法 
 | DELETE | `/channels/:id/members/:user_id` | 踢人（owner-only） |
 | POST | `/channels/:id/leave` | 主动退出 |
 | PUT | `/channels/:id` | 整体替换（业务上很少用，建议走 PATCH） |
+| DELETE | `/channels/:id` | **owner 解散群聊（v0.7.3 gap #1）**；标 `channels.deleted_at = now()`；触发 **channel_closed** WS 给原 channel 全员。Idempotent — 已关闭返 200 + 当前 channel snapshot |
+| PATCH | `/channels/:id/members/:user_id/nickname` | **设置群内昵称（v0.7.3 gap #5）**；body `{nick_name: string}` ≤ 64 字符，空串清除回退到全局名；caller==target 即可，否则需 admin/owner；触发 **channel_member_updated** WS 给 channel 全员 |
 
 ### 4.3 channel-governance (8)
 | Method | Path | 说明 |
@@ -202,7 +205,8 @@ GET /ws            WebSocket upgrade（hijack underlying conn，envelope 无法 
 | GET | `/channels/:id/messages/around` | 围绕一条消息的上下文；query `?timestamp=<ms>&radius=N` |
 | POST | `/channels/:id/read` | 推进 last_read_seq；**body 为空**（server 用当前 channel.Seq）；触发 **read_sync** 给同用户其他设备 |
 | GET | `/messages/:id/readers` | 已读用户列表 |
-| GET | `/messages/:id/replies` | thread replies |
+| GET | `/messages/:id/replies` | thread replies（一次性返回全部，无分页） |
+| GET | `/messages/:id/replies/branch` | **二级 thread 子回复分页（v0.7.3 gap #2）**；query `?offset=N&limit=M`（默认 0/50，上限 200）；返回 `{messages, has_more, offset, limit}`。替代 mattermost `/posts/getReplyBranch` |
 | GET | `/messages/:id/after` | 从某 seq 之后的增量（替代 cses `/posts/getPostsAfterFromSegment`） |
 | PATCH | `/messages/:id` | 编辑（仅 sender）；触发 **msg_updated** |
 | DELETE | `/messages/:id` | 撤回（仅 sender）；触发 **msg_deleted** |
@@ -336,7 +340,10 @@ GET /ws            WebSocket upgrade（hijack underlying conn，envelope 无法 
 
 ---
 
-## 5. WebSocket 协议（22 WSMessageType / C005 锁定）
+## 5. WebSocket 协议（26 WSMessageType / C005 锁定）
+
+> **v0.7.3 gap 补丁新增 4 个 server→client type**（已挂入锁定列表，下次升级 C005 harness 同步）：
+> `channel_closed` / `channel_member_updated` / `schedule_created` / `schedule_canceled`
 
 ### 5.1 连接
 
@@ -362,7 +369,7 @@ Frame 格式（JSON over WS text frame）：
 | `push_ack` | 客户端 ACK 服务端推的 push_msg（按 push_id） | `PushACKPayload{ push_id }` |
 | `sync` | （**保留**，**当前未由 ws_handler 处理** — sync 走 HTTP `POST /api/sync`）| `SyncPayload{ channels: [{id, seq}] }` |
 
-### 5.3 18 种 server → client
+### 5.3 22 种 server → client（v0.7.3 + 4 gap-补丁 type）
 
 | type | 触发 | payload struct |
 |---|---|---|
@@ -383,6 +390,19 @@ Frame 格式（JSON over WS text frame）：
 | `reaction_removed` | 同上，减 reaction | 同上 |
 | `channel_top_updated` | 你（同用户多设备）置顶 / 取消置顶频道 | `{ channel_id, is_top: bool }` |
 | `channel_info_updated` | owner / manager 改 channel notice / purpose / orient / permission / name | 整条 channel JSON snapshot |
+| `channel_closed` | **owner 解散群聊（v0.7.3 gap #1+#3）** | `{ channel_id, actor_id, deleted_at }` |
+| `channel_member_updated` | **加/移成员/退群/群昵称变更（v0.7.3 gap #4+#5）** | `{ channel_id, change_type: "join"\|"leave"\|"kick"\|"nickname", actor_id, target_id, nick_name?, members:[{user_id, role, nick_name?, is_top?, notify_pref?}] }` |
+| `schedule_created` | **本人在另一台设备创建定时消息（v0.7.3 gap #7）** | `{ channel_id, scheduled_id, has_schedule_post:true }` |
+| `schedule_canceled` | **本人在另一台设备取消定时消息（v0.7.3 gap #7）** | `{ channel_id, scheduled_id, has_schedule_post }`（最后一条取消时 has_schedule_post=false）|
+
+### 5.3.1 NOTICE 字段（v0.7.3 gap #9）
+
+`push_msg` payload 顶层 `type` 字段：
+- 普通消息（msg_type=1/2/3/99）→ 字段省略（`omitempty`）
+- 系统消息（msg_type=4，AddMember / RemoveMember / LeaveChannel / CloseChannel / SetMemberNickname 触发）→ `type:"NOTICE"`
+- 系统消息 payload 同时携带 `props` JSONB 字符串：`{"sys_type":"member_joined"|"member_removed"|"member_left"|"channel_created"|"channel_updated"|"channel_closed"|"member_nickname", "actor_id":"...", "target_id":"...", "nick_name":"...", "name":"..."}`
+
+cses-client Rust `message_service.rs::apply_notice_changes_standalone` 现有 `data.get("type") == "NOTICE"` 分支可直接识别。
 
 ### 5.4 客户端 ws-normalizer 翻译表（cses-client 端实现）
 
@@ -461,9 +481,13 @@ Console 验证 log（cses-client 端）：
 | `POST /channel/{id}/onlineStatus` | `GET /api/channels/online-status?channel_ids=...` | M3 batch |
 | `POST /channel/{id}/member/leave` | `POST /api/channels/:id/leave` | |
 | `POST /channel/{id}/member/snapshot` | `GET /api/channels/:id/members` 全量 | snapshot 协议废弃（cutover §决策 4） |
+| `POST /channel/close` | **`DELETE /api/channels/:id`** | **v0.7.3 gap #1**；owner-only；channels.deleted_at 软删；触发 `channel_closed` WS |
+| `POST /channels/member/byIds` | `GET /api/channels/:id/members`（全量降级） | **v0.7.3 gap #6**；cses-client `verifyMemberCountAndSync` 走全量替代 batch by IDs |
+| `POST /channel/{id}/member/changeName`（昵称设置）| **`PATCH /api/channels/:id/members/:user_id/nickname`** | **v0.7.3 gap #5**；body `{nick_name}` ≤64；触发 `channel_member_updated{change_type:"nickname"}` |
 | `POST /posts/createPosts` | `POST /api/channels/:id/messages` | |
 | `POST /posts/revoke` | `DELETE /api/messages/:id` | |
-| `POST /posts/getReplies` / `getReplyBranch` | `GET /api/messages/:id/replies` | |
+| `POST /posts/getReplies` | `GET /api/messages/:id/replies` | 一次性返回全部 |
+| `POST /posts/getReplyBranch` | **`GET /api/messages/:id/replies/branch?offset=N&limit=M`** | **v0.7.3 gap #2**；二级 thread 子回复分页；返回 `{messages, has_more, offset, limit}` |
 | `POST /posts/{urgentPost,urgentConfirm,urgentCancel}` | `POST /api/messages/urgent` / `/messages/:id/urgent/{confirm,cancel}` | |
 | `POST /posts/{createSchedule,cancelSchedule,getSchedule}` | `POST/DELETE/GET /api/messages/scheduled` | |
 | `POST /posts/quickReply` | `POST /api/channels/:id/messages` + `quick_reply_id` 字段 | im 已支持 0 改动 |
@@ -494,6 +518,10 @@ Console 验证 log（cses-client 端）：
 | **`channel_top_updated` is per-user** | 多设备同步专用 | 别期望它推给 channel 其他成员 |
 | **settings PUT 别 flip notification_enabled false** | GORM Upsert default:true bug | 等后端修，避免单独 false 写入 |
 | **favorite 跨用户无 channel-member check** | 当前合约：用户 A 收藏别人 DM 消息也 201 | 等后端是否收紧 |
+| **v0.7.3 NOTICE 字段** | `push_msg.type == "NOTICE"` 表示 msg_type=4 系统消息 | cses-client Rust `apply_notice_changes_standalone` 现有 `data.type == "NOTICE"` 分支直接命中（gap #9 字段对齐，无需重写）|
+| **v0.7.3 channel_member_updated 完整 channel snapshot** | 加 / 移 / 离 / 昵称统一走这一个 WS type | cses-client 用 `change_type` 字段分流（join\|kick\|leave\|nickname），payload.members 是 post-change 全量 roster，**不需再调** GET /channels/:id/members 拉成员 |
+| **v0.7.3 schedule_created/canceled 仅推 sender 多设备** | 不广播 channel 全员 | cses-client 用 `has_schedule_post` 翻 dialog.hasSchedulePost；channel 其他成员看不到 sender 的草稿状态（by design）|
+| **v0.7.3 DELETE /channels/:id idempotent** | 已 closed 的 channel 重复 DELETE 返 200 + 当前 snapshot，不再二次广播 channel_closed | client 端可放心重试|
 
 ---
 
@@ -518,6 +546,11 @@ yarn start                                         # = tauri:dev，自动起 Ang
 | ④ Network 看 this.http 调用 | vote / Im/search / average 仍走 cses Java |
 | ⑤ Network 看响应 shape | `{status: "success", data: ...}` 而非裸 body |
 | ⑥ WS 帧（任意聊天页面）| frame `{type, payload}`，type 从 5.3 表里 |
+| ⑦ 拉人入群（owner / admin 操作）| 收 `channel_member_updated{change_type:"join", members:[...]}`（**v0.7.3 gap #4**）|
+| ⑧ owner 解散群聊 | DELETE /api/channels/:id → 全员收 `channel_closed` + `channel.deleted_at` 设置（**v0.7.3 gap #1+#3**）|
+| ⑨ 改群昵称 | PATCH …/nickname → 全员收 `channel_member_updated{change_type:"nickname", nick_name:"…"}`（**v0.7.3 gap #5**）|
+| ⑩ 创建/取消定时消息 | 多设备登录同账号 → 仅本人其他设备收 `schedule_created` / `schedule_canceled`（**v0.7.3 gap #7**）|
+| ⑪ 系统消息 NOTICE 解析 | 加/移成员、解散群等 push_msg payload 含 `type:"NOTICE"` + `props` JSONB（**v0.7.3 gap #9**）|
 
 ### 9.3 后端 smoke 命令（im 项目这边）
 

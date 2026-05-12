@@ -80,6 +80,7 @@ type TeamID = string | null;
 | `root_message_id` | `number \| undefined` | yes | null | M3 子群聊：从哪条消息分叉 |
 | `created_at` | `string` (RFC3339) | no | now() | |
 | `updated_at` | `string` (RFC3339) | no | now() | |
+| `deleted_at` | `string \| undefined` (RFC3339) | yes (omitempty) | NULL | **v0.7.3 gap #1+#3**：owner DELETE /channels/:id 设 deleted_at = now()；cses-client 读 `channel.deleted_at` 翻 dialog.deleteAt 软删除标记 |
 
 ### 2.2 `ChannelMember` — `channel_members` 表（复合 PK `(user_id, channel_id)`）
 
@@ -93,6 +94,7 @@ type TeamID = string | null;
 | `phantom_at_read` | `number` | |
 | `notify_pref` | `number` (int16) | 0=all / 1=mentions / 2=none |
 | `is_top` | `boolean` | per-user 置顶（PATCH 触发 `channel_top_updated`） |
+| `nick_name` | `string` | **v0.7.3 gap #5** per-(user, channel) 群昵称；空串=回退全局名；PATCH /channels/:id/members/:user_id/nickname 触发 `channel_member_updated{change_type:"nickname"}` 给全员 |
 | `joined_at` | `string` (RFC3339) | |
 
 ### 2.3 `Message` — `messages` 表
@@ -378,6 +380,18 @@ interface UpdateChannelReq {
 interface AddMemberReq {
     user_id: string;          // mm UserID
 }
+
+// DELETE /channels/:id        v0.7.3 gap #1 + #3 — owner解散群聊
+// body 为空；返回 Channel（含 deleted_at 时间戳）；触发 channel_closed WS 给原 channel 全员。
+// 错误码：403 only_owner / 404 not_found / 200 idempotent_already_closed
+// 注意：cses-client 老 path `POST /channel/close`，body `{channelId}`。后端不再保留这个路径。
+
+// PATCH /channels/:id/members/:user_id/nickname   v0.7.3 gap #5
+interface SetMemberNicknameReq {
+    nick_name: string;        // <= 64 字符；空串清除 override → 回退到全局名
+}
+// 返回：ChannelMember（含 nick_name）；caller==target 或 admin/owner 可调；
+// 触发 channel_member_updated{change_type:"nickname"} 给全员。
 ```
 
 ### 3.2 channel-governance
@@ -441,6 +455,15 @@ interface FetchMessagesResp {
     messages: Message[];
     has_more: boolean;        // 后端是否还有更多
     next_before?: number;     // 下一页的 before seq
+}
+
+// GET /messages/:id/replies/branch?offset=N&limit=M     v0.7.3 gap #2
+// 二级 thread 子回复分页查询（替代 cses /posts/getReplyBranch）
+interface ReplyBranchResp {
+    messages: Message[];      // reply_to == rootID 的非删除消息，seq ASC
+    has_more: boolean;        // 同 fetch limit+1 探测
+    offset: number;           // 当前页 offset
+    limit: number;            // 当前页 limit (上限 200)
 }
 ```
 
@@ -692,13 +715,15 @@ interface PongPayload {
 // type: "push_msg"
 interface PushMsgPayload {
     push_id: string;           // ack 回传同值
+    type?: "NOTICE";           // v0.7.3 gap #9 — 仅 msg_type=4 系统消息携带
     channel_id: number;
     seq: number;
     server_msg_id: number;
     sender_id: string;
     content?: string;
-    msg_type: number;          // 1=normal / 2=phantom
+    msg_type: number;          // 1=text/2=image/3=file/4=system/99=phantom
     visible_to?: string[];
+    props?: string;            // v0.7.3 gap #9 — JSONB raw text；msg_type=4 时填，需 JSON.parse 后看 sys_type 派生 channel 元数据
     created_at: string;
 }
 
@@ -745,6 +770,42 @@ interface ReactionPayload {
     message_id: number;
     user_id: string;
     emoji: string;
+}
+
+// type: "channel_closed"     v0.7.3 gap #1 + #3
+interface ChannelClosedPayload {
+    channel_id: number;
+    actor_id: string;          // mm UserID of the owner
+    deleted_at: string;        // RFC3339；与 channels.deleted_at 一致
+}
+
+// type: "channel_member_updated"     v0.7.3 gap #4 + #5
+// 同一个 type 承载 4 种成员变更，change_type 字段分流；payload.members 是
+// post-change 的完整 roster snapshot — 客户端可一遍替换本地成员状态，不需
+// 再调 GET /channels/:id/members。
+interface ChannelMemberUpdatedPayload {
+    channel_id: number;
+    change_type: "join" | "leave" | "kick" | "nickname";
+    actor_id: string;          // 触发者 mm UserID
+    target_id: string;         // 被影响成员 mm UserID（leave 时 actor==target）
+    nick_name?: string;        // 仅 change_type==nickname 填
+    members: ChannelMemberSummary[];
+}
+
+interface ChannelMemberSummary {
+    user_id: string;
+    role: number;              // 1/2/3 见 §5.2
+    nick_name?: string;
+    is_top?: boolean;
+    notify_pref?: number;
+}
+
+// type: "schedule_created" / "schedule_canceled"     v0.7.3 gap #7
+// 仅推 sender 多设备，不广播 channel 全员。
+interface ChannelSchedulePayload {
+    channel_id: number;
+    scheduled_id: number;
+    has_schedule_post: boolean;   // 最后一条取消时 false，否则 true
 }
 ```
 
@@ -828,20 +889,43 @@ interface ReactionPayload {
 | 1 | Mention |
 | 2 | System |
 
-### 5.10 WSMessageType（22 种锁定，C005）
+### 5.10 WSMessageType（26 种锁定，C005 + v0.7.3 gap 补丁）
 
 详见 `CSES_CLIENT_内部对接契约.md §5`。简表：
 
 ```
 client→server (4): ping, send, push_ack, sync
-server→client (18):
+server→client (22):
   V1 12 - pong, push_msg, send_ack, sync_resp, read_sync,
           friend_event, channel_event, msg_updated
   M1  2 - msg_deleted (msg_updated shared with V1)
   M2  4 - announcement_posted, urgent_posted, approval_updated, notification_received
   v0.7 4 - reaction_added, reaction_removed,
            channel_top_updated, channel_info_updated
+  v0.7.3-gap 4 - channel_closed, channel_member_updated,
+                 schedule_created, schedule_canceled
 ```
+
+### 5.11 NoticeType（v0.7.3 gap #9 顶层字段）
+
+`push_msg` payload 顶层 `type` 字段，wire 形态：
+
+| 值 | 触发 msg_type | 客户端解析 |
+|---|---|---|
+| "" (omit) | 1/2/3/99（text/image/file/phantom）| 常规聊天气泡 |
+| `"NOTICE"` | 4（system）| cses-client Rust 走 `apply_notice_changes_standalone`，按 `props.sys_type` 派生 channel 元数据 |
+
+### 5.12 sys_type 全量枚举（messages.props.sys_type）
+
+| 值 | 触发 |
+|---|---|
+| `channel_created` | CreateGroup |
+| `channel_updated` | Update (name/avatar/notice/...) |
+| `channel_closed` | **v0.7.3 gap #1** owner 解散群聊 |
+| `member_joined` | AddMember |
+| `member_removed` | RemoveMember (admin kick) |
+| `member_left` | LeaveChannel (self) |
+| `member_nickname` | **v0.7.3 gap #5** SetMemberNickname |
 
 ---
 
