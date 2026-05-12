@@ -57,11 +57,12 @@ func TestRegisterAuthRoutes_MeReturnsMMUser(t *testing.T) {
 	engine := gin.New()
 	// Inject a synthetic resolver so CookieRequired sees a UserIDKey.
 	imhttp.RegisterAuthRoutes(engine, func(c *gin.Context) {
+		// v0.7.4: MattermostUser slimmed to id/mobile/name/userName; team_id
+		// flows via the companyId request header (TeamIDFromCtx) instead.
 		c.Set("im_mm_user", &middleware.MattermostUser{
-			ID:        "676cc4ccfbbc501161d5cd65",
-			UserID:    "676cc4ccfbbc501161d5cd65",
-			Name:      "张立超",
-			CompanyID: "6111fb0a202d425d221c53db",
+			ID:       "676cc4ccfbbc501161d5cd65",
+			Name:     "张立超",
+			UserName: "张立超",
 		})
 		c.Set(middleware.UserIDKey, "676cc4ccfbbc501161d5cd65")
 		c.Next()

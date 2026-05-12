@@ -13,44 +13,54 @@ import (
 )
 
 // realFixture is the verified login response payload from cses-pre 张立超.
-// We treat it as the ground-truth shape for all M4 cookie auth tests.
+// v0.7.4: cookieId header value equals userId now — they collapsed into one.
 const (
-	realCookieID  = "69eec6dbe6876865ff98945a"
 	realUserID    = "676cc4ccfbbc501161d5cd65"
+	realCookieID  = realUserID // v0.7.4: cookieId == userId
 	realCompanyID = "6111fb0a202d425d221c53db"
 	realOrgID     = "6311a17c50c75d009ed3864f"
 )
 
+// realUserJSON builds the v0.7.4 nested wire shape stored at UserData:<id>.
+// Top-level holds identity fields only; organizes[] carries org metadata
+// that im ignores at lookup time but the wire shape preserves for parity
+// with the upstream cses-Java writer.
 func realUserJSON(t *testing.T) string {
 	t.Helper()
-	b, err := json.Marshal(MattermostUser{
-		ID:        realUserID,
-		UserID:    realUserID,
-		UserName:  "张立超",
-		Name:      "张立超",
-		CompanyID: realCompanyID,
-		OrgID:     realOrgID,
-		OrgName:   "后端开发",
-		OrgRole:   "Member",
-		DeptID:    "616cee6ef7a6ae6354cddd9b",
-		DeptName:  "技术部",
-		Mobile:    "17692704771",
-		Roles:     []string{"Member"},
-	})
+	payload := map[string]any{
+		"id":       realUserID,
+		"mobile":   "17692704771",
+		"name":     "张立超",
+		"userName": "张立超",
+		"userId":   "",
+		"organizes": []map[string]any{
+			{
+				"companyId":   realCompanyID,
+				"companyName": "中企云链（北京）信息科技有限公司",
+				"deptId":      "616cee6ef7a6ae6354cddd9b",
+				"deptName":    "技术部",
+				"orgId":       realOrgID,
+				"orgName":     "后端开发",
+				"orgType":     "Member",
+				"userId":      realUserID,
+				"userName":    "张立超",
+			},
+		},
+	}
+	b, err := json.Marshal(payload)
 	require.NoError(t, err)
 	return string(b)
 }
 
-// TestCookieRequired_PassesWhenResolverInjected covers the happy path:
-// MattermostCookieResolve writes UserIDKey and TeamIDFromCtx, CookieRequired
-// passes the request through.
+// TestCookieRequired_PassesWhenResolverInjected covers the v0.7.4 happy path:
+// MattermostCookieResolve writes UserIDKey, the companyId header is stamped
+// onto TeamIDFromCtx separately, and CookieRequired passes the request.
 func TestCookieRequired_PassesWhenResolverInjected(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	t.Cleanup(resetCookieCacheForTest)
 	resetCookieCacheForTest()
-	rdb := &fakeRedis{getFn: func(_ context.Context, key, field string) (string, error) {
-		require.Equal(t, MMUserHashKey, key)
-		require.Equal(t, `"`+realCookieID+`"`, field)
+	rdb := &fakeRedis{getFn: func(_ context.Context, key string) (string, error) {
+		require.Equal(t, UserDataKeyPrefix+realUserID, key)
 		return realUserJSON(t), nil
 	}}
 
@@ -70,24 +80,26 @@ func TestCookieRequired_PassesWhenResolverInjected(t *testing.T) {
 
 	req := httptest.NewRequest("GET", "/protected", nil)
 	req.Header.Set(MMCookieHeader, realCookieID)
+	req.Header.Set(MMTeamHeader, realCompanyID)
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 
 	require.Equal(t, 204, w.Code)
 	require.Equal(t, realUserID, seenUID)
-	require.Equal(t, realCompanyID, seenTeam)
+	require.Equal(t, realCompanyID, seenTeam,
+		"v0.7.4: teamID comes from the companyId header, not the Redis payload")
 	require.NotNil(t, seenMM)
 	require.Equal(t, "张立超", seenMM.UserName)
 }
 
 // TestCookieRequired_RejectsMissingCookie returns 401 when the resolver had
-// nothing to inject. This is the M4 hard gate that replaces JWTOrCookie.
+// nothing to inject. This is the hard auth gate.
 func TestCookieRequired_RejectsMissingCookie(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	t.Cleanup(resetCookieCacheForTest)
 	resetCookieCacheForTest()
-	rdb := &fakeRedis{getFn: func(context.Context, string, string) (string, error) {
-		t.Fatalf("HGet must not run when no cookie header is present")
+	rdb := &fakeRedis{getFn: func(context.Context, string) (string, error) {
+		t.Fatalf("Get must not run when no cookie header is present")
 		return "", nil
 	}}
 
@@ -104,12 +116,12 @@ func TestCookieRequired_RejectsMissingCookie(t *testing.T) {
 }
 
 // TestCookieRequired_RejectsInvalidCookie covers the case where the header
-// is present but the cookieId does not exist in the upstream Redis HASH.
+// is present but the userId does not exist at UserData:<userId>.
 func TestCookieRequired_RejectsInvalidCookie(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	t.Cleanup(resetCookieCacheForTest)
 	resetCookieCacheForTest()
-	rdb := &fakeRedis{getFn: func(context.Context, string, string) (string, error) {
+	rdb := &fakeRedis{getFn: func(context.Context, string) (string, error) {
 		return "", redis.Nil
 	}}
 
@@ -128,14 +140,14 @@ func TestCookieRequired_RejectsInvalidCookie(t *testing.T) {
 
 // TestMattermostCookieResolve_LRUHit confirms the second request with the
 // same cookieId reuses the cache and skips Redis. Without this, every
-// authenticated request would pay the 200ms HGET cap and add unnecessary
+// authenticated request would pay the 200ms GET cap and add unnecessary
 // load to the shared cses Redis cluster.
 func TestMattermostCookieResolve_LRUHit(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	t.Cleanup(resetCookieCacheForTest)
 	resetCookieCacheForTest()
 	var hits int32
-	rdb := &fakeRedis{getFn: func(context.Context, string, string) (string, error) {
+	rdb := &fakeRedis{getFn: func(context.Context, string) (string, error) {
 		atomic.AddInt32(&hits, 1)
 		return realUserJSON(t), nil
 	}}
@@ -151,33 +163,14 @@ func TestMattermostCookieResolve_LRUHit(t *testing.T) {
 		r.ServeHTTP(w, req)
 		require.Equal(t, 204, w.Code)
 	}
-	require.EqualValues(t, 1, atomic.LoadInt32(&hits), "second/third request must be served from LRU")
-}
-
-// TestMattermostUser_ResolvedTeamID exercises the CompanyID-first / OrgID-fallback
-// rule. NULL (no org) returns "".
-func TestMattermostUser_ResolvedTeamID(t *testing.T) {
-	cases := []struct {
-		name      string
-		companyID string
-		orgID     string
-		want      string
-	}{
-		{"company present", realCompanyID, realOrgID, realCompanyID},
-		{"company empty falls back to org", "", realOrgID, realOrgID},
-		{"both empty", "", "", ""},
-	}
-	for _, tc := range cases {
-		tc := tc
-		t.Run(tc.name, func(t *testing.T) {
-			u := &MattermostUser{CompanyID: tc.companyID, OrgID: tc.orgID}
-			require.Equal(t, tc.want, u.ResolvedTeamID())
-		})
-	}
-	require.Empty(t, (*MattermostUser)(nil).ResolvedTeamID())
+	require.EqualValues(t, 1, atomic.LoadInt32(&hits),
+		"second/third request must be served from LRU")
 }
 
 // TestMattermostUser_ResolvedUserID — UserID first, ID fallback, nil safe.
+// v0.7.4: upstream now writes the id to "id" and leaves "userId" empty,
+// so the ID-fallback branch is the dominant path; explicit-UserID test
+// preserves source-compat with the rare wire variant.
 func TestMattermostUser_ResolvedUserID(t *testing.T) {
 	require.Equal(t, realUserID, (&MattermostUser{UserID: realUserID, ID: "other"}).ResolvedUserID())
 	require.Equal(t, realUserID, (&MattermostUser{ID: realUserID}).ResolvedUserID())
