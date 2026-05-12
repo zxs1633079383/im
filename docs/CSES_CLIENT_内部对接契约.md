@@ -53,36 +53,83 @@
 
 ## 2. 鉴权契约
 
-### 2.1 单栈：仅信 cookieId
+### 2.1 单栈：仅信 cookieId （v0.7.4 UserData 模型）
 
-> v0.6.0 M4 起，im 后端**不维护本地 users 表**。所有用户身份从 cses 写入的 `Redis HASH "User"` 解析。
+> v0.6.0 M4 起，im 后端**不维护本地 users 表**。所有用户身份从 cses 写入的 Redis 解析。
+> v0.7.4 起 Redis 数据形态由 `HASH "User"` 改为 `STRING "UserData:<userId>"`；同时
+> cookieId header 的值不再是独立 session token，**等于 mm UserID 自身**。
 
 **HTTP 请求**：
 
 ```http
 GET /api/me
-CookieId: 69eec6dbe6876865ff98945a
+cookieId:  676cc4ccfbbc501161d5cd65    ← 即 userId（v0.7.4）
+companyId: 6111fb0a202d425d221c53db    ← 新增必传 header，im 用于 team_id 兜底
 ```
 
-- header 名：`CookieId`（大写 `C`，常量见 `internal/middleware.MMCookieHeader`）
-- 24 字符小写 hex MongoDB ObjectId
-- cses 登录时把 `(cookieId → MMUser{userId, companyId, orgId, name, ...})` HSET 到 Redis hash key `User`
-- im 后端 `MattermostCookieResolve` 中间件 HGET 该 hash + LRU 30s 缓存 → `MMUserFromCtx(c)` 拿到当前用户
-- `CookieRequired` 中间件后置：cookie 缺失 / 无效 → **401**
+- `cookieId` header（大小写不敏感，常量 `internal/middleware.MMCookieHeader`）：
+  24 字符小写 hex；**值等于 mm UserID**（v0.7.4 wire 简化，从前的 session token 模型废弃）
+- `companyId` header（新增，常量 `internal/middleware.MMTeamHeader`）：当前活跃公司 id；
+  im 通过 `TeamIDFromCtx(c)` 直接读，**不再从 Redis 派生**；缺失视为 NULL（无 team 上下文）
+- cses 登录时写 Redis：`SET UserData:<userId> <json>`，json 是身份信息（id/mobile/name/userName + organizes[]）
+- im `MattermostCookieResolve` 中间件 `GET UserData:<userId>` + LRU 30s 缓存 → `MMUserFromCtx(c)` 拿当前用户
+- `CookieRequired` 中间件后置：cookieId header 缺失 / 无效 → **401**
+
+**Redis wire 形态对比**：
+
+| 维度 | v0.6 - v0.7.3（旧） | v0.7.4（新）|
+|---|---|---|
+| Redis 类型 | HASH | **STRING** |
+| Key | `User` | `UserData:<userId>` |
+| Field | `"<cookieId>"`（JSON-quoted）| ——（无）|
+| Value | 平铺 MattermostUser JSON | 嵌套：id/mobile/name/userName + organizes[] |
+| cookieId 语义 | 独立 session token（24-hex）| **= mm UserID** |
+| 公司/组织字段 | 平铺 payload.companyId / orgId / deptId | **不取 payload，从 `companyId` header 读** |
+
+**新 JSON wire 示例**（cses Java 写入）：
+
+```json
+{
+    "id": "676cc4ccfbbc501161d5cd65",
+    "mobile": "17692704771",
+    "name": "张立超",
+    "userName": "张立超",
+    "userId": "",
+    "organizes": [
+        {
+            "companyId": "6111fb0a202d425d221c53db",
+            "companyName": "中企云链（北京）信息科技有限公司",
+            "orgId": "6311a17c50c75d009ed3864f",
+            "orgName": "后端开发",
+            "deptId": "616cee6ef7a6ae6354cddd9b",
+            "deptName": "技术部",
+            "userId": "676cc4ccfbbc501161d5cd65",
+            "userName": "张立超"
+        }
+    ]
+}
+```
+
+im 后端**只读** id / mobile / name / userName 4 个顶层字段；**完全忽略** organizes[] 数组
+（多 organize 由 cses-client 通过 `companyId` header 携带当前活跃公司）。
 
 **WebSocket 握手**：
 
 ```
 GET /ws?device=web-<uuid>
-CookieId: 69eec6dbe6876865ff98945a
+cookieId: 676cc4ccfbbc501161d5cd65    ← 即 userId（v0.7.4）
 ```
 
 3 种鉴权来源（按优先级）：
 1. `CookieId` / `cookieId` HTTP header（首选，与 HTTP 一致）
-2. `?cookie_id=<value>` query 参数（浏览器 fallback，不能设 header 时）
+2. `?cookieId=<value>` / `?cookie_id=<value>` query 参数（浏览器 fallback，不能设 header 时）
 3. `?token=<jwt>` query 参数（JWT 老路径，**仅 admin 入口保留** `/api/admin/*`，业务**禁用**）
 
 握手失败统一 401，**不要**降级到 200。
+
+> ⚠️ **WS 握手不需要 companyId header**：team_id 在 WS 协议层没有用，channel-level
+> 数据访问已经通过 channel_members 表绑定关系实现。companyId header **只在 HTTP**
+> 请求上必传。
 
 ### 2.2 已废弃：register / login
 
@@ -99,13 +146,21 @@ cses-client 不应再调这两个端点。
 
 | 字段 | 值 |
 |---|---|
-| cookieId | `69eec6dbe6876865ff98945a` |
-| userId | `676cc4ccfbbc501161d5cd65` |
-| companyId | `6111fb0a202d425d221c53db` |
+| **cookieId（== userId）** | `676cc4ccfbbc501161d5cd65` |
+| companyId（header 必传） | `6111fb0a202d425d221c53db` |
 | orgId | `6311a17c50c75d009ed3864f` |
 | name | 张立超 |
+| mobile | 17692704771 |
 
-灌库脚本：`server/scripts/seed-mm-cookies.sh`
+灌库脚本：`server/scripts/seed-mm-cookies.sh`（v0.7.4 `SET UserData:<userId>` STRING）
+
+curl smoke：
+
+```bash
+curl -H 'cookieId: 676cc4ccfbbc501161d5cd65' \
+     -H 'companyId: 6111fb0a202d425d221c53db' \
+     http://192.168.6.41:30880/api/me
+```
 
 ---
 

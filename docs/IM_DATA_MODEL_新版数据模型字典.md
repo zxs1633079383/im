@@ -30,7 +30,8 @@
 | 概念 | Go 类型 | JSON 类型 | 编码 | 备注 |
 |---|---|---|---|---|
 | **mm UserID** | `string` | `string` | 24-char lowercase hex | MongoDB ObjectId 格式。所有 `*_id` 用户字段（sender_id / requester_id / approver_id / ...）。**不是** UUID，**不是** 数字。 |
-| **CookieID** | `string` | `string` | 24-char lowercase hex | 同上格式。`CookieId` HTTP header / `?cookie_id=` query / `?token=` 是 JWT 老路径仅 admin 用 |
+| **CookieID** | `string` | `string` | 24-char lowercase hex | **v0.7.4 起 == mm UserID**（值同一）；`cookieId` HTTP header / `?cookieId=` query / `?token=` 是 JWT 老路径仅 admin 用 |
+| **CompanyID（teamID）** | `string` | `string` | 24-char lowercase hex | **v0.7.4 起从 `companyId` HTTP header 取**，不再从 Redis payload 派生；空串视为"无 team 上下文"（PG 存 NULL）|
 | **channel_id** | `int64` | `number` (JS `number`，安全 ≤ 2^53) | autoincrement | im 后端用 PostgreSQL bigserial。客户端 JS `number` 精度足够（2^53 ≈ 9e15，远大于实际行数）|
 | **message_id** | `int64` | `number` | autoincrement | 同上 |
 | **seq** | `int64` | `number` | autoincrement (channel-scoped) | `(channel_id, seq)` 唯一约束，单调递增，gap-free（`AllocSeqAndInsert` 保证原子）|

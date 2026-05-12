@@ -7,11 +7,13 @@
 > - entity / DTO / payload 字段 → `docs/IM_DATA_MODEL_新版数据模型字典.md`（schema reference）
 > - **本文**：用户行为 → 后端实现路径 → ✅ 已覆盖 / ⚙️ 架构换代 / ⚪ cses Java 责任 / 🆕 v0.7.3 gap 补丁
 >
-> **后端状态**：v0.7.3-backend-final + 9 个 gap 补丁全部落地（2026-05-12）
-> - 87 路由 + 26 WSMessageType
+> **后端状态**：v0.7.3-backend-final + 9 个 gap 补丁 + v0.7.4 UserData 鉴权重构（2026-05-12）
+> - 87 路由 + 25 WSMessageType
 > - migration 017 已加（`channels.deleted_at` + `channel_members.nick_name`）
 > - `push_msg` payload 加 `type:"NOTICE"` + `props` 字段（gap #9）
-> - go build ✅ / go vet ✅ / test compile ✅
+> - **v0.7.4 鉴权改造**：Redis 由 `HASH "User"` → `STRING "UserData:<userId>"`；cookieId header
+>   值 == mm UserID；team_id 从新 `companyId` HTTP header 读（不再派生自 Redis payload）
+> - go build ✅ / go vet ✅ / unit test ✅
 >
 > **覆盖率结论**：cses-client messagev3 全部 **41 imHttp + 16 WS + 8 Rust HTTP + 12 Tauri IPC** = **77 个用户层 case 100% 覆盖**（CsesHttp 15 个归 cses Java 业务后端，不在 im 责任范围）。
 
