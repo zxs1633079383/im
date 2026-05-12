@@ -1,5 +1,6 @@
 .PHONY: build-gateway build-message build-sync build-all migrate-up migrate-down test \
-        run-dev run-pre-tunnel run-message-dev run-sync-dev run-all-dev run-all-dev-windows
+        run-dev run-pre-tunnel run-message-dev run-sync-stub run-all-dev run-all-dev-windows \
+        run-all-dev-with-sync run-all-dev-windows-with-sync
 
 # Local dev: start gateway pointing at pre middleware via Consul KV.
 # - Loads im-go/dev/config.yaml from consul-pre (PG/Redis/Pulsar via NodePort)
@@ -38,9 +39,10 @@ run-message-dev:
 	OTEL_SERVICE_NAME=im-message-local \
 	go run ./cmd/message
 
-# sync: M5/M6 同步服务。当前 cmd/sync 还是 skeleton（启动立即退出，等 Plan 7 实现），
-# 这条 target 留出来跟另外两个对齐，方便日后落实 sync 主循环时不改外部脚本。
-run-sync-dev:
+# sync-stub: 仅启动 cmd/sync/main.go 16 行预留入口，**会立即退出**。
+# sync 业务功能（POST /api/sync）实际在 gateway 进程里，run-dev 已经覆盖。
+# 这条 target 只用来验证 cmd/sync binary 可编译——不要把它当成"启动 sync 服务"。
+run-sync-stub:
 	IM_ENV=dev \
 	IM_CONSUL_URL=http://consul-pre.jinqidongli.com \
 	IM_CONSUL_KEY=im-go/dev/config.yaml \
@@ -49,16 +51,26 @@ run-sync-dev:
 	OTEL_SERVICE_NAME=im-sync-local \
 	go run ./cmd/sync
 
-# 三服务一键启 —— 单窗口聚合日志，按 ANSI 颜色 + 前缀 tag 区分。Ctrl+C 整体退。
-# 同时写一份到 server/logs/dev/{gateway,message,sync}.log 便于事后 grep。
+# 全栈一键启 —— 单窗口聚合 gateway + message 两个真实服务，
+# ANSI 颜色 + 前缀 tag 区分。Ctrl+C 整体退。
+# 同时写一份到 server/logs/dev/{gateway,message}.log 便于事后 grep。
+# sync 业务在 gateway 进程内，不需要额外启。
 run-all-dev:
 	./scripts/run-all-dev.sh aggregated
 
-# 三服务一键启 —— 多窗口模式（优先 tmux session 'im-dev'，回退 macOS Terminal.app）。
-# 用 tmux attach -t im-dev 进入；Ctrl+B 0/1/2 切 gateway/message/sync 窗口；
+# 同上，但额外启 sync stub（cmd/sync 预留入口，会立即退出）。仅用于演示 / 验证编译。
+run-all-dev-with-sync:
+	./scripts/run-all-dev.sh aggregated --with-sync-stub
+
+# 多窗口模式（优先 tmux session 'im-dev'，回退 macOS Terminal.app）。
+# 用 tmux attach -t im-dev 进入；Ctrl+B 0/1 切 gateway/message 窗口；
 # tmux kill-session -t im-dev 整体停。
 run-all-dev-windows:
 	./scripts/run-all-dev.sh windows
+
+# 同上 + sync stub 第三个窗口。
+run-all-dev-windows-with-sync:
+	./scripts/run-all-dev.sh windows --with-sync-stub
 
 
 build-gateway:
