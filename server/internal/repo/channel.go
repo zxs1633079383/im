@@ -75,6 +75,17 @@ type ChannelRepo interface {
 	// the caller can thread it through AddMemberTx / RemoveMemberTx /
 	// MessageRepo.AllocSeqAndInsert.
 	WithinTx(ctx context.Context, fn func(tx *gorm.DB) error) error
+
+	// SoftDelete marks the channel as closed by stamping deleted_at = now().
+	// Idempotent: rows with deleted_at already set return ErrGone so the
+	// service layer can skip re-broadcasting channel_closed. (v0.7.3 gap #1)
+	SoftDelete(ctx context.Context, channelID int64) (*Channel, error)
+
+	// UpdateMemberNickname overwrites channel_members.nick_name for the given
+	// (channel_id, user_id) tuple. Empty string is allowed (clears the
+	// override → falls back to global display name). Returns ErrNotFound when
+	// the member row does not exist. (v0.7.3 gap #5)
+	UpdateMemberNickname(ctx context.Context, channelID int64, userID, nickName string) error
 }
 
 type gormChannelRepo struct{ db *gorm.DB }

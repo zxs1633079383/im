@@ -42,6 +42,12 @@ type Channel struct {
 	RootMessageID *int64    `gorm:"column:root_message_id"                                  json:"root_message_id,omitempty"`
 	CreatedAt     time.Time `gorm:"column:created_at;not null;default:now()"                json:"created_at"`
 	UpdatedAt     time.Time `gorm:"column:updated_at;not null;default:now()"                json:"updated_at"`
+	// DeletedAt is set when the owner soft-deletes ("解散") the channel via
+	// DELETE /api/channels/:id. NULL = active; non-NULL = closed. cses-client
+	// reads `channel.deleted_at > 0` to mark dialog rows as removed; the WS
+	// frame `channel_closed` (gap #1+#3) carries channel_id + deleted_at so
+	// every member's UI converges on the same closed state.
+	DeletedAt *time.Time `gorm:"column:deleted_at" json:"deleted_at,omitempty"`
 }
 
 // TableName pins the GORM-derived table name to the migration.
@@ -63,7 +69,12 @@ type ChannelMember struct {
 	PhantomAtRead int64     `gorm:"column:phantom_at_read;not null;default:0"               json:"phantom_at_read"`
 	NotifyPref    int16     `gorm:"column:notify_pref;not null;default:0"                   json:"notify_pref"`
 	IsTop         bool      `gorm:"column:is_top;not null;default:false"                    json:"is_top"`
-	JoinedAt      time.Time `gorm:"column:joined_at;not null;default:now()"                 json:"joined_at"`
+	// NickName is the per-(user, channel) display name override. Empty string
+	// (the default) means "fall back to the user's global display name from
+	// the cses Redis User hash". Updated via PATCH /channels/:id/members/:user_id
+	// (gap #5) and fanned out as channel_member_updated WS to every member.
+	NickName string    `gorm:"column:nick_name;type:varchar(64);not null;default:''"   json:"nick_name"`
+	JoinedAt time.Time `gorm:"column:joined_at;not null;default:now()"                 json:"joined_at"`
 }
 
 // TableName pins the GORM-derived table name to the migration.

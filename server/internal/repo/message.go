@@ -15,13 +15,20 @@ import (
 const SysTypeKey = "sys_type"
 
 // System-message sys_type values. Kept as untyped string constants so callers
-// drop them straight into props maps without conversion.
+// drop them straight into props maps without conversion. v0.7.3 adds three
+// flavours for cses-client cutover gaps #1/#4/#5:
+//   - channel_closed       owner 解散群聊（gap #1+#3）
+//   - member_nickname      per-channel 昵称变更（gap #5）
+//   - 现有 member_joined / member_removed / member_left 已覆盖 gap #4
+//     之外，新增 ChannelMemberUpdatedPayload WS 把完整 channel snapshot 推全员。
 const (
-	SysTypeChannelCreated = "channel_created"
-	SysTypeChannelUpdated = "channel_updated"
-	SysTypeMemberJoined   = "member_joined"
-	SysTypeMemberRemoved  = "member_removed"
-	SysTypeMemberLeft     = "member_left"
+	SysTypeChannelCreated  = "channel_created"
+	SysTypeChannelUpdated  = "channel_updated"
+	SysTypeChannelClosed   = "channel_closed"
+	SysTypeMemberJoined    = "member_joined"
+	SysTypeMemberRemoved   = "member_removed"
+	SysTypeMemberLeft      = "member_left"
+	SysTypeMemberNickname  = "member_nickname"
 )
 
 // ErrInvalidSystemProps is returned by PostSystemMessage when the props map
@@ -74,6 +81,11 @@ type MessageRepo interface {
 	FetchAround(ctx context.Context, channelID int64, userID string, aroundSeq int64, limit int) ([]Message, error)
 	FetchAroundTimestamp(ctx context.Context, channelID int64, userID string, ts time.Time, limit int) (older []Message, newer []Message, err error)
 	FetchReplies(ctx context.Context, rootID int64, userID string) ([]Message, error)
+	// FetchRepliesPage is the page-aware sibling of FetchReplies — used by
+	// the cses-client reply-branch pagination (v0.7.3 gap #2). offset / limit
+	// are pre-validated by the service layer; passing limit <= 0 returns
+	// an empty slice.
+	FetchRepliesPage(ctx context.Context, rootID int64, userID string, offset, limit int) ([]Message, error)
 	GetReaders(ctx context.Context, channelID, seq int64, cursor string, limit int) (readers []string, nextCursor string, err error)
 }
 
