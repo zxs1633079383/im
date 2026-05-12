@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# seed-mm-cookies-bulk.sh — generate N synthetic mm-shaped cookie/user
-# fixtures and HSet them into the upstream cses Redis HASH "User", then
-# write a CSV (cookieId,userId) for k6 / load tests to consume.
+# seed-mm-cookies-bulk.sh — generate N synthetic mm-shaped user fixtures
+# and SET them into the upstream cses Redis as `UserData:<userId>` STRING
+# keys, then write a CSV (cookieId,userId — equal per v0.7.4) for k6 /
+# load tests to consume.
 #
 # Reproducing internal/testutil.CookieFixture's wire shape exactly so a
 # pre cluster sees the same JSON the production cses-server would write.
@@ -48,27 +49,27 @@ redis_args=(-h "${REDIS_HOST%:*}" -p "${REDIS_HOST##*:}")
 pad_hex_23() { printf '%023x' "$1"; }
 
 START=$(date +%s)
-echo "==> seeding $N cookies into $REDIS_HOST db=$REDIS_DB"
+echo "==> seeding $N userIds into $REDIS_HOST db=$REDIS_DB"
 echo "    prefix=$PREFIX company_id=$COMPANY_ID out=$OUT"
 
-# Pass 1 — write the full CSV first. Decoupling CSV from Redis I/O makes
-# the script idempotent against Redis flakes (SIGPIPE from a rejected
-# pipe-mode no longer truncates the CSV mid-loop).
+# Pass 1 — write the full CSV first. v0.7.4: cookieId == userId, so each
+# line carries the same id twice for source-compat with old k6 scripts
+# that expect a (cookieId,userId) tuple.
 : > "$OUT"
 for ((i=1; i<=N; i++)); do
     hex=$(pad_hex_23 "$i")
-    printf '%s%s,b%s\n' "$PREFIX" "$hex" "$hex" >> "$OUT"
+    user_id="${PREFIX}${hex}"
+    printf '%s,%s\n' "$user_id" "$user_id" >> "$OUT"
 done
 
-# Pass 2 — replay the CSV into Redis. Single key (HASH "User") so a
-# pipelined HSET stream stays on one Cluster slot. Use redis-cli's TX
-# friendly mode by sending one command per line on stdin; --pipe is
-# strictest about RESP framing, so feed inline commands instead.
-echo "==> replaying CSV → HSet User"
+# Pass 2 — replay the CSV into Redis. v0.7.4: STRING SET UserData:<userId>;
+# inline new nested wire shape (organizes[]) so fixtures stay faithful to
+# what cses Java will write in production.
+echo "==> replaying CSV → SET UserData:<userId>"
 seed_count=0
-while IFS=, read -r cookie_id user_id; do
-    body="{\"id\":\"$user_id\",\"userId\":\"$user_id\",\"userName\":\"k6-$cookie_id\",\"name\":\"k6-$cookie_id\",\"companyId\":\"$COMPANY_ID\",\"orgId\":\"$COMPANY_ID\",\"roles\":[\"Member\"],\"orgRole\":\"Member\"}"
-    redis-cli "${redis_args[@]}" HSET User "\"$cookie_id\"" "$body" >/dev/null
+while IFS=, read -r _cookie_id user_id; do
+    body="{\"id\":\"$user_id\",\"mobile\":\"\",\"name\":\"k6-$user_id\",\"userName\":\"k6-$user_id\",\"userId\":\"\",\"organizes\":[{\"companyId\":\"$COMPANY_ID\",\"orgId\":\"$COMPANY_ID\",\"orgType\":\"Member\",\"userId\":\"$user_id\",\"userName\":\"k6-$user_id\"}]}"
+    redis-cli "${redis_args[@]}" SET "UserData:${user_id}" "$body" >/dev/null
     seed_count=$((seed_count + 1))
     if (( seed_count % 100 == 0 )); then
         echo "    ... $seed_count / $N seeded"
@@ -76,9 +77,9 @@ while IFS=, read -r cookie_id user_id; do
 done < "$OUT"
 
 END=$(date +%s)
-echo "==> seeded $seed_count cookies in $((END-START))s"
-echo "    csv → $OUT (cookieId,userId per line)"
+echo "==> seeded $seed_count userIds in $((END-START))s"
+echo "    csv → $OUT (cookieId,userId per line — equal in v0.7.4)"
 echo
 echo "verify any one entry with:"
-first=$(head -1 "$OUT" | cut -d, -f1)
-echo "  redis-cli ${redis_args[*]} HGET User '\"$first\"' | head -c 120"
+first=$(head -1 "$OUT" | cut -d, -f2)
+echo "  redis-cli ${redis_args[*]} GET 'UserData:$first' | head -c 200"

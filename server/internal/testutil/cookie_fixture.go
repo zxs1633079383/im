@@ -13,23 +13,30 @@ import (
 	"im-server/internal/middleware"
 )
 
-// RealCookieID is the verified cses-pre cookieId for the production test
-// fixture (张立超). Reuse it in any test that does not need to invent a new
-// identity — that way the same cookieId works in unit tests, integration
-// tests, and the seed-mm-cookies.sh manual e2e flow.
+// RealCookieID / RealUserID are the verified cses-pre identity for the
+// production test fixture (张立超). v0.7.4 wire change: cookieId == userId
+// now (no separate session token), so both constants reference the same
+// value. Reuse them in any test that does not need to invent a new identity
+// — that way the same id works in unit tests, integration tests, and the
+// seed-mm-cookies.sh manual e2e flow.
 const (
-	RealCookieID  = "69eec6dbe6876865ff98945a"
 	RealUserID    = "676cc4ccfbbc501161d5cd65"
+	RealCookieID  = RealUserID
 	RealCompanyID = "6111fb0a202d425d221c53db"
 	RealOrgID     = "6311a17c50c75d009ed3864f"
 	RealUserName  = "张立超"
 )
 
 // CookieFixture writes a Mattermost-shaped user payload into the upstream
-// Redis HASH "User" so a request bearing cookieId clears MattermostCookieResolve
-// + CookieRequired. The returned headerValue is what handlers should send
-// back as the cookieId header. The fixture is automatically removed on
-// t.Cleanup.
+// Redis STRING `UserData:<userId>` so a request bearing cookieId clears
+// MattermostCookieResolve + CookieRequired. Returns the cookieId header
+// value to send back on each request. The fixture is automatically removed
+// on t.Cleanup.
+//
+// v0.7.4 contract change: companyId no longer comes from the Redis payload —
+// callers must additionally set the `companyId` request header for
+// TeamIDFromCtx to return non-empty. Use CookieFixtureWithTeam when you need
+// both pieces back in one call.
 //
 // Example:
 //
@@ -37,11 +44,17 @@ const (
 //	    testutil.RealUserID, testutil.RealCompanyID)
 //	expect.GET("/api/channels").
 //	    WithHeader(middleware.MMCookieHeader, cookie).
+//	    WithHeader(middleware.MMTeamHeader, testutil.RealCompanyID).
 //	    Expect().Status(200)
 //
 // All three positional arguments must already be 24-char hex (see
 // auth.ValidateUserID); the helper panics otherwise so a typo in a fixture
 // fails loudly instead of silently producing an unauthorised request.
+//
+// v0.7.4: cookieID and userID MUST be equal — the new wire shape collapsed
+// the two into one (cookieId header value is the userId). The signature
+// keeps both args for source-compat with existing call sites; mismatched
+// values trigger t.Fatal so accidental drift is loud.
 func CookieFixture(t *testing.T, rdb redis.UniversalClient, cookieID, userID, companyID string) string {
 	t.Helper()
 	requireHex24(t, "cookieID", cookieID)
@@ -49,70 +62,106 @@ func CookieFixture(t *testing.T, rdb redis.UniversalClient, cookieID, userID, co
 	if companyID != "" {
 		requireHex24(t, "companyID", companyID)
 	}
-
-	user := middleware.MattermostUser{
-		ID:        userID,
-		UserID:    userID,
-		UserName:  fmt.Sprintf("test-%s", userID[:8]),
-		Name:      fmt.Sprintf("test-%s", userID[:8]),
-		CompanyID: companyID,
-		OrgID:     companyID,
-		Roles:     []string{"Member"},
-		OrgRole:   "Member",
-	}
-	if cookieID == RealCookieID {
-		// Reproduce the exact wire shape we got from cses-server-pre-0
-		// for parity with manual e2e replay.
-		user.UserName = RealUserName
-		user.Name = RealUserName
-		user.CompanyID = RealCompanyID
-		user.OrgID = RealOrgID
-		user.OrgName = "后端开发"
-		user.DeptID = "616cee6ef7a6ae6354cddd9b"
-		user.DeptName = "技术部"
-		user.Mobile = "17692704771"
+	if cookieID != userID {
+		t.Fatalf("v0.7.4 wire requires cookieID == userID; got cookieID=%q userID=%q", cookieID, userID)
 	}
 
+	user := buildUserPayload(userID, companyID)
 	raw, err := json.Marshal(user)
 	if err != nil {
 		t.Fatalf("CookieFixture marshal: %v", err)
 	}
-	field := fmt.Sprintf("%q", cookieID)
 
+	key := middleware.UserDataKeyPrefix + userID
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	if err := rdb.HSet(ctx, middleware.MMUserHashKey, field, string(raw)).Err(); err != nil {
-		t.Fatalf("CookieFixture HSet: %v", err)
+	if err := rdb.Set(ctx, key, string(raw), 0).Err(); err != nil {
+		t.Fatalf("CookieFixture SET: %v", err)
 	}
 	t.Cleanup(func() {
 		clean, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
-		_ = rdb.HDel(clean, middleware.MMUserHashKey, field).Err()
+		_ = rdb.Del(clean, key).Err()
 	})
 	return cookieID
 }
 
-// MakeCookieID returns a deterministic 24-char hex cookieId derived from
-// seed. Useful when a test needs multiple distinct identities. seed >= 0.
-func MakeCookieID(seed int) string {
-	if seed < 0 {
-		seed = -seed
-	}
-	return fmt.Sprintf("c%023x", uint64(seed)+1)
+// userPayload mirrors the v0.7.4 cses-Java UserData JSON envelope. organizes[]
+// is filled so the wire shape stays faithful to production — im itself ignores
+// the field at lookup time but cses-client / debug tooling reads it.
+type userPayload struct {
+	ID        string             `json:"id"`
+	Mobile    string             `json:"mobile"`
+	Name      string             `json:"name"`
+	UserName  string             `json:"userName"`
+	UserID    string             `json:"userId"` // intentionally empty in new wire shape
+	Organizes []organizePayload  `json:"organizes,omitempty"`
 }
 
-// MakeUserID returns a deterministic 24-char hex userId derived from seed.
-// The format starts with "u" then 23 hex digits so generated ids never
-// collide with the cookieId space (lower-case 'u' is not hex).
-//
-// NOTE: 'u' is not a valid hex char, so this id will fail
-// auth.ValidateUserID. For callers that need a *valid* hex id (production
-// code paths), use HexUserID instead.
-func MakeUserID(seed int) string {
-	if seed < 0 {
-		seed = -seed
+type organizePayload struct {
+	CompanyID   string `json:"companyId"`
+	CompanyName string `json:"companyName,omitempty"`
+	DeptID      string `json:"deptId,omitempty"`
+	DeptName    string `json:"deptName,omitempty"`
+	OrgID       string `json:"orgId,omitempty"`
+	OrgName     string `json:"orgName,omitempty"`
+	OrgType     string `json:"orgType,omitempty"`
+	UserID      string `json:"userId"`
+	UserName    string `json:"userName"`
+}
+
+// buildUserPayload returns the v0.7.4 nested JSON shape. Helper is split out
+// so tests can hand-craft alternative shapes (e.g. organizes-missing) without
+// repeating the struct literal.
+func buildUserPayload(userID, companyID string) userPayload {
+	displayName := fmt.Sprintf("test-%s", userID[:8])
+	mobile := ""
+	orgID := companyID
+	orgName := ""
+	deptID := ""
+	deptName := ""
+	if userID == RealUserID {
+		displayName = RealUserName
+		mobile = "17692704771"
+		orgID = RealOrgID
+		orgName = "后端开发"
+		deptID = "616cee6ef7a6ae6354cddd9b"
+		deptName = "技术部"
 	}
-	return fmt.Sprintf("u%023x", uint64(seed)+1)
+	out := userPayload{
+		ID:       userID,
+		Mobile:   mobile,
+		Name:     displayName,
+		UserName: displayName,
+		UserID:   "", // v0.7.4: upstream now writes the id to "id" only
+	}
+	if companyID != "" {
+		out.Organizes = []organizePayload{{
+			CompanyID:   companyID,
+			CompanyName: "fixture-co",
+			DeptID:      deptID,
+			DeptName:    deptName,
+			OrgID:       orgID,
+			OrgName:     orgName,
+			OrgType:     "Member",
+			UserID:      userID,
+			UserName:    displayName,
+		}}
+	}
+	return out
+}
+
+// MakeCookieID returns a deterministic 24-char hex id derived from seed.
+// v0.7.4: same id can be used for both cookieId header and userId argument.
+// Useful when a test needs multiple distinct identities. seed >= 0.
+func MakeCookieID(seed int) string {
+	return HexUserID(seed)
+}
+
+// MakeUserID is preserved for source compatibility — returns the same
+// deterministic 24-hex id as MakeCookieID since the two collapsed in v0.7.4.
+func MakeUserID(seed int) string {
+	return HexUserID(seed)
 }
 
 // HexUserID returns a 24-char lowercase-hex id derived from seed,
@@ -133,15 +182,12 @@ func requireHex24(t *testing.T, name, s string) {
 		c := s[i]
 		ok := (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')
 		if !ok {
-			// Allow leading 'c' in cookieId (MakeCookieID convention)
-			if i == 0 && name == "cookieID" && c == 'c' {
-				continue
-			}
 			t.Fatalf("%s contains non-hex byte %q at offset %d (%q)", name, c, i, s)
 		}
 	}
-	if name == "cookieID" && strings.HasPrefix(s, "c") && len(s) == 24 {
-		// Acceptable — generated by MakeCookieID.
-		return
+	// Defensive: catch the legacy 'c'-prefix cookieId convention from
+	// pre-v0.7.4 fixtures. Those are no longer valid hex userIds.
+	if strings.HasPrefix(s, "c") && name == "cookieID" {
+		t.Fatalf("v0.7.4: cookieID must equal userID and must be pure hex (got legacy 'c'-prefixed %q)", s)
 	}
 }
