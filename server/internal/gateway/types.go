@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"time"
+
+	"im-server/internal/repo"
 )
 
 // ChannelSeqStore is the minimal interface needed to look up server-side channel seqs.
@@ -62,6 +64,22 @@ const (
 	// TypeChannelInfoUpdated is pushed to channel members when notice / purpose /
 	// orient / permission changes (v0.7.0 — channel governance extras).
 	TypeChannelInfoUpdated WSMessageType = "channel_info_updated"
+	// TypeChannelClosed is pushed to every member of a channel when the owner
+	// soft-deletes the channel via DELETE /api/channels/:id (v0.7.3 gap #1+#3).
+	// Payload: ChannelClosedPayload.
+	TypeChannelClosed WSMessageType = "channel_closed"
+	// TypeChannelMemberUpdated is pushed to every member when the member roster
+	// changes — add / remove / nickname (v0.7.3 gap #4 + #5). Payload carries
+	// the full channel snapshot so clients can replace local channel state in
+	// one pass instead of patching N fields. Same shape for join, leave, kick,
+	// nickname rename — discriminator is `change_type` inside the payload.
+	TypeChannelMemberUpdated WSMessageType = "channel_member_updated"
+	// TypeScheduleCreated is pushed to the sender's other devices when they
+	// create a scheduled message (v0.7.3 gap #7). Payload: ChannelSchedulePayload.
+	TypeScheduleCreated WSMessageType = "schedule_created"
+	// TypeScheduleCanceled is pushed to the sender's other devices when they
+	// cancel a pending scheduled message (v0.7.3 gap #7).
+	TypeScheduleCanceled WSMessageType = "schedule_canceled"
 )
 
 // WSFrame is the top-level envelope for every WebSocket message.
@@ -84,18 +102,55 @@ type PongPayload struct {
 	ChannelSeqs map[string]int64 `json:"channel_seqs,omitempty"`
 }
 
+// NoticeType is the cses-client-facing discriminator carried at the top level
+// of every push_msg frame. It mirrors the legacy mattermost wire shape so the
+// existing cses-client Rust path (`data.get("type") == "NOTICE"` in
+// `src-tauri/.../message_service.rs`) keeps working unchanged. Plain chat
+// messages (text / image / file) leave it empty (omitempty drops the field);
+// system messages (msg_type=4) carry "NOTICE" so the client can branch on it
+// and decide whether to merge channel-level updates from props.sys_type.
+type NoticeType string
+
+// NoticeTypeNotice marks a frame as a system / NOTICE message — i.e. one whose
+// props.sys_type drives channel-state derivation on the client side.
+const NoticeTypeNotice NoticeType = "NOTICE"
+
+// NoticeTypeForMsgType maps a repo.Message.MsgType to the wire-level
+// NoticeType. Returning "" means "no notice classification" (regular chat);
+// returning NoticeTypeNotice means "this is a system event the client must
+// drain via props.sys_type". The mapping lives here so every push_msg
+// builder (ws_handler / cmd/gateway / cmd/message) shares one rule.
+func NoticeTypeForMsgType(msgType int16) NoticeType {
+	if msgType == repo.MsgTypeSystem {
+		return NoticeTypeNotice
+	}
+	return ""
+}
+
+// DerefStringPtr returns *p or "" when p is nil. Provided once at the gateway
+// package level so every push_msg builder spells the optional Props copy the
+// same way — keeps callers from inventing their own helper names.
+func DerefStringPtr(p *string) string {
+	if p == nil {
+		return ""
+	}
+	return *p
+}
+
 // PushMsgPayload is sent server→client when a new message is available.
 // M4: SenderID + VisibleTo are mm UserIDs (24-hex strings).
 type PushMsgPayload struct {
-	PushID    string    `json:"push_id"`    // idempotency key for ACK
-	ChannelID int64     `json:"channel_id"`
-	Seq       int64     `json:"seq"`
-	ServerID  int64     `json:"server_msg_id"`
-	SenderID  string    `json:"sender_id"`
-	Content   string    `json:"content,omitempty"`
-	MsgType   int16     `json:"msg_type"`             // 1=normal, 2=phantom
-	VisibleTo []string  `json:"visible_to,omitempty"`
-	CreatedAt time.Time `json:"created_at"`
+	PushID    string     `json:"push_id"` // idempotency key for ACK
+	Type      NoticeType `json:"type,omitempty"`
+	ChannelID int64      `json:"channel_id"`
+	Seq       int64      `json:"seq"`
+	ServerID  int64      `json:"server_msg_id"`
+	SenderID  string     `json:"sender_id"`
+	Content   string     `json:"content,omitempty"`
+	MsgType   int16      `json:"msg_type"` // 1=text/2=image/3=file/4=system/99=phantom
+	VisibleTo []string   `json:"visible_to,omitempty"`
+	Props     string     `json:"props,omitempty"` // raw JSONB; populated when MsgType=System
+	CreatedAt time.Time  `json:"created_at"`
 }
 
 // PushACKPayload is the client's acknowledgement of a PushMsgPayload.
@@ -150,6 +205,68 @@ type ChannelEventPayload struct {
 	EventType string `json:"event_type"` // "added"
 	ChannelID int64  `json:"channel_id"`
 	Name      string `json:"name"`
+}
+
+// ChannelClosedPayload is pushed to every member when owner解散群聊.
+// `deleted_at` is the RFC3339 timestamp that landed in channels.deleted_at —
+// cses-client uses it as the `dialog.deleteAt` source-of-truth marker (see
+// `channelConfigBase.service.ts` deleteAt > 0 branch).
+type ChannelClosedPayload struct {
+	ChannelID int64     `json:"channel_id"`
+	ActorID   string    `json:"actor_id"` // mm UserID of the owner who closed it
+	DeletedAt time.Time `json:"deleted_at"`
+}
+
+// MemberChangeType discriminates ChannelMemberUpdatedPayload variants. cses-
+// client routes the payload to add / remove / leave / kick / nickname branches
+// based on this field. Constants spelt out so the wire grammar is stable.
+type MemberChangeType string
+
+const (
+	// MemberChangeJoin: someone (caller or admin) added a new member.
+	MemberChangeJoin MemberChangeType = "join"
+	// MemberChangeLeave: a member voluntarily left.
+	MemberChangeLeave MemberChangeType = "leave"
+	// MemberChangeKick: an admin / owner removed a member.
+	MemberChangeKick MemberChangeType = "kick"
+	// MemberChangeNickname: a member updated their per-channel nickname.
+	MemberChangeNickname MemberChangeType = "nickname"
+)
+
+// ChannelMemberUpdatedPayload carries the post-change channel snapshot plus
+// the diff metadata (actor / target / change_type). cses-client overrides
+// local dialog state with `payload.channel` and surfaces a UI notice based on
+// `change_type`. NickName is filled only when ChangeType==Nickname.
+type ChannelMemberUpdatedPayload struct {
+	ChannelID  int64            `json:"channel_id"`
+	ChangeType MemberChangeType `json:"change_type"`
+	ActorID    string           `json:"actor_id"`            // mm UserID of the actor
+	TargetID   string           `json:"target_id"`           // mm UserID of the affected member
+	NickName   string           `json:"nick_name,omitempty"` // only for change_type=nickname
+	// Members is the full post-change roster snapshot so the client can
+	// replace local membership in one pass (avoids re-fetching by channelId).
+	Members []ChannelMemberSummary `json:"members"`
+}
+
+// ChannelMemberSummary is the minimal per-member projection bundled inside
+// channel_member_updated. Keep it lean to bound payload size — clients fetch
+// per-user profile (avatar, display name) from the cses Redis "User" hash.
+type ChannelMemberSummary struct {
+	UserID    string `json:"user_id"`
+	Role      int16  `json:"role"`
+	NickName  string `json:"nick_name,omitempty"`
+	IsTop     bool   `json:"is_top,omitempty"`
+	NotifyRef int16  `json:"notify_pref,omitempty"`
+}
+
+// ChannelSchedulePayload is pushed to the sender's other devices when a
+// scheduled message is created / cancelled (v0.7.3 gap #7). cses-client uses
+// the boolean to flip `dialog.hasSchedulePost` so the conversation badge stays
+// in sync across devices.
+type ChannelSchedulePayload struct {
+	ChannelID        int64 `json:"channel_id"`
+	ScheduledID      int64 `json:"scheduled_id"`
+	HasSchedulePost  bool  `json:"has_schedule_post"`
 }
 
 // PulsarPushEnvelope is the wire format for every cross-pod push event.

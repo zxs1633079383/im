@@ -372,6 +372,7 @@ func (h *WsHandler) handleSend(conn *Conn, payload json.RawMessage) {
 			}
 			pushPayload := PushMsgPayload{
 				PushID:    fmt.Sprintf("ws-%d-%d", msg.ChannelID, msg.Seq),
+				Type:      NoticeTypeForMsgType(pushMsg.MsgType),
 				ChannelID: pushMsg.ChannelID,
 				Seq:       pushMsg.Seq,
 				ServerID:  pushMsg.ID,
@@ -379,6 +380,7 @@ func (h *WsHandler) handleSend(conn *Conn, payload json.RawMessage) {
 				Content:   pushMsg.Content,
 				MsgType:   pushMsg.MsgType,
 				VisibleTo: pushMsg.VisibleTo,
+				Props:     DerefStringPtr(pushMsg.Props),
 				CreatedAt: pushMsg.CreatedAt,
 			}
 			h.hub.PushToUser(m.UserID, TypePushMsg, pushPayload)
