@@ -31,6 +31,9 @@ type ScheduledService struct {
 	scheduled repo.ScheduledRepo
 	channels  channelMemberStore
 	sender    scheduledMsgSender
+	// pusher is the v0.7.3 multi-device fan-out hook (gap #7). nil = no
+	// schedule_created / schedule_canceled WS push (tests skip the hub).
+	pusher ScheduledEventPusher
 }
 
 // NewScheduledService wires deps. sender is typically a *MessageService.
@@ -90,6 +93,10 @@ func (s *ScheduledService) Create(ctx context.Context, p ScheduledCreateParams) 
 	if err := s.scheduled.Create(ctx, sm); err != nil {
 		return nil, err
 	}
+	// v0.7.3 gap #7: notify the sender's other devices so `hasSchedulePost`
+	// flips to true everywhere. Fire-and-forget; failures don't roll the
+	// create back.
+	s.fanScheduleEvent(p.SenderID, ScheduledEventCreated, sm, true)
 	return sm, nil
 }
 
@@ -115,6 +122,11 @@ func (s *ScheduledService) Cancel(ctx context.Context, id int64, callerID string
 		}
 		return err
 	}
+	// gap #7: post-cancel, compute whether the channel still has any pending
+	// rows so cses-client can flip `hasSchedulePost` to false when the last
+	// pending entry is cleared.
+	hasMore := s.hasPendingForChannel(ctx, callerID, sm.ChannelID)
+	s.fanScheduleEvent(callerID, ScheduledEventCanceled, sm, hasMore)
 	return nil
 }
 

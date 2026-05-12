@@ -37,6 +37,10 @@ type ChannelService struct {
 	// system message (MsgType=System) carrying a typed props payload so
 	// clients receive the event through the normal push_msg + /api/sync pipe.
 	messages repo.MessageRepo
+	// broadcaster is the v0.7.3 fan-out hook for channel_member_updated WS
+	// frames (gap #4 + #5). nil = no real-time broadcast (the integration /
+	// unit tests don't wire a hub).
+	broadcaster ChannelMemberBroadcaster
 }
 
 // NewChannelService wires the supplied repos. messages may be nil — when nil,
@@ -187,6 +191,9 @@ func (s *ChannelService) AddMember(ctx context.Context, channelID int64, callerI
 		teamID = ch.TeamID
 	}
 	_ = s.postSys(ctx, nil, channelID, callerID, teamID, memberJoinedProps(callerID, newUserID))
+	// v0.7.3 gap #4: fan a channel_member_updated frame to every member so
+	// other devices see the new roster without re-fetching by channelId.
+	s.fanMemberUpdate(ctx, channelID, MemberChangeJoin, callerID, newUserID, "")
 	if ch == nil {
 		return "", nil
 	}
@@ -213,19 +220,28 @@ func (s *ChannelService) RemoveMember(ctx context.Context, channelID int64, call
 
 func (s *ChannelService) removeMemberAtomic(ctx context.Context, channelID int64, actorID, targetID string) error {
 	if s.messages == nil {
-		return s.channels.RemoveMember(ctx, channelID, targetID)
+		if err := s.channels.RemoveMember(ctx, channelID, targetID); err != nil {
+			return err
+		}
+		s.fanMemberUpdate(ctx, channelID, MemberChangeKick, actorID, targetID, "")
+		return nil
 	}
 	ch, _ := s.channels.GetByID(ctx, channelID)
 	var teamID *string
 	if ch != nil {
 		teamID = ch.TeamID
 	}
-	return s.channels.WithinTx(ctx, func(tx *gorm.DB) error {
+	err := s.channels.WithinTx(ctx, func(tx *gorm.DB) error {
 		if err := s.postSys(ctx, tx, channelID, actorID, teamID, memberRemovedProps(actorID, targetID)); err != nil {
 			return err
 		}
 		return s.channels.RemoveMemberTx(ctx, tx, channelID, targetID)
 	})
+	if err != nil {
+		return err
+	}
+	s.fanMemberUpdate(ctx, channelID, MemberChangeKick, actorID, targetID, "")
+	return nil
 }
 
 // ListMembers returns all members of channelID. Caller must be a member.
@@ -266,19 +282,28 @@ func (s *ChannelService) LeaveChannel(ctx context.Context, channelID int64, call
 
 func (s *ChannelService) leaveChannelAtomic(ctx context.Context, channelID int64, callerID string) error {
 	if s.messages == nil {
-		return s.channels.RemoveMember(ctx, channelID, callerID)
+		if err := s.channels.RemoveMember(ctx, channelID, callerID); err != nil {
+			return err
+		}
+		s.fanMemberUpdate(ctx, channelID, MemberChangeLeave, callerID, callerID, "")
+		return nil
 	}
 	ch, _ := s.channels.GetByID(ctx, channelID)
 	var teamID *string
 	if ch != nil {
 		teamID = ch.TeamID
 	}
-	return s.channels.WithinTx(ctx, func(tx *gorm.DB) error {
+	err := s.channels.WithinTx(ctx, func(tx *gorm.DB) error {
 		if err := s.postSys(ctx, tx, channelID, callerID, teamID, memberLeftProps(callerID)); err != nil {
 			return err
 		}
 		return s.channels.RemoveMemberTx(ctx, tx, channelID, callerID)
 	})
+	if err != nil {
+		return err
+	}
+	s.fanMemberUpdate(ctx, channelID, MemberChangeLeave, callerID, callerID, "")
+	return nil
 }
 
 func (s *ChannelService) requireAdminOrOwner(ctx context.Context, channelID int64, callerID string) error {

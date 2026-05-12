@@ -72,3 +72,19 @@ func channelCreatedProps(actorID, name string) map[string]any {
 		"name":          name,
 	}
 }
+
+func channelClosedProps(actorID string) map[string]any {
+	return map[string]any{
+		repo.SysTypeKey: repo.SysTypeChannelClosed,
+		"actor_id":      actorID,
+	}
+}
+
+func memberNicknameProps(actorID, targetID, nickName string) map[string]any {
+	return map[string]any{
+		repo.SysTypeKey: repo.SysTypeMemberNickname,
+		"actor_id":      actorID,
+		"target_id":     targetID,
+		"nick_name":     nickName,
+	}
+}
