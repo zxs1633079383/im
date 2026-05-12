@@ -27,3 +27,9 @@ server/.idea/
 
 # Generated K8s manifests (templated from base)
 deploy/k8s/rendered/
+
+# 个人简历素材（本地沉淀，不入库）
+docs/jl/
+
+# Local dev run logs (聚合启动脚本 server/scripts/run-all-dev.sh 落的)
+server/logs/

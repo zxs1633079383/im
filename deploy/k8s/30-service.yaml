@@ -1,5 +1,8 @@
 # Two Services:
-#  1) im-gateway: ClusterIP for the ingress / LB in front of the fleet.
+#  1) im-gateway: NodePort 30880 for direct access from Tauri clients
+#     (Angular cses-client running outside the cluster). SVC DNS is
+#     unreachable from the user's machine, so cses下发 imGatewayHttp =
+#     192.168.6.{41,42,43}:30880 → kube-proxy → pods.
 #  2) im-gateway-headless: Headless (clusterIP=None) so V4 test clients
 #     can resolve individual pod IPs via DNS and connect to a specific
 #     replica (basic cross-pod + pod-pause scenarios).
@@ -12,16 +15,24 @@ metadata:
     app: im-gateway
     app.kubernetes.io/part-of: im
 spec:
-  type: ClusterIP
+  # NodePort exposes :30880 on every worker so the Tauri client (which
+  # cannot resolve cluster-internal SVC DNS from the user's machine) can
+  # reach im-gateway directly via 192.168.6.{41,42,43}:30880. Reverting
+  # this to ClusterIP silently breaks the cses-client → im-server flow:
+  # an earlier deploy did exactly that and webview HTTP/WS hung at
+  # status=0 / "Handshake not finished". Pin the nodePort here so future
+  # `kubectl apply -f rendered/30-service.yaml` doesn't regress it.
+  type: NodePort
   selector:
     app: im-gateway
   ports:
     - name: http
       port: 8080
       targetPort: http
+      nodePort: 30880
       protocol: TCP
   # Keep WS + HTTP traffic sticky-friendly; long-lived WebSockets work
-  # fine with plain ClusterIP + kube-proxy.
+  # fine with plain NodePort + kube-proxy iptables.
 ---
 apiVersion: v1
 kind: Service
