@@ -12,7 +12,7 @@ import (
 // guards against a re-close race by filtering `deleted_at IS NULL` in the
 // WHERE clause — rows that lost the race return ErrGone so callers can skip
 // the WS fan-out cleanly. (v0.7.3 gap #1+#3)
-func (r *gormChannelRepo) SoftDelete(ctx context.Context, channelID int64) (*Channel, error) {
+func (r *gormChannelRepo) SoftDelete(ctx context.Context, channelID string) (*Channel, error) {
 	now := time.Now().UTC()
 	res := r.db.WithContext(ctx).Model(&Channel{}).
 		Where("id = ? AND deleted_at IS NULL", channelID).
@@ -41,7 +41,7 @@ func (r *gormChannelRepo) SoftDelete(ctx context.Context, channelID int64) (*Cha
 // UpdateMemberNickname overwrites channel_members.nick_name. Returns
 // ErrNotFound when no member row matches. Empty new value is allowed —
 // callers use it to "clear" the override. (v0.7.3 gap #5)
-func (r *gormChannelRepo) UpdateMemberNickname(ctx context.Context, channelID int64, userID, nickName string) error {
+func (r *gormChannelRepo) UpdateMemberNickname(ctx context.Context, channelID string, userID, nickName string) error {
 	res := r.db.WithContext(ctx).Model(&ChannelMember{}).
 		Where("user_id = ? AND channel_id = ?", userID, channelID).
 		Update("nick_name", nickName)

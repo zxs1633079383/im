@@ -12,7 +12,7 @@ import (
 // true when the truncation lost data so the UI can show a "+N more" hint
 // instead of a misleading complete list.
 type ReadStat struct {
-	MessageID     int64    `json:"messageId"`
+	MessageID     string   `json:"messageId"`
 	TotalMembers  int      `json:"totalMembers"`
 	ReadCount     int      `json:"readCount"`
 	UnreadCount   int      `json:"unreadCount"`
@@ -41,7 +41,7 @@ const UnreadUserPreviewLimit = 50
 func (r *gormMessageRepo) GetReadStatsBatch(
 	ctx context.Context,
 	callerID string,
-	msgIDs []int64,
+	msgIDs []string,
 ) ([]ReadStat, error) {
 	ctx, span := tracer.Start(ctx, "MessageRepo.GetReadStatsBatch")
 	defer span.End()
@@ -51,7 +51,7 @@ func (r *gormMessageRepo) GetReadStatsBatch(
 	}
 
 	type row struct {
-		MsgID        int64          `gorm:"column:msg_id"`
+		MsgID        string         `gorm:"column:msg_id"`
 		TotalMembers int            `gorm:"column:total_members"`
 		ReadCount    int            `gorm:"column:read_count"`
 		UnreadCount  int            `gorm:"column:unread_count"`
@@ -62,7 +62,7 @@ func (r *gormMessageRepo) GetReadStatsBatch(
 	err := r.db.WithContext(ctx).Raw(`
 		WITH msg AS (
 			SELECT id, channel_id, seq FROM messages
-			WHERE id = ANY(?::bigint[])
+			WHERE id = ANY(?::text[])
 			  AND channel_id IN (
 			      SELECT channel_id FROM channel_members WHERE user_id = ?
 			  )

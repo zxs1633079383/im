@@ -21,8 +21,8 @@ const (
 // string — callers decide the concrete schema. DecidedAt / DecisionNote are
 // filled in by Decide(); they stay nil/empty while the approval is pending.
 type Approval struct {
-	ID           int64      `gorm:"primaryKey;autoIncrement"                       json:"id"`
-	ChannelID    int64      `gorm:"column:channel_id;not null"                     json:"channel_id"`
+	ID           string     `gorm:"primaryKey;type:text"                           json:"id"`
+	ChannelID    string     `gorm:"column:channel_id;type:text;not null"           json:"channel_id"`
 	RequesterID  string     `gorm:"column:requester_id;type:text;not null"         json:"requester_id"`
 	ApproverID   string     `gorm:"column:approver_id;type:text;not null"          json:"approver_id"`
 	Subject      string     `gorm:"not null"                                       json:"subject"`
@@ -43,19 +43,19 @@ func (Approval) TableName() string { return "approvals" }
 // + cancel can't both succeed.
 type ApprovalRepo interface {
 	Create(ctx context.Context, a *Approval) error
-	GetByID(ctx context.Context, id int64) (*Approval, error)
-	Decide(ctx context.Context, id int64, status int16, note string, decidedAt time.Time) error
-	Cancel(ctx context.Context, id int64, requesterID string) error
+	GetByID(ctx context.Context, id string) (*Approval, error)
+	Decide(ctx context.Context, id string, status int16, note string, decidedAt time.Time) error
+	Cancel(ctx context.Context, id string, requesterID string) error
 
 	// ListByApprover returns approvals where approver_id = approverID. When
 	// statusFilter >= 0, only rows with that status are returned; passing -1
 	// returns every status. Pagination uses (limit, cursor) where cursor is
-	// the last id seen (pass 0 to start).
-	ListByApprover(ctx context.Context, approverID string, statusFilter int16, limit int, cursor int64) ([]Approval, error)
+	// the last id seen (pass "" to start).
+	ListByApprover(ctx context.Context, approverID string, statusFilter int16, limit int, cursor string) ([]Approval, error)
 
 	// ListByRequester is the requester-facing inbox. Pagination semantics
 	// match ListByApprover.
-	ListByRequester(ctx context.Context, requesterID string, limit int, cursor int64) ([]Approval, error)
+	ListByRequester(ctx context.Context, requesterID string, limit int, cursor string) ([]Approval, error)
 }
 
 type gormApprovalRepo struct{ db *gorm.DB }
@@ -77,7 +77,7 @@ func (r *gormApprovalRepo) Create(ctx context.Context, a *Approval) error {
 }
 
 // GetByID returns the approval by primary key. ErrNotFound if missing.
-func (r *gormApprovalRepo) GetByID(ctx context.Context, id int64) (*Approval, error) {
+func (r *gormApprovalRepo) GetByID(ctx context.Context, id string) (*Approval, error) {
 	var a Approval
 	if err := r.db.WithContext(ctx).First(&a, id).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -92,7 +92,7 @@ func (r *gormApprovalRepo) GetByID(ctx context.Context, id int64) (*Approval, er
 // decision metadata. The WHERE status = pending guard prevents double-decision
 // races — RowsAffected = 0 means someone else won the transition; callers map
 // that to ErrNotFound (the row may exist but isn't in a transitional state).
-func (r *gormApprovalRepo) Decide(ctx context.Context, id int64, status int16, note string, decidedAt time.Time) error {
+func (r *gormApprovalRepo) Decide(ctx context.Context, id string, status int16, note string, decidedAt time.Time) error {
 	res := r.db.WithContext(ctx).Model(&Approval{}).
 		Where("id = ? AND status = ?", id, ApprovalStatusPending).
 		Updates(map[string]any{
@@ -114,7 +114,7 @@ func (r *gormApprovalRepo) Decide(ctx context.Context, id int64, status int16, n
 // requester may cancel — the WHERE clause enforces this alongside the status
 // guard. RowsAffected = 0 → ErrNotFound (row missing, already decided, or
 // requester_id mismatch).
-func (r *gormApprovalRepo) Cancel(ctx context.Context, id int64, requesterID string) error {
+func (r *gormApprovalRepo) Cancel(ctx context.Context, id string, requesterID string) error {
 	res := r.db.WithContext(ctx).Model(&Approval{}).
 		Where("id = ? AND status = ? AND requester_id = ?", id, ApprovalStatusPending, requesterID).
 		Updates(map[string]any{
@@ -133,14 +133,14 @@ func (r *gormApprovalRepo) Cancel(ctx context.Context, id int64, requesterID str
 // ListByApprover returns approvals addressed to approverID. statusFilter = -1
 // means all; otherwise filter by exact status. Ordered by id DESC (stable
 // cursor pagination — older rows have smaller ids).
-func (r *gormApprovalRepo) ListByApprover(ctx context.Context, approverID string, statusFilter int16, limit int, cursor int64) ([]Approval, error) {
+func (r *gormApprovalRepo) ListByApprover(ctx context.Context, approverID string, statusFilter int16, limit int, cursor string) ([]Approval, error) {
 	q := r.db.WithContext(ctx).
 		Where("approver_id = ?", approverID).
 		Order("id DESC")
 	if statusFilter >= 0 {
 		q = q.Where("status = ?", statusFilter)
 	}
-	if cursor > 0 {
+	if cursor != "" {
 		q = q.Where("id < ?", cursor)
 	}
 	if limit > 0 {
@@ -154,11 +154,11 @@ func (r *gormApprovalRepo) ListByApprover(ctx context.Context, approverID string
 }
 
 // ListByRequester returns approvals filed by requesterID.
-func (r *gormApprovalRepo) ListByRequester(ctx context.Context, requesterID string, limit int, cursor int64) ([]Approval, error) {
+func (r *gormApprovalRepo) ListByRequester(ctx context.Context, requesterID string, limit int, cursor string) ([]Approval, error) {
 	q := r.db.WithContext(ctx).
 		Where("requester_id = ?", requesterID).
 		Order("id DESC")
-	if cursor > 0 {
+	if cursor != "" {
 		q = q.Where("id < ?", cursor)
 	}
 	if limit > 0 {

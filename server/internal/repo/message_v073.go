@@ -10,7 +10,7 @@ import (
 // chronological. (v0.7.3 gap #2 — paginated /posts/getReplyBranch replacement.)
 func (r *gormMessageRepo) FetchRepliesPage(
 	ctx context.Context,
-	rootID int64,
+	rootID string,
 	userID string,
 	offset, limit int,
 ) ([]Message, error) {

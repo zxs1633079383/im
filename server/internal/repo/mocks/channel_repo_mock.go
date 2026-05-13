@@ -24,7 +24,7 @@ func (_m *ChannelRepoMock) EXPECT() *ChannelRepoMock_Expecter {
 }
 
 // AddMember provides a mock function with given fields: ctx, channelID, userID, role
-func (_m *ChannelRepoMock) AddMember(ctx context.Context, channelID int64, userID string, role int16) error {
+func (_m *ChannelRepoMock) AddMember(ctx context.Context, channelID string, userID string, role int16) error {
 	ret := _m.Called(ctx, channelID, userID, role)
 
 	if len(ret) == 0 {
@@ -32,7 +32,7 @@ func (_m *ChannelRepoMock) AddMember(ctx context.Context, channelID int64, userI
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, int64, string, int16) error); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, int16) error); ok {
 		r0 = rf(ctx, channelID, userID, role)
 	} else {
 		r0 = ret.Error(0)
@@ -48,16 +48,16 @@ type ChannelRepoMock_AddMember_Call struct {
 
 // AddMember is a helper method to define mock.On call
 //   - ctx context.Context
-//   - channelID int64
+//   - channelID string
 //   - userID string
 //   - role int16
 func (_e *ChannelRepoMock_Expecter) AddMember(ctx interface{}, channelID interface{}, userID interface{}, role interface{}) *ChannelRepoMock_AddMember_Call {
 	return &ChannelRepoMock_AddMember_Call{Call: _e.mock.On("AddMember", ctx, channelID, userID, role)}
 }
 
-func (_c *ChannelRepoMock_AddMember_Call) Run(run func(ctx context.Context, channelID int64, userID string, role int16)) *ChannelRepoMock_AddMember_Call {
+func (_c *ChannelRepoMock_AddMember_Call) Run(run func(ctx context.Context, channelID string, userID string, role int16)) *ChannelRepoMock_AddMember_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(int64), args[2].(string), args[3].(int16))
+		run(args[0].(context.Context), args[1].(string), args[2].(string), args[3].(int16))
 	})
 	return _c
 }
@@ -67,13 +67,13 @@ func (_c *ChannelRepoMock_AddMember_Call) Return(_a0 error) *ChannelRepoMock_Add
 	return _c
 }
 
-func (_c *ChannelRepoMock_AddMember_Call) RunAndReturn(run func(context.Context, int64, string, int16) error) *ChannelRepoMock_AddMember_Call {
+func (_c *ChannelRepoMock_AddMember_Call) RunAndReturn(run func(context.Context, string, string, int16) error) *ChannelRepoMock_AddMember_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // AddMemberTx provides a mock function with given fields: ctx, tx, channelID, userID, role
-func (_m *ChannelRepoMock) AddMemberTx(ctx context.Context, tx *gorm.DB, channelID int64, userID string, role int16) error {
+func (_m *ChannelRepoMock) AddMemberTx(ctx context.Context, tx *gorm.DB, channelID string, userID string, role int16) error {
 	ret := _m.Called(ctx, tx, channelID, userID, role)
 
 	if len(ret) == 0 {
@@ -81,7 +81,7 @@ func (_m *ChannelRepoMock) AddMemberTx(ctx context.Context, tx *gorm.DB, channel
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, *gorm.DB, int64, string, int16) error); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, *gorm.DB, string, string, int16) error); ok {
 		r0 = rf(ctx, tx, channelID, userID, role)
 	} else {
 		r0 = ret.Error(0)
@@ -98,16 +98,16 @@ type ChannelRepoMock_AddMemberTx_Call struct {
 // AddMemberTx is a helper method to define mock.On call
 //   - ctx context.Context
 //   - tx *gorm.DB
-//   - channelID int64
+//   - channelID string
 //   - userID string
 //   - role int16
 func (_e *ChannelRepoMock_Expecter) AddMemberTx(ctx interface{}, tx interface{}, channelID interface{}, userID interface{}, role interface{}) *ChannelRepoMock_AddMemberTx_Call {
 	return &ChannelRepoMock_AddMemberTx_Call{Call: _e.mock.On("AddMemberTx", ctx, tx, channelID, userID, role)}
 }
 
-func (_c *ChannelRepoMock_AddMemberTx_Call) Run(run func(ctx context.Context, tx *gorm.DB, channelID int64, userID string, role int16)) *ChannelRepoMock_AddMemberTx_Call {
+func (_c *ChannelRepoMock_AddMemberTx_Call) Run(run func(ctx context.Context, tx *gorm.DB, channelID string, userID string, role int16)) *ChannelRepoMock_AddMemberTx_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(*gorm.DB), args[2].(int64), args[3].(string), args[4].(int16))
+		run(args[0].(context.Context), args[1].(*gorm.DB), args[2].(string), args[3].(string), args[4].(int16))
 	})
 	return _c
 }
@@ -117,7 +117,7 @@ func (_c *ChannelRepoMock_AddMemberTx_Call) Return(_a0 error) *ChannelRepoMock_A
 	return _c
 }
 
-func (_c *ChannelRepoMock_AddMemberTx_Call) RunAndReturn(run func(context.Context, *gorm.DB, int64, string, int16) error) *ChannelRepoMock_AddMemberTx_Call {
+func (_c *ChannelRepoMock_AddMemberTx_Call) RunAndReturn(run func(context.Context, *gorm.DB, string, string, int16) error) *ChannelRepoMock_AddMemberTx_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -289,7 +289,7 @@ func (_c *ChannelRepoMock_FindDM_Call) RunAndReturn(run func(context.Context, st
 }
 
 // GetByID provides a mock function with given fields: ctx, id
-func (_m *ChannelRepoMock) GetByID(ctx context.Context, id int64) (*repo.Channel, error) {
+func (_m *ChannelRepoMock) GetByID(ctx context.Context, id string) (*repo.Channel, error) {
 	ret := _m.Called(ctx, id)
 
 	if len(ret) == 0 {
@@ -298,10 +298,10 @@ func (_m *ChannelRepoMock) GetByID(ctx context.Context, id int64) (*repo.Channel
 
 	var r0 *repo.Channel
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, int64) (*repo.Channel, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string) (*repo.Channel, error)); ok {
 		return rf(ctx, id)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, int64) *repo.Channel); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string) *repo.Channel); ok {
 		r0 = rf(ctx, id)
 	} else {
 		if ret.Get(0) != nil {
@@ -309,7 +309,7 @@ func (_m *ChannelRepoMock) GetByID(ctx context.Context, id int64) (*repo.Channel
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, int64) error); ok {
+	if rf, ok := ret.Get(1).(func(context.Context, string) error); ok {
 		r1 = rf(ctx, id)
 	} else {
 		r1 = ret.Error(1)
@@ -325,14 +325,14 @@ type ChannelRepoMock_GetByID_Call struct {
 
 // GetByID is a helper method to define mock.On call
 //   - ctx context.Context
-//   - id int64
+//   - id string
 func (_e *ChannelRepoMock_Expecter) GetByID(ctx interface{}, id interface{}) *ChannelRepoMock_GetByID_Call {
 	return &ChannelRepoMock_GetByID_Call{Call: _e.mock.On("GetByID", ctx, id)}
 }
 
-func (_c *ChannelRepoMock_GetByID_Call) Run(run func(ctx context.Context, id int64)) *ChannelRepoMock_GetByID_Call {
+func (_c *ChannelRepoMock_GetByID_Call) Run(run func(ctx context.Context, id string)) *ChannelRepoMock_GetByID_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(int64))
+		run(args[0].(context.Context), args[1].(string))
 	})
 	return _c
 }
@@ -342,13 +342,13 @@ func (_c *ChannelRepoMock_GetByID_Call) Return(_a0 *repo.Channel, _a1 error) *Ch
 	return _c
 }
 
-func (_c *ChannelRepoMock_GetByID_Call) RunAndReturn(run func(context.Context, int64) (*repo.Channel, error)) *ChannelRepoMock_GetByID_Call {
+func (_c *ChannelRepoMock_GetByID_Call) RunAndReturn(run func(context.Context, string) (*repo.Channel, error)) *ChannelRepoMock_GetByID_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // GetMember provides a mock function with given fields: ctx, channelID, userID
-func (_m *ChannelRepoMock) GetMember(ctx context.Context, channelID int64, userID string) (*repo.ChannelMember, error) {
+func (_m *ChannelRepoMock) GetMember(ctx context.Context, channelID string, userID string) (*repo.ChannelMember, error) {
 	ret := _m.Called(ctx, channelID, userID)
 
 	if len(ret) == 0 {
@@ -357,10 +357,10 @@ func (_m *ChannelRepoMock) GetMember(ctx context.Context, channelID int64, userI
 
 	var r0 *repo.ChannelMember
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, int64, string) (*repo.ChannelMember, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string, string) (*repo.ChannelMember, error)); ok {
 		return rf(ctx, channelID, userID)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, int64, string) *repo.ChannelMember); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string, string) *repo.ChannelMember); ok {
 		r0 = rf(ctx, channelID, userID)
 	} else {
 		if ret.Get(0) != nil {
@@ -368,7 +368,7 @@ func (_m *ChannelRepoMock) GetMember(ctx context.Context, channelID int64, userI
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, int64, string) error); ok {
+	if rf, ok := ret.Get(1).(func(context.Context, string, string) error); ok {
 		r1 = rf(ctx, channelID, userID)
 	} else {
 		r1 = ret.Error(1)
@@ -384,15 +384,15 @@ type ChannelRepoMock_GetMember_Call struct {
 
 // GetMember is a helper method to define mock.On call
 //   - ctx context.Context
-//   - channelID int64
+//   - channelID string
 //   - userID string
 func (_e *ChannelRepoMock_Expecter) GetMember(ctx interface{}, channelID interface{}, userID interface{}) *ChannelRepoMock_GetMember_Call {
 	return &ChannelRepoMock_GetMember_Call{Call: _e.mock.On("GetMember", ctx, channelID, userID)}
 }
 
-func (_c *ChannelRepoMock_GetMember_Call) Run(run func(ctx context.Context, channelID int64, userID string)) *ChannelRepoMock_GetMember_Call {
+func (_c *ChannelRepoMock_GetMember_Call) Run(run func(ctx context.Context, channelID string, userID string)) *ChannelRepoMock_GetMember_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(int64), args[2].(string))
+		run(args[0].(context.Context), args[1].(string), args[2].(string))
 	})
 	return _c
 }
@@ -402,29 +402,29 @@ func (_c *ChannelRepoMock_GetMember_Call) Return(_a0 *repo.ChannelMember, _a1 er
 	return _c
 }
 
-func (_c *ChannelRepoMock_GetMember_Call) RunAndReturn(run func(context.Context, int64, string) (*repo.ChannelMember, error)) *ChannelRepoMock_GetMember_Call {
+func (_c *ChannelRepoMock_GetMember_Call) RunAndReturn(run func(context.Context, string, string) (*repo.ChannelMember, error)) *ChannelRepoMock_GetMember_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // GetMemberChannelSeqs provides a mock function with given fields: ctx, userID
-func (_m *ChannelRepoMock) GetMemberChannelSeqs(ctx context.Context, userID string) (map[int64]int64, error) {
+func (_m *ChannelRepoMock) GetMemberChannelSeqs(ctx context.Context, userID string) (map[string]int64, error) {
 	ret := _m.Called(ctx, userID)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetMemberChannelSeqs")
 	}
 
-	var r0 map[int64]int64
+	var r0 map[string]int64
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, string) (map[int64]int64, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string) (map[string]int64, error)); ok {
 		return rf(ctx, userID)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, string) map[int64]int64); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string) map[string]int64); ok {
 		r0 = rf(ctx, userID)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(map[int64]int64)
+			r0 = ret.Get(0).(map[string]int64)
 		}
 	}
 
@@ -456,18 +456,18 @@ func (_c *ChannelRepoMock_GetMemberChannelSeqs_Call) Run(run func(ctx context.Co
 	return _c
 }
 
-func (_c *ChannelRepoMock_GetMemberChannelSeqs_Call) Return(_a0 map[int64]int64, _a1 error) *ChannelRepoMock_GetMemberChannelSeqs_Call {
+func (_c *ChannelRepoMock_GetMemberChannelSeqs_Call) Return(_a0 map[string]int64, _a1 error) *ChannelRepoMock_GetMemberChannelSeqs_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *ChannelRepoMock_GetMemberChannelSeqs_Call) RunAndReturn(run func(context.Context, string) (map[int64]int64, error)) *ChannelRepoMock_GetMemberChannelSeqs_Call {
+func (_c *ChannelRepoMock_GetMemberChannelSeqs_Call) RunAndReturn(run func(context.Context, string) (map[string]int64, error)) *ChannelRepoMock_GetMemberChannelSeqs_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // IncrementPhantomCount provides a mock function with given fields: ctx, tx, channelID, excludeUserIDs
-func (_m *ChannelRepoMock) IncrementPhantomCount(ctx context.Context, tx *gorm.DB, channelID int64, excludeUserIDs []string) error {
+func (_m *ChannelRepoMock) IncrementPhantomCount(ctx context.Context, tx *gorm.DB, channelID string, excludeUserIDs []string) error {
 	ret := _m.Called(ctx, tx, channelID, excludeUserIDs)
 
 	if len(ret) == 0 {
@@ -475,7 +475,7 @@ func (_m *ChannelRepoMock) IncrementPhantomCount(ctx context.Context, tx *gorm.D
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, *gorm.DB, int64, []string) error); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, *gorm.DB, string, []string) error); ok {
 		r0 = rf(ctx, tx, channelID, excludeUserIDs)
 	} else {
 		r0 = ret.Error(0)
@@ -492,15 +492,15 @@ type ChannelRepoMock_IncrementPhantomCount_Call struct {
 // IncrementPhantomCount is a helper method to define mock.On call
 //   - ctx context.Context
 //   - tx *gorm.DB
-//   - channelID int64
+//   - channelID string
 //   - excludeUserIDs []string
 func (_e *ChannelRepoMock_Expecter) IncrementPhantomCount(ctx interface{}, tx interface{}, channelID interface{}, excludeUserIDs interface{}) *ChannelRepoMock_IncrementPhantomCount_Call {
 	return &ChannelRepoMock_IncrementPhantomCount_Call{Call: _e.mock.On("IncrementPhantomCount", ctx, tx, channelID, excludeUserIDs)}
 }
 
-func (_c *ChannelRepoMock_IncrementPhantomCount_Call) Run(run func(ctx context.Context, tx *gorm.DB, channelID int64, excludeUserIDs []string)) *ChannelRepoMock_IncrementPhantomCount_Call {
+func (_c *ChannelRepoMock_IncrementPhantomCount_Call) Run(run func(ctx context.Context, tx *gorm.DB, channelID string, excludeUserIDs []string)) *ChannelRepoMock_IncrementPhantomCount_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(*gorm.DB), args[2].(int64), args[3].([]string))
+		run(args[0].(context.Context), args[1].(*gorm.DB), args[2].(string), args[3].([]string))
 	})
 	return _c
 }
@@ -510,13 +510,13 @@ func (_c *ChannelRepoMock_IncrementPhantomCount_Call) Return(_a0 error) *Channel
 	return _c
 }
 
-func (_c *ChannelRepoMock_IncrementPhantomCount_Call) RunAndReturn(run func(context.Context, *gorm.DB, int64, []string) error) *ChannelRepoMock_IncrementPhantomCount_Call {
+func (_c *ChannelRepoMock_IncrementPhantomCount_Call) RunAndReturn(run func(context.Context, *gorm.DB, string, []string) error) *ChannelRepoMock_IncrementPhantomCount_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // IncrementSeq provides a mock function with given fields: ctx, tx, channelID
-func (_m *ChannelRepoMock) IncrementSeq(ctx context.Context, tx *gorm.DB, channelID int64) (int64, error) {
+func (_m *ChannelRepoMock) IncrementSeq(ctx context.Context, tx *gorm.DB, channelID string) (int64, error) {
 	ret := _m.Called(ctx, tx, channelID)
 
 	if len(ret) == 0 {
@@ -525,16 +525,16 @@ func (_m *ChannelRepoMock) IncrementSeq(ctx context.Context, tx *gorm.DB, channe
 
 	var r0 int64
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, *gorm.DB, int64) (int64, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, *gorm.DB, string) (int64, error)); ok {
 		return rf(ctx, tx, channelID)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, *gorm.DB, int64) int64); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, *gorm.DB, string) int64); ok {
 		r0 = rf(ctx, tx, channelID)
 	} else {
 		r0 = ret.Get(0).(int64)
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, *gorm.DB, int64) error); ok {
+	if rf, ok := ret.Get(1).(func(context.Context, *gorm.DB, string) error); ok {
 		r1 = rf(ctx, tx, channelID)
 	} else {
 		r1 = ret.Error(1)
@@ -551,14 +551,14 @@ type ChannelRepoMock_IncrementSeq_Call struct {
 // IncrementSeq is a helper method to define mock.On call
 //   - ctx context.Context
 //   - tx *gorm.DB
-//   - channelID int64
+//   - channelID string
 func (_e *ChannelRepoMock_Expecter) IncrementSeq(ctx interface{}, tx interface{}, channelID interface{}) *ChannelRepoMock_IncrementSeq_Call {
 	return &ChannelRepoMock_IncrementSeq_Call{Call: _e.mock.On("IncrementSeq", ctx, tx, channelID)}
 }
 
-func (_c *ChannelRepoMock_IncrementSeq_Call) Run(run func(ctx context.Context, tx *gorm.DB, channelID int64)) *ChannelRepoMock_IncrementSeq_Call {
+func (_c *ChannelRepoMock_IncrementSeq_Call) Run(run func(ctx context.Context, tx *gorm.DB, channelID string)) *ChannelRepoMock_IncrementSeq_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(*gorm.DB), args[2].(int64))
+		run(args[0].(context.Context), args[1].(*gorm.DB), args[2].(string))
 	})
 	return _c
 }
@@ -568,7 +568,7 @@ func (_c *ChannelRepoMock_IncrementSeq_Call) Return(_a0 int64, _a1 error) *Chann
 	return _c
 }
 
-func (_c *ChannelRepoMock_IncrementSeq_Call) RunAndReturn(run func(context.Context, *gorm.DB, int64) (int64, error)) *ChannelRepoMock_IncrementSeq_Call {
+func (_c *ChannelRepoMock_IncrementSeq_Call) RunAndReturn(run func(context.Context, *gorm.DB, string) (int64, error)) *ChannelRepoMock_IncrementSeq_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -692,7 +692,7 @@ func (_c *ChannelRepoMock_ListByUserWithPreview_Call) RunAndReturn(run func(cont
 }
 
 // ListMembers provides a mock function with given fields: ctx, channelID
-func (_m *ChannelRepoMock) ListMembers(ctx context.Context, channelID int64) ([]repo.ChannelMember, error) {
+func (_m *ChannelRepoMock) ListMembers(ctx context.Context, channelID string) ([]repo.ChannelMember, error) {
 	ret := _m.Called(ctx, channelID)
 
 	if len(ret) == 0 {
@@ -701,10 +701,10 @@ func (_m *ChannelRepoMock) ListMembers(ctx context.Context, channelID int64) ([]
 
 	var r0 []repo.ChannelMember
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, int64) ([]repo.ChannelMember, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string) ([]repo.ChannelMember, error)); ok {
 		return rf(ctx, channelID)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, int64) []repo.ChannelMember); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string) []repo.ChannelMember); ok {
 		r0 = rf(ctx, channelID)
 	} else {
 		if ret.Get(0) != nil {
@@ -712,7 +712,7 @@ func (_m *ChannelRepoMock) ListMembers(ctx context.Context, channelID int64) ([]
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, int64) error); ok {
+	if rf, ok := ret.Get(1).(func(context.Context, string) error); ok {
 		r1 = rf(ctx, channelID)
 	} else {
 		r1 = ret.Error(1)
@@ -728,14 +728,14 @@ type ChannelRepoMock_ListMembers_Call struct {
 
 // ListMembers is a helper method to define mock.On call
 //   - ctx context.Context
-//   - channelID int64
+//   - channelID string
 func (_e *ChannelRepoMock_Expecter) ListMembers(ctx interface{}, channelID interface{}) *ChannelRepoMock_ListMembers_Call {
 	return &ChannelRepoMock_ListMembers_Call{Call: _e.mock.On("ListMembers", ctx, channelID)}
 }
 
-func (_c *ChannelRepoMock_ListMembers_Call) Run(run func(ctx context.Context, channelID int64)) *ChannelRepoMock_ListMembers_Call {
+func (_c *ChannelRepoMock_ListMembers_Call) Run(run func(ctx context.Context, channelID string)) *ChannelRepoMock_ListMembers_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(int64))
+		run(args[0].(context.Context), args[1].(string))
 	})
 	return _c
 }
@@ -745,13 +745,13 @@ func (_c *ChannelRepoMock_ListMembers_Call) Return(_a0 []repo.ChannelMember, _a1
 	return _c
 }
 
-func (_c *ChannelRepoMock_ListMembers_Call) RunAndReturn(run func(context.Context, int64) ([]repo.ChannelMember, error)) *ChannelRepoMock_ListMembers_Call {
+func (_c *ChannelRepoMock_ListMembers_Call) RunAndReturn(run func(context.Context, string) ([]repo.ChannelMember, error)) *ChannelRepoMock_ListMembers_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // ListTopics provides a mock function with given fields: ctx, parentID
-func (_m *ChannelRepoMock) ListTopics(ctx context.Context, parentID int64) ([]repo.Channel, error) {
+func (_m *ChannelRepoMock) ListTopics(ctx context.Context, parentID string) ([]repo.Channel, error) {
 	ret := _m.Called(ctx, parentID)
 
 	if len(ret) == 0 {
@@ -760,10 +760,10 @@ func (_m *ChannelRepoMock) ListTopics(ctx context.Context, parentID int64) ([]re
 
 	var r0 []repo.Channel
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, int64) ([]repo.Channel, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string) ([]repo.Channel, error)); ok {
 		return rf(ctx, parentID)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, int64) []repo.Channel); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string) []repo.Channel); ok {
 		r0 = rf(ctx, parentID)
 	} else {
 		if ret.Get(0) != nil {
@@ -771,7 +771,7 @@ func (_m *ChannelRepoMock) ListTopics(ctx context.Context, parentID int64) ([]re
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, int64) error); ok {
+	if rf, ok := ret.Get(1).(func(context.Context, string) error); ok {
 		r1 = rf(ctx, parentID)
 	} else {
 		r1 = ret.Error(1)
@@ -787,14 +787,14 @@ type ChannelRepoMock_ListTopics_Call struct {
 
 // ListTopics is a helper method to define mock.On call
 //   - ctx context.Context
-//   - parentID int64
+//   - parentID string
 func (_e *ChannelRepoMock_Expecter) ListTopics(ctx interface{}, parentID interface{}) *ChannelRepoMock_ListTopics_Call {
 	return &ChannelRepoMock_ListTopics_Call{Call: _e.mock.On("ListTopics", ctx, parentID)}
 }
 
-func (_c *ChannelRepoMock_ListTopics_Call) Run(run func(ctx context.Context, parentID int64)) *ChannelRepoMock_ListTopics_Call {
+func (_c *ChannelRepoMock_ListTopics_Call) Run(run func(ctx context.Context, parentID string)) *ChannelRepoMock_ListTopics_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(int64))
+		run(args[0].(context.Context), args[1].(string))
 	})
 	return _c
 }
@@ -804,13 +804,13 @@ func (_c *ChannelRepoMock_ListTopics_Call) Return(_a0 []repo.Channel, _a1 error)
 	return _c
 }
 
-func (_c *ChannelRepoMock_ListTopics_Call) RunAndReturn(run func(context.Context, int64) ([]repo.Channel, error)) *ChannelRepoMock_ListTopics_Call {
+func (_c *ChannelRepoMock_ListTopics_Call) RunAndReturn(run func(context.Context, string) ([]repo.Channel, error)) *ChannelRepoMock_ListTopics_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // MarkRead provides a mock function with given fields: ctx, channelID, userID, seq
-func (_m *ChannelRepoMock) MarkRead(ctx context.Context, channelID int64, userID string, seq int64) error {
+func (_m *ChannelRepoMock) MarkRead(ctx context.Context, channelID string, userID string, seq int64) error {
 	ret := _m.Called(ctx, channelID, userID, seq)
 
 	if len(ret) == 0 {
@@ -818,7 +818,7 @@ func (_m *ChannelRepoMock) MarkRead(ctx context.Context, channelID int64, userID
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, int64, string, int64) error); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, int64) error); ok {
 		r0 = rf(ctx, channelID, userID, seq)
 	} else {
 		r0 = ret.Error(0)
@@ -834,16 +834,16 @@ type ChannelRepoMock_MarkRead_Call struct {
 
 // MarkRead is a helper method to define mock.On call
 //   - ctx context.Context
-//   - channelID int64
+//   - channelID string
 //   - userID string
 //   - seq int64
 func (_e *ChannelRepoMock_Expecter) MarkRead(ctx interface{}, channelID interface{}, userID interface{}, seq interface{}) *ChannelRepoMock_MarkRead_Call {
 	return &ChannelRepoMock_MarkRead_Call{Call: _e.mock.On("MarkRead", ctx, channelID, userID, seq)}
 }
 
-func (_c *ChannelRepoMock_MarkRead_Call) Run(run func(ctx context.Context, channelID int64, userID string, seq int64)) *ChannelRepoMock_MarkRead_Call {
+func (_c *ChannelRepoMock_MarkRead_Call) Run(run func(ctx context.Context, channelID string, userID string, seq int64)) *ChannelRepoMock_MarkRead_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(int64), args[2].(string), args[3].(int64))
+		run(args[0].(context.Context), args[1].(string), args[2].(string), args[3].(int64))
 	})
 	return _c
 }
@@ -853,13 +853,13 @@ func (_c *ChannelRepoMock_MarkRead_Call) Return(_a0 error) *ChannelRepoMock_Mark
 	return _c
 }
 
-func (_c *ChannelRepoMock_MarkRead_Call) RunAndReturn(run func(context.Context, int64, string, int64) error) *ChannelRepoMock_MarkRead_Call {
+func (_c *ChannelRepoMock_MarkRead_Call) RunAndReturn(run func(context.Context, string, string, int64) error) *ChannelRepoMock_MarkRead_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // RemoveMember provides a mock function with given fields: ctx, channelID, userID
-func (_m *ChannelRepoMock) RemoveMember(ctx context.Context, channelID int64, userID string) error {
+func (_m *ChannelRepoMock) RemoveMember(ctx context.Context, channelID string, userID string) error {
 	ret := _m.Called(ctx, channelID, userID)
 
 	if len(ret) == 0 {
@@ -867,7 +867,7 @@ func (_m *ChannelRepoMock) RemoveMember(ctx context.Context, channelID int64, us
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, int64, string) error); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string, string) error); ok {
 		r0 = rf(ctx, channelID, userID)
 	} else {
 		r0 = ret.Error(0)
@@ -883,15 +883,15 @@ type ChannelRepoMock_RemoveMember_Call struct {
 
 // RemoveMember is a helper method to define mock.On call
 //   - ctx context.Context
-//   - channelID int64
+//   - channelID string
 //   - userID string
 func (_e *ChannelRepoMock_Expecter) RemoveMember(ctx interface{}, channelID interface{}, userID interface{}) *ChannelRepoMock_RemoveMember_Call {
 	return &ChannelRepoMock_RemoveMember_Call{Call: _e.mock.On("RemoveMember", ctx, channelID, userID)}
 }
 
-func (_c *ChannelRepoMock_RemoveMember_Call) Run(run func(ctx context.Context, channelID int64, userID string)) *ChannelRepoMock_RemoveMember_Call {
+func (_c *ChannelRepoMock_RemoveMember_Call) Run(run func(ctx context.Context, channelID string, userID string)) *ChannelRepoMock_RemoveMember_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(int64), args[2].(string))
+		run(args[0].(context.Context), args[1].(string), args[2].(string))
 	})
 	return _c
 }
@@ -901,13 +901,13 @@ func (_c *ChannelRepoMock_RemoveMember_Call) Return(_a0 error) *ChannelRepoMock_
 	return _c
 }
 
-func (_c *ChannelRepoMock_RemoveMember_Call) RunAndReturn(run func(context.Context, int64, string) error) *ChannelRepoMock_RemoveMember_Call {
+func (_c *ChannelRepoMock_RemoveMember_Call) RunAndReturn(run func(context.Context, string, string) error) *ChannelRepoMock_RemoveMember_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // RemoveMemberTx provides a mock function with given fields: ctx, tx, channelID, userID
-func (_m *ChannelRepoMock) RemoveMemberTx(ctx context.Context, tx *gorm.DB, channelID int64, userID string) error {
+func (_m *ChannelRepoMock) RemoveMemberTx(ctx context.Context, tx *gorm.DB, channelID string, userID string) error {
 	ret := _m.Called(ctx, tx, channelID, userID)
 
 	if len(ret) == 0 {
@@ -915,7 +915,7 @@ func (_m *ChannelRepoMock) RemoveMemberTx(ctx context.Context, tx *gorm.DB, chan
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, *gorm.DB, int64, string) error); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, *gorm.DB, string, string) error); ok {
 		r0 = rf(ctx, tx, channelID, userID)
 	} else {
 		r0 = ret.Error(0)
@@ -932,15 +932,15 @@ type ChannelRepoMock_RemoveMemberTx_Call struct {
 // RemoveMemberTx is a helper method to define mock.On call
 //   - ctx context.Context
 //   - tx *gorm.DB
-//   - channelID int64
+//   - channelID string
 //   - userID string
 func (_e *ChannelRepoMock_Expecter) RemoveMemberTx(ctx interface{}, tx interface{}, channelID interface{}, userID interface{}) *ChannelRepoMock_RemoveMemberTx_Call {
 	return &ChannelRepoMock_RemoveMemberTx_Call{Call: _e.mock.On("RemoveMemberTx", ctx, tx, channelID, userID)}
 }
 
-func (_c *ChannelRepoMock_RemoveMemberTx_Call) Run(run func(ctx context.Context, tx *gorm.DB, channelID int64, userID string)) *ChannelRepoMock_RemoveMemberTx_Call {
+func (_c *ChannelRepoMock_RemoveMemberTx_Call) Run(run func(ctx context.Context, tx *gorm.DB, channelID string, userID string)) *ChannelRepoMock_RemoveMemberTx_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(*gorm.DB), args[2].(int64), args[3].(string))
+		run(args[0].(context.Context), args[1].(*gorm.DB), args[2].(string), args[3].(string))
 	})
 	return _c
 }
@@ -950,13 +950,72 @@ func (_c *ChannelRepoMock_RemoveMemberTx_Call) Return(_a0 error) *ChannelRepoMoc
 	return _c
 }
 
-func (_c *ChannelRepoMock_RemoveMemberTx_Call) RunAndReturn(run func(context.Context, *gorm.DB, int64, string) error) *ChannelRepoMock_RemoveMemberTx_Call {
+func (_c *ChannelRepoMock_RemoveMemberTx_Call) RunAndReturn(run func(context.Context, *gorm.DB, string, string) error) *ChannelRepoMock_RemoveMemberTx_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// SoftDelete provides a mock function with given fields: ctx, channelID
+func (_m *ChannelRepoMock) SoftDelete(ctx context.Context, channelID string) (*repo.Channel, error) {
+	ret := _m.Called(ctx, channelID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SoftDelete")
+	}
+
+	var r0 *repo.Channel
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, string) (*repo.Channel, error)); ok {
+		return rf(ctx, channelID)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, string) *repo.Channel); ok {
+		r0 = rf(ctx, channelID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*repo.Channel)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = rf(ctx, channelID)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// ChannelRepoMock_SoftDelete_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SoftDelete'
+type ChannelRepoMock_SoftDelete_Call struct {
+	*mock.Call
+}
+
+// SoftDelete is a helper method to define mock.On call
+//   - ctx context.Context
+//   - channelID string
+func (_e *ChannelRepoMock_Expecter) SoftDelete(ctx interface{}, channelID interface{}) *ChannelRepoMock_SoftDelete_Call {
+	return &ChannelRepoMock_SoftDelete_Call{Call: _e.mock.On("SoftDelete", ctx, channelID)}
+}
+
+func (_c *ChannelRepoMock_SoftDelete_Call) Run(run func(ctx context.Context, channelID string)) *ChannelRepoMock_SoftDelete_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(string))
+	})
+	return _c
+}
+
+func (_c *ChannelRepoMock_SoftDelete_Call) Return(_a0 *repo.Channel, _a1 error) *ChannelRepoMock_SoftDelete_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *ChannelRepoMock_SoftDelete_Call) RunAndReturn(run func(context.Context, string) (*repo.Channel, error)) *ChannelRepoMock_SoftDelete_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // Update provides a mock function with given fields: ctx, channelID, name, avatarURL
-func (_m *ChannelRepoMock) Update(ctx context.Context, channelID int64, name string, avatarURL string) error {
+func (_m *ChannelRepoMock) Update(ctx context.Context, channelID string, name string, avatarURL string) error {
 	ret := _m.Called(ctx, channelID, name, avatarURL)
 
 	if len(ret) == 0 {
@@ -964,7 +1023,7 @@ func (_m *ChannelRepoMock) Update(ctx context.Context, channelID int64, name str
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, int64, string, string) error); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, string) error); ok {
 		r0 = rf(ctx, channelID, name, avatarURL)
 	} else {
 		r0 = ret.Error(0)
@@ -980,16 +1039,16 @@ type ChannelRepoMock_Update_Call struct {
 
 // Update is a helper method to define mock.On call
 //   - ctx context.Context
-//   - channelID int64
+//   - channelID string
 //   - name string
 //   - avatarURL string
 func (_e *ChannelRepoMock_Expecter) Update(ctx interface{}, channelID interface{}, name interface{}, avatarURL interface{}) *ChannelRepoMock_Update_Call {
 	return &ChannelRepoMock_Update_Call{Call: _e.mock.On("Update", ctx, channelID, name, avatarURL)}
 }
 
-func (_c *ChannelRepoMock_Update_Call) Run(run func(ctx context.Context, channelID int64, name string, avatarURL string)) *ChannelRepoMock_Update_Call {
+func (_c *ChannelRepoMock_Update_Call) Run(run func(ctx context.Context, channelID string, name string, avatarURL string)) *ChannelRepoMock_Update_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(int64), args[2].(string), args[3].(string))
+		run(args[0].(context.Context), args[1].(string), args[2].(string), args[3].(string))
 	})
 	return _c
 }
@@ -999,7 +1058,56 @@ func (_c *ChannelRepoMock_Update_Call) Return(_a0 error) *ChannelRepoMock_Update
 	return _c
 }
 
-func (_c *ChannelRepoMock_Update_Call) RunAndReturn(run func(context.Context, int64, string, string) error) *ChannelRepoMock_Update_Call {
+func (_c *ChannelRepoMock_Update_Call) RunAndReturn(run func(context.Context, string, string, string) error) *ChannelRepoMock_Update_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// UpdateMemberNickname provides a mock function with given fields: ctx, channelID, userID, nickName
+func (_m *ChannelRepoMock) UpdateMemberNickname(ctx context.Context, channelID string, userID string, nickName string) error {
+	ret := _m.Called(ctx, channelID, userID, nickName)
+
+	if len(ret) == 0 {
+		panic("no return value specified for UpdateMemberNickname")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, string) error); ok {
+		r0 = rf(ctx, channelID, userID, nickName)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// ChannelRepoMock_UpdateMemberNickname_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'UpdateMemberNickname'
+type ChannelRepoMock_UpdateMemberNickname_Call struct {
+	*mock.Call
+}
+
+// UpdateMemberNickname is a helper method to define mock.On call
+//   - ctx context.Context
+//   - channelID string
+//   - userID string
+//   - nickName string
+func (_e *ChannelRepoMock_Expecter) UpdateMemberNickname(ctx interface{}, channelID interface{}, userID interface{}, nickName interface{}) *ChannelRepoMock_UpdateMemberNickname_Call {
+	return &ChannelRepoMock_UpdateMemberNickname_Call{Call: _e.mock.On("UpdateMemberNickname", ctx, channelID, userID, nickName)}
+}
+
+func (_c *ChannelRepoMock_UpdateMemberNickname_Call) Run(run func(ctx context.Context, channelID string, userID string, nickName string)) *ChannelRepoMock_UpdateMemberNickname_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(string), args[2].(string), args[3].(string))
+	})
+	return _c
+}
+
+func (_c *ChannelRepoMock_UpdateMemberNickname_Call) Return(_a0 error) *ChannelRepoMock_UpdateMemberNickname_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *ChannelRepoMock_UpdateMemberNickname_Call) RunAndReturn(run func(context.Context, string, string, string) error) *ChannelRepoMock_UpdateMemberNickname_Call {
 	_c.Call.Return(run)
 	return _c
 }

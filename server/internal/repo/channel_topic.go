@@ -17,8 +17,8 @@ import (
 // and MemberIDs are mm UserIDs (24-hex strings). TeamID is the topic's team
 // scope inherited from the parent channel (frozen at creation).
 type CreateTopicParams struct {
-	ParentID      int64
-	RootMessageID int64
+	ParentID      string
+	RootMessageID string
 	Name          string
 	CreatorID     string
 	TeamID        *string
@@ -32,8 +32,8 @@ type CreateTopicParams struct {
 // channel_members table with ordinary channels; discrimination is
 // channels.root_id IS NOT NULL.
 func (r *gormChannelRepo) CreateTopic(ctx context.Context, p CreateTopicParams) (*Channel, error) {
-	if p.ParentID <= 0 {
-		return nil, fmt.Errorf("create topic: invalid parent_id %d", p.ParentID)
+	if p.ParentID == "" {
+		return nil, fmt.Errorf("create topic: empty parent_id")
 	}
 	var topic Channel
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
@@ -70,7 +70,7 @@ func insertTopicTx(tx *gorm.DB, p CreateTopicParams, out *Channel) error {
 
 // collectTopicMembers dedupes memberIDs and prepends the creator as owner.
 // Exposed as a package-level helper so it's unit-testable without a real DB.
-func collectTopicMembers(channelID int64, creatorID string, memberIDs []string) []ChannelMember {
+func collectTopicMembers(channelID string, creatorID string, memberIDs []string) []ChannelMember {
 	seen := make(map[string]struct{}, len(memberIDs)+1)
 	out := make([]ChannelMember, 0, len(memberIDs)+1)
 	add := func(uid string, role int16) {
@@ -93,7 +93,7 @@ func collectTopicMembers(channelID int64, creatorID string, memberIDs []string) 
 // ListTopics returns all topic channels rooted at parentID, ordered by id.
 // The partial index idx_channels_root_id makes this a cheap lookup even on
 // large channels tables.
-func (r *gormChannelRepo) ListTopics(ctx context.Context, parentID int64) ([]Channel, error) {
+func (r *gormChannelRepo) ListTopics(ctx context.Context, parentID string) ([]Channel, error) {
 	var out []Channel
 	err := r.db.WithContext(ctx).
 		Where("root_id = ?", parentID).

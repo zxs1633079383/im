@@ -16,9 +16,9 @@ import (
 // store.FileStore INSERT ... ON CONFLICT DO NOTHING semantics.
 type FileRepo interface {
 	Create(ctx context.Context, f *File) error
-	GetByID(ctx context.Context, id int64) (*File, error)
-	AttachToMessage(ctx context.Context, messageID, fileID int64) error
-	ListByMessage(ctx context.Context, messageID int64) ([]File, error)
+	GetByID(ctx context.Context, id string) (*File, error)
+	AttachToMessage(ctx context.Context, messageID string, fileID string) error
+	ListByMessage(ctx context.Context, messageID string) ([]File, error)
 }
 
 type gormFileRepo struct{ db *gorm.DB }
@@ -33,7 +33,7 @@ func (r *gormFileRepo) Create(ctx context.Context, f *File) error {
 	return nil
 }
 
-func (r *gormFileRepo) GetByID(ctx context.Context, id int64) (*File, error) {
+func (r *gormFileRepo) GetByID(ctx context.Context, id string) (*File, error) {
 	var f File
 	if err := r.db.WithContext(ctx).First(&f, id).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -44,7 +44,7 @@ func (r *gormFileRepo) GetByID(ctx context.Context, id int64) (*File, error) {
 	return &f, nil
 }
 
-func (r *gormFileRepo) AttachToMessage(ctx context.Context, messageID, fileID int64) error {
+func (r *gormFileRepo) AttachToMessage(ctx context.Context, messageID string, fileID string) error {
 	a := MessageAttachment{MessageID: messageID, FileID: fileID}
 	if err := r.db.WithContext(ctx).
 		Clauses(clause.OnConflict{DoNothing: true}).
@@ -54,7 +54,7 @@ func (r *gormFileRepo) AttachToMessage(ctx context.Context, messageID, fileID in
 	return nil
 }
 
-func (r *gormFileRepo) ListByMessage(ctx context.Context, messageID int64) ([]File, error) {
+func (r *gormFileRepo) ListByMessage(ctx context.Context, messageID string) ([]File, error) {
 	var files []File
 	err := r.db.WithContext(ctx).Raw(`
 		SELECT f.* FROM files f

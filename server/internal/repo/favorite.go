@@ -16,7 +16,7 @@ import (
 // have overlapping names (created_at) that don't cleanly destructure.
 type FavoriteWithMessage struct {
 	UserID    string    `json:"user_id"`
-	MessageID int64     `json:"message_id"`
+	MessageID string    `json:"message_id"`
 	CreatedAt time.Time `json:"created_at"`
 	Message   Message   `gorm:"-" json:"message"`
 }
@@ -26,8 +26,8 @@ type FavoriteWithMessage struct {
 // Add is idempotent via OnConflict DoNothing on the (user_id, message_id)
 // composite PK. Remove returns ErrNotFound if no row matched.
 type FavoriteRepo interface {
-	Add(ctx context.Context, userID string, messageID int64) error
-	Remove(ctx context.Context, userID string, messageID int64) error
+	Add(ctx context.Context, userID string, messageID string) error
+	Remove(ctx context.Context, userID string, messageID string) error
 	List(ctx context.Context, userID string) ([]FavoriteWithMessage, error)
 }
 
@@ -36,7 +36,7 @@ type gormFavoriteRepo struct{ db *gorm.DB }
 // NewFavoriteRepo returns a GORM-backed FavoriteRepo.
 func NewFavoriteRepo(db *gorm.DB) FavoriteRepo { return &gormFavoriteRepo{db: db} }
 
-func (r *gormFavoriteRepo) Add(ctx context.Context, userID string, messageID int64) error {
+func (r *gormFavoriteRepo) Add(ctx context.Context, userID string, messageID string) error {
 	fav := MessageFavorite{UserID: userID, MessageID: messageID}
 	if err := r.db.WithContext(ctx).
 		Clauses(clause.OnConflict{DoNothing: true}).
@@ -46,7 +46,7 @@ func (r *gormFavoriteRepo) Add(ctx context.Context, userID string, messageID int
 	return nil
 }
 
-func (r *gormFavoriteRepo) Remove(ctx context.Context, userID string, messageID int64) error {
+func (r *gormFavoriteRepo) Remove(ctx context.Context, userID string, messageID string) error {
 	res := r.db.WithContext(ctx).
 		Where("user_id = ? AND message_id = ?", userID, messageID).
 		Delete(&MessageFavorite{})
@@ -77,7 +77,7 @@ func (r *gormFavoriteRepo) List(ctx context.Context, userID string) ([]FavoriteW
 		return nil, nil
 	}
 
-	msgIDs := make([]int64, 0, len(favs))
+	msgIDs := make([]string, 0, len(favs))
 	for _, f := range favs {
 		msgIDs = append(msgIDs, f.MessageID)
 	}
@@ -88,7 +88,7 @@ func (r *gormFavoriteRepo) List(ctx context.Context, userID string) ([]FavoriteW
 		Find(&msgs).Error; err != nil {
 		return nil, fmt.Errorf("load favorite messages: %w", err)
 	}
-	msgByID := make(map[int64]Message, len(msgs))
+	msgByID := make(map[string]Message, len(msgs))
 	for _, m := range msgs {
 		msgByID[m.ID] = m
 	}

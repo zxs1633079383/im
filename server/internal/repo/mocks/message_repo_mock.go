@@ -83,7 +83,7 @@ func (_c *MessageRepoMock_AllocSeqAndInsert_Call) RunAndReturn(run func(context.
 }
 
 // FetchAfter provides a mock function with given fields: ctx, channelID, afterSeq, limit
-func (_m *MessageRepoMock) FetchAfter(ctx context.Context, channelID int64, afterSeq int64, limit int) ([]repo.Message, error) {
+func (_m *MessageRepoMock) FetchAfter(ctx context.Context, channelID string, afterSeq int64, limit int) ([]repo.Message, error) {
 	ret := _m.Called(ctx, channelID, afterSeq, limit)
 
 	if len(ret) == 0 {
@@ -92,10 +92,10 @@ func (_m *MessageRepoMock) FetchAfter(ctx context.Context, channelID int64, afte
 
 	var r0 []repo.Message
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, int64, int64, int) ([]repo.Message, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string, int64, int) ([]repo.Message, error)); ok {
 		return rf(ctx, channelID, afterSeq, limit)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, int64, int64, int) []repo.Message); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string, int64, int) []repo.Message); ok {
 		r0 = rf(ctx, channelID, afterSeq, limit)
 	} else {
 		if ret.Get(0) != nil {
@@ -103,7 +103,7 @@ func (_m *MessageRepoMock) FetchAfter(ctx context.Context, channelID int64, afte
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, int64, int64, int) error); ok {
+	if rf, ok := ret.Get(1).(func(context.Context, string, int64, int) error); ok {
 		r1 = rf(ctx, channelID, afterSeq, limit)
 	} else {
 		r1 = ret.Error(1)
@@ -119,16 +119,16 @@ type MessageRepoMock_FetchAfter_Call struct {
 
 // FetchAfter is a helper method to define mock.On call
 //   - ctx context.Context
-//   - channelID int64
+//   - channelID string
 //   - afterSeq int64
 //   - limit int
 func (_e *MessageRepoMock_Expecter) FetchAfter(ctx interface{}, channelID interface{}, afterSeq interface{}, limit interface{}) *MessageRepoMock_FetchAfter_Call {
 	return &MessageRepoMock_FetchAfter_Call{Call: _e.mock.On("FetchAfter", ctx, channelID, afterSeq, limit)}
 }
 
-func (_c *MessageRepoMock_FetchAfter_Call) Run(run func(ctx context.Context, channelID int64, afterSeq int64, limit int)) *MessageRepoMock_FetchAfter_Call {
+func (_c *MessageRepoMock_FetchAfter_Call) Run(run func(ctx context.Context, channelID string, afterSeq int64, limit int)) *MessageRepoMock_FetchAfter_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(int64), args[2].(int64), args[3].(int))
+		run(args[0].(context.Context), args[1].(string), args[2].(int64), args[3].(int))
 	})
 	return _c
 }
@@ -138,13 +138,13 @@ func (_c *MessageRepoMock_FetchAfter_Call) Return(_a0 []repo.Message, _a1 error)
 	return _c
 }
 
-func (_c *MessageRepoMock_FetchAfter_Call) RunAndReturn(run func(context.Context, int64, int64, int) ([]repo.Message, error)) *MessageRepoMock_FetchAfter_Call {
+func (_c *MessageRepoMock_FetchAfter_Call) RunAndReturn(run func(context.Context, string, int64, int) ([]repo.Message, error)) *MessageRepoMock_FetchAfter_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // FetchAround provides a mock function with given fields: ctx, channelID, userID, aroundSeq, limit
-func (_m *MessageRepoMock) FetchAround(ctx context.Context, channelID int64, userID string, aroundSeq int64, limit int) ([]repo.Message, error) {
+func (_m *MessageRepoMock) FetchAround(ctx context.Context, channelID string, userID string, aroundSeq int64, limit int) ([]repo.Message, error) {
 	ret := _m.Called(ctx, channelID, userID, aroundSeq, limit)
 
 	if len(ret) == 0 {
@@ -153,10 +153,10 @@ func (_m *MessageRepoMock) FetchAround(ctx context.Context, channelID int64, use
 
 	var r0 []repo.Message
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, int64, string, int64, int) ([]repo.Message, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, int64, int) ([]repo.Message, error)); ok {
 		return rf(ctx, channelID, userID, aroundSeq, limit)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, int64, string, int64, int) []repo.Message); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, int64, int) []repo.Message); ok {
 		r0 = rf(ctx, channelID, userID, aroundSeq, limit)
 	} else {
 		if ret.Get(0) != nil {
@@ -164,7 +164,7 @@ func (_m *MessageRepoMock) FetchAround(ctx context.Context, channelID int64, use
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, int64, string, int64, int) error); ok {
+	if rf, ok := ret.Get(1).(func(context.Context, string, string, int64, int) error); ok {
 		r1 = rf(ctx, channelID, userID, aroundSeq, limit)
 	} else {
 		r1 = ret.Error(1)
@@ -180,7 +180,7 @@ type MessageRepoMock_FetchAround_Call struct {
 
 // FetchAround is a helper method to define mock.On call
 //   - ctx context.Context
-//   - channelID int64
+//   - channelID string
 //   - userID string
 //   - aroundSeq int64
 //   - limit int
@@ -188,9 +188,9 @@ func (_e *MessageRepoMock_Expecter) FetchAround(ctx interface{}, channelID inter
 	return &MessageRepoMock_FetchAround_Call{Call: _e.mock.On("FetchAround", ctx, channelID, userID, aroundSeq, limit)}
 }
 
-func (_c *MessageRepoMock_FetchAround_Call) Run(run func(ctx context.Context, channelID int64, userID string, aroundSeq int64, limit int)) *MessageRepoMock_FetchAround_Call {
+func (_c *MessageRepoMock_FetchAround_Call) Run(run func(ctx context.Context, channelID string, userID string, aroundSeq int64, limit int)) *MessageRepoMock_FetchAround_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(int64), args[2].(string), args[3].(int64), args[4].(int))
+		run(args[0].(context.Context), args[1].(string), args[2].(string), args[3].(int64), args[4].(int))
 	})
 	return _c
 }
@@ -200,13 +200,13 @@ func (_c *MessageRepoMock_FetchAround_Call) Return(_a0 []repo.Message, _a1 error
 	return _c
 }
 
-func (_c *MessageRepoMock_FetchAround_Call) RunAndReturn(run func(context.Context, int64, string, int64, int) ([]repo.Message, error)) *MessageRepoMock_FetchAround_Call {
+func (_c *MessageRepoMock_FetchAround_Call) RunAndReturn(run func(context.Context, string, string, int64, int) ([]repo.Message, error)) *MessageRepoMock_FetchAround_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // FetchAroundTimestamp provides a mock function with given fields: ctx, channelID, userID, ts, limit
-func (_m *MessageRepoMock) FetchAroundTimestamp(ctx context.Context, channelID int64, userID string, ts time.Time, limit int) ([]repo.Message, []repo.Message, error) {
+func (_m *MessageRepoMock) FetchAroundTimestamp(ctx context.Context, channelID string, userID string, ts time.Time, limit int) ([]repo.Message, []repo.Message, error) {
 	ret := _m.Called(ctx, channelID, userID, ts, limit)
 
 	if len(ret) == 0 {
@@ -216,10 +216,10 @@ func (_m *MessageRepoMock) FetchAroundTimestamp(ctx context.Context, channelID i
 	var r0 []repo.Message
 	var r1 []repo.Message
 	var r2 error
-	if rf, ok := ret.Get(0).(func(context.Context, int64, string, time.Time, int) ([]repo.Message, []repo.Message, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, time.Time, int) ([]repo.Message, []repo.Message, error)); ok {
 		return rf(ctx, channelID, userID, ts, limit)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, int64, string, time.Time, int) []repo.Message); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, time.Time, int) []repo.Message); ok {
 		r0 = rf(ctx, channelID, userID, ts, limit)
 	} else {
 		if ret.Get(0) != nil {
@@ -227,7 +227,7 @@ func (_m *MessageRepoMock) FetchAroundTimestamp(ctx context.Context, channelID i
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, int64, string, time.Time, int) []repo.Message); ok {
+	if rf, ok := ret.Get(1).(func(context.Context, string, string, time.Time, int) []repo.Message); ok {
 		r1 = rf(ctx, channelID, userID, ts, limit)
 	} else {
 		if ret.Get(1) != nil {
@@ -235,7 +235,7 @@ func (_m *MessageRepoMock) FetchAroundTimestamp(ctx context.Context, channelID i
 		}
 	}
 
-	if rf, ok := ret.Get(2).(func(context.Context, int64, string, time.Time, int) error); ok {
+	if rf, ok := ret.Get(2).(func(context.Context, string, string, time.Time, int) error); ok {
 		r2 = rf(ctx, channelID, userID, ts, limit)
 	} else {
 		r2 = ret.Error(2)
@@ -251,7 +251,7 @@ type MessageRepoMock_FetchAroundTimestamp_Call struct {
 
 // FetchAroundTimestamp is a helper method to define mock.On call
 //   - ctx context.Context
-//   - channelID int64
+//   - channelID string
 //   - userID string
 //   - ts time.Time
 //   - limit int
@@ -259,9 +259,9 @@ func (_e *MessageRepoMock_Expecter) FetchAroundTimestamp(ctx interface{}, channe
 	return &MessageRepoMock_FetchAroundTimestamp_Call{Call: _e.mock.On("FetchAroundTimestamp", ctx, channelID, userID, ts, limit)}
 }
 
-func (_c *MessageRepoMock_FetchAroundTimestamp_Call) Run(run func(ctx context.Context, channelID int64, userID string, ts time.Time, limit int)) *MessageRepoMock_FetchAroundTimestamp_Call {
+func (_c *MessageRepoMock_FetchAroundTimestamp_Call) Run(run func(ctx context.Context, channelID string, userID string, ts time.Time, limit int)) *MessageRepoMock_FetchAroundTimestamp_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(int64), args[2].(string), args[3].(time.Time), args[4].(int))
+		run(args[0].(context.Context), args[1].(string), args[2].(string), args[3].(time.Time), args[4].(int))
 	})
 	return _c
 }
@@ -271,13 +271,13 @@ func (_c *MessageRepoMock_FetchAroundTimestamp_Call) Return(older []repo.Message
 	return _c
 }
 
-func (_c *MessageRepoMock_FetchAroundTimestamp_Call) RunAndReturn(run func(context.Context, int64, string, time.Time, int) ([]repo.Message, []repo.Message, error)) *MessageRepoMock_FetchAroundTimestamp_Call {
+func (_c *MessageRepoMock_FetchAroundTimestamp_Call) RunAndReturn(run func(context.Context, string, string, time.Time, int) ([]repo.Message, []repo.Message, error)) *MessageRepoMock_FetchAroundTimestamp_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // FetchBefore provides a mock function with given fields: ctx, channelID, userID, beforeSeq, limit
-func (_m *MessageRepoMock) FetchBefore(ctx context.Context, channelID int64, userID string, beforeSeq int64, limit int) ([]repo.Message, error) {
+func (_m *MessageRepoMock) FetchBefore(ctx context.Context, channelID string, userID string, beforeSeq int64, limit int) ([]repo.Message, error) {
 	ret := _m.Called(ctx, channelID, userID, beforeSeq, limit)
 
 	if len(ret) == 0 {
@@ -286,10 +286,10 @@ func (_m *MessageRepoMock) FetchBefore(ctx context.Context, channelID int64, use
 
 	var r0 []repo.Message
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, int64, string, int64, int) ([]repo.Message, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, int64, int) ([]repo.Message, error)); ok {
 		return rf(ctx, channelID, userID, beforeSeq, limit)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, int64, string, int64, int) []repo.Message); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, int64, int) []repo.Message); ok {
 		r0 = rf(ctx, channelID, userID, beforeSeq, limit)
 	} else {
 		if ret.Get(0) != nil {
@@ -297,7 +297,7 @@ func (_m *MessageRepoMock) FetchBefore(ctx context.Context, channelID int64, use
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, int64, string, int64, int) error); ok {
+	if rf, ok := ret.Get(1).(func(context.Context, string, string, int64, int) error); ok {
 		r1 = rf(ctx, channelID, userID, beforeSeq, limit)
 	} else {
 		r1 = ret.Error(1)
@@ -313,7 +313,7 @@ type MessageRepoMock_FetchBefore_Call struct {
 
 // FetchBefore is a helper method to define mock.On call
 //   - ctx context.Context
-//   - channelID int64
+//   - channelID string
 //   - userID string
 //   - beforeSeq int64
 //   - limit int
@@ -321,9 +321,9 @@ func (_e *MessageRepoMock_Expecter) FetchBefore(ctx interface{}, channelID inter
 	return &MessageRepoMock_FetchBefore_Call{Call: _e.mock.On("FetchBefore", ctx, channelID, userID, beforeSeq, limit)}
 }
 
-func (_c *MessageRepoMock_FetchBefore_Call) Run(run func(ctx context.Context, channelID int64, userID string, beforeSeq int64, limit int)) *MessageRepoMock_FetchBefore_Call {
+func (_c *MessageRepoMock_FetchBefore_Call) Run(run func(ctx context.Context, channelID string, userID string, beforeSeq int64, limit int)) *MessageRepoMock_FetchBefore_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(int64), args[2].(string), args[3].(int64), args[4].(int))
+		run(args[0].(context.Context), args[1].(string), args[2].(string), args[3].(int64), args[4].(int))
 	})
 	return _c
 }
@@ -333,13 +333,13 @@ func (_c *MessageRepoMock_FetchBefore_Call) Return(_a0 []repo.Message, _a1 error
 	return _c
 }
 
-func (_c *MessageRepoMock_FetchBefore_Call) RunAndReturn(run func(context.Context, int64, string, int64, int) ([]repo.Message, error)) *MessageRepoMock_FetchBefore_Call {
+func (_c *MessageRepoMock_FetchBefore_Call) RunAndReturn(run func(context.Context, string, string, int64, int) ([]repo.Message, error)) *MessageRepoMock_FetchBefore_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // FetchForUser provides a mock function with given fields: ctx, channelID, userID, afterSeq, limit
-func (_m *MessageRepoMock) FetchForUser(ctx context.Context, channelID int64, userID string, afterSeq int64, limit int) ([]repo.Message, error) {
+func (_m *MessageRepoMock) FetchForUser(ctx context.Context, channelID string, userID string, afterSeq int64, limit int) ([]repo.Message, error) {
 	ret := _m.Called(ctx, channelID, userID, afterSeq, limit)
 
 	if len(ret) == 0 {
@@ -348,10 +348,10 @@ func (_m *MessageRepoMock) FetchForUser(ctx context.Context, channelID int64, us
 
 	var r0 []repo.Message
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, int64, string, int64, int) ([]repo.Message, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, int64, int) ([]repo.Message, error)); ok {
 		return rf(ctx, channelID, userID, afterSeq, limit)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, int64, string, int64, int) []repo.Message); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, int64, int) []repo.Message); ok {
 		r0 = rf(ctx, channelID, userID, afterSeq, limit)
 	} else {
 		if ret.Get(0) != nil {
@@ -359,7 +359,7 @@ func (_m *MessageRepoMock) FetchForUser(ctx context.Context, channelID int64, us
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, int64, string, int64, int) error); ok {
+	if rf, ok := ret.Get(1).(func(context.Context, string, string, int64, int) error); ok {
 		r1 = rf(ctx, channelID, userID, afterSeq, limit)
 	} else {
 		r1 = ret.Error(1)
@@ -375,7 +375,7 @@ type MessageRepoMock_FetchForUser_Call struct {
 
 // FetchForUser is a helper method to define mock.On call
 //   - ctx context.Context
-//   - channelID int64
+//   - channelID string
 //   - userID string
 //   - afterSeq int64
 //   - limit int
@@ -383,9 +383,9 @@ func (_e *MessageRepoMock_Expecter) FetchForUser(ctx interface{}, channelID inte
 	return &MessageRepoMock_FetchForUser_Call{Call: _e.mock.On("FetchForUser", ctx, channelID, userID, afterSeq, limit)}
 }
 
-func (_c *MessageRepoMock_FetchForUser_Call) Run(run func(ctx context.Context, channelID int64, userID string, afterSeq int64, limit int)) *MessageRepoMock_FetchForUser_Call {
+func (_c *MessageRepoMock_FetchForUser_Call) Run(run func(ctx context.Context, channelID string, userID string, afterSeq int64, limit int)) *MessageRepoMock_FetchForUser_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(int64), args[2].(string), args[3].(int64), args[4].(int))
+		run(args[0].(context.Context), args[1].(string), args[2].(string), args[3].(int64), args[4].(int))
 	})
 	return _c
 }
@@ -395,13 +395,13 @@ func (_c *MessageRepoMock_FetchForUser_Call) Return(_a0 []repo.Message, _a1 erro
 	return _c
 }
 
-func (_c *MessageRepoMock_FetchForUser_Call) RunAndReturn(run func(context.Context, int64, string, int64, int) ([]repo.Message, error)) *MessageRepoMock_FetchForUser_Call {
+func (_c *MessageRepoMock_FetchForUser_Call) RunAndReturn(run func(context.Context, string, string, int64, int) ([]repo.Message, error)) *MessageRepoMock_FetchForUser_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // FetchReplies provides a mock function with given fields: ctx, rootID, userID
-func (_m *MessageRepoMock) FetchReplies(ctx context.Context, rootID int64, userID string) ([]repo.Message, error) {
+func (_m *MessageRepoMock) FetchReplies(ctx context.Context, rootID string, userID string) ([]repo.Message, error) {
 	ret := _m.Called(ctx, rootID, userID)
 
 	if len(ret) == 0 {
@@ -410,10 +410,10 @@ func (_m *MessageRepoMock) FetchReplies(ctx context.Context, rootID int64, userI
 
 	var r0 []repo.Message
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, int64, string) ([]repo.Message, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string, string) ([]repo.Message, error)); ok {
 		return rf(ctx, rootID, userID)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, int64, string) []repo.Message); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string, string) []repo.Message); ok {
 		r0 = rf(ctx, rootID, userID)
 	} else {
 		if ret.Get(0) != nil {
@@ -421,7 +421,7 @@ func (_m *MessageRepoMock) FetchReplies(ctx context.Context, rootID int64, userI
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, int64, string) error); ok {
+	if rf, ok := ret.Get(1).(func(context.Context, string, string) error); ok {
 		r1 = rf(ctx, rootID, userID)
 	} else {
 		r1 = ret.Error(1)
@@ -437,15 +437,15 @@ type MessageRepoMock_FetchReplies_Call struct {
 
 // FetchReplies is a helper method to define mock.On call
 //   - ctx context.Context
-//   - rootID int64
+//   - rootID string
 //   - userID string
 func (_e *MessageRepoMock_Expecter) FetchReplies(ctx interface{}, rootID interface{}, userID interface{}) *MessageRepoMock_FetchReplies_Call {
 	return &MessageRepoMock_FetchReplies_Call{Call: _e.mock.On("FetchReplies", ctx, rootID, userID)}
 }
 
-func (_c *MessageRepoMock_FetchReplies_Call) Run(run func(ctx context.Context, rootID int64, userID string)) *MessageRepoMock_FetchReplies_Call {
+func (_c *MessageRepoMock_FetchReplies_Call) Run(run func(ctx context.Context, rootID string, userID string)) *MessageRepoMock_FetchReplies_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(int64), args[2].(string))
+		run(args[0].(context.Context), args[1].(string), args[2].(string))
 	})
 	return _c
 }
@@ -455,13 +455,75 @@ func (_c *MessageRepoMock_FetchReplies_Call) Return(_a0 []repo.Message, _a1 erro
 	return _c
 }
 
-func (_c *MessageRepoMock_FetchReplies_Call) RunAndReturn(run func(context.Context, int64, string) ([]repo.Message, error)) *MessageRepoMock_FetchReplies_Call {
+func (_c *MessageRepoMock_FetchReplies_Call) RunAndReturn(run func(context.Context, string, string) ([]repo.Message, error)) *MessageRepoMock_FetchReplies_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// FetchRepliesPage provides a mock function with given fields: ctx, rootID, userID, offset, limit
+func (_m *MessageRepoMock) FetchRepliesPage(ctx context.Context, rootID string, userID string, offset int, limit int) ([]repo.Message, error) {
+	ret := _m.Called(ctx, rootID, userID, offset, limit)
+
+	if len(ret) == 0 {
+		panic("no return value specified for FetchRepliesPage")
+	}
+
+	var r0 []repo.Message
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, int, int) ([]repo.Message, error)); ok {
+		return rf(ctx, rootID, userID, offset, limit)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, int, int) []repo.Message); ok {
+		r0 = rf(ctx, rootID, userID, offset, limit)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]repo.Message)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, string, string, int, int) error); ok {
+		r1 = rf(ctx, rootID, userID, offset, limit)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// MessageRepoMock_FetchRepliesPage_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'FetchRepliesPage'
+type MessageRepoMock_FetchRepliesPage_Call struct {
+	*mock.Call
+}
+
+// FetchRepliesPage is a helper method to define mock.On call
+//   - ctx context.Context
+//   - rootID string
+//   - userID string
+//   - offset int
+//   - limit int
+func (_e *MessageRepoMock_Expecter) FetchRepliesPage(ctx interface{}, rootID interface{}, userID interface{}, offset interface{}, limit interface{}) *MessageRepoMock_FetchRepliesPage_Call {
+	return &MessageRepoMock_FetchRepliesPage_Call{Call: _e.mock.On("FetchRepliesPage", ctx, rootID, userID, offset, limit)}
+}
+
+func (_c *MessageRepoMock_FetchRepliesPage_Call) Run(run func(ctx context.Context, rootID string, userID string, offset int, limit int)) *MessageRepoMock_FetchRepliesPage_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(string), args[2].(string), args[3].(int), args[4].(int))
+	})
+	return _c
+}
+
+func (_c *MessageRepoMock_FetchRepliesPage_Call) Return(_a0 []repo.Message, _a1 error) *MessageRepoMock_FetchRepliesPage_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *MessageRepoMock_FetchRepliesPage_Call) RunAndReturn(run func(context.Context, string, string, int, int) ([]repo.Message, error)) *MessageRepoMock_FetchRepliesPage_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // GetByID provides a mock function with given fields: ctx, id
-func (_m *MessageRepoMock) GetByID(ctx context.Context, id int64) (*repo.Message, error) {
+func (_m *MessageRepoMock) GetByID(ctx context.Context, id string) (*repo.Message, error) {
 	ret := _m.Called(ctx, id)
 
 	if len(ret) == 0 {
@@ -470,10 +532,10 @@ func (_m *MessageRepoMock) GetByID(ctx context.Context, id int64) (*repo.Message
 
 	var r0 *repo.Message
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, int64) (*repo.Message, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string) (*repo.Message, error)); ok {
 		return rf(ctx, id)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, int64) *repo.Message); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string) *repo.Message); ok {
 		r0 = rf(ctx, id)
 	} else {
 		if ret.Get(0) != nil {
@@ -481,7 +543,7 @@ func (_m *MessageRepoMock) GetByID(ctx context.Context, id int64) (*repo.Message
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, int64) error); ok {
+	if rf, ok := ret.Get(1).(func(context.Context, string) error); ok {
 		r1 = rf(ctx, id)
 	} else {
 		r1 = ret.Error(1)
@@ -497,14 +559,14 @@ type MessageRepoMock_GetByID_Call struct {
 
 // GetByID is a helper method to define mock.On call
 //   - ctx context.Context
-//   - id int64
+//   - id string
 func (_e *MessageRepoMock_Expecter) GetByID(ctx interface{}, id interface{}) *MessageRepoMock_GetByID_Call {
 	return &MessageRepoMock_GetByID_Call{Call: _e.mock.On("GetByID", ctx, id)}
 }
 
-func (_c *MessageRepoMock_GetByID_Call) Run(run func(ctx context.Context, id int64)) *MessageRepoMock_GetByID_Call {
+func (_c *MessageRepoMock_GetByID_Call) Run(run func(ctx context.Context, id string)) *MessageRepoMock_GetByID_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(int64))
+		run(args[0].(context.Context), args[1].(string))
 	})
 	return _c
 }
@@ -514,13 +576,73 @@ func (_c *MessageRepoMock_GetByID_Call) Return(_a0 *repo.Message, _a1 error) *Me
 	return _c
 }
 
-func (_c *MessageRepoMock_GetByID_Call) RunAndReturn(run func(context.Context, int64) (*repo.Message, error)) *MessageRepoMock_GetByID_Call {
+func (_c *MessageRepoMock_GetByID_Call) RunAndReturn(run func(context.Context, string) (*repo.Message, error)) *MessageRepoMock_GetByID_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetReadStatsBatch provides a mock function with given fields: ctx, callerID, msgIDs
+func (_m *MessageRepoMock) GetReadStatsBatch(ctx context.Context, callerID string, msgIDs []string) ([]repo.ReadStat, error) {
+	ret := _m.Called(ctx, callerID, msgIDs)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetReadStatsBatch")
+	}
+
+	var r0 []repo.ReadStat
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, string, []string) ([]repo.ReadStat, error)); ok {
+		return rf(ctx, callerID, msgIDs)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, string, []string) []repo.ReadStat); ok {
+		r0 = rf(ctx, callerID, msgIDs)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]repo.ReadStat)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, string, []string) error); ok {
+		r1 = rf(ctx, callerID, msgIDs)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// MessageRepoMock_GetReadStatsBatch_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetReadStatsBatch'
+type MessageRepoMock_GetReadStatsBatch_Call struct {
+	*mock.Call
+}
+
+// GetReadStatsBatch is a helper method to define mock.On call
+//   - ctx context.Context
+//   - callerID string
+//   - msgIDs []string
+func (_e *MessageRepoMock_Expecter) GetReadStatsBatch(ctx interface{}, callerID interface{}, msgIDs interface{}) *MessageRepoMock_GetReadStatsBatch_Call {
+	return &MessageRepoMock_GetReadStatsBatch_Call{Call: _e.mock.On("GetReadStatsBatch", ctx, callerID, msgIDs)}
+}
+
+func (_c *MessageRepoMock_GetReadStatsBatch_Call) Run(run func(ctx context.Context, callerID string, msgIDs []string)) *MessageRepoMock_GetReadStatsBatch_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(string), args[2].([]string))
+	})
+	return _c
+}
+
+func (_c *MessageRepoMock_GetReadStatsBatch_Call) Return(_a0 []repo.ReadStat, _a1 error) *MessageRepoMock_GetReadStatsBatch_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *MessageRepoMock_GetReadStatsBatch_Call) RunAndReturn(run func(context.Context, string, []string) ([]repo.ReadStat, error)) *MessageRepoMock_GetReadStatsBatch_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // GetReaders provides a mock function with given fields: ctx, channelID, seq, cursor, limit
-func (_m *MessageRepoMock) GetReaders(ctx context.Context, channelID int64, seq int64, cursor string, limit int) ([]string, string, error) {
+func (_m *MessageRepoMock) GetReaders(ctx context.Context, channelID string, seq int64, cursor string, limit int) ([]string, string, error) {
 	ret := _m.Called(ctx, channelID, seq, cursor, limit)
 
 	if len(ret) == 0 {
@@ -530,10 +652,10 @@ func (_m *MessageRepoMock) GetReaders(ctx context.Context, channelID int64, seq 
 	var r0 []string
 	var r1 string
 	var r2 error
-	if rf, ok := ret.Get(0).(func(context.Context, int64, int64, string, int) ([]string, string, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string, int64, string, int) ([]string, string, error)); ok {
 		return rf(ctx, channelID, seq, cursor, limit)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, int64, int64, string, int) []string); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string, int64, string, int) []string); ok {
 		r0 = rf(ctx, channelID, seq, cursor, limit)
 	} else {
 		if ret.Get(0) != nil {
@@ -541,13 +663,13 @@ func (_m *MessageRepoMock) GetReaders(ctx context.Context, channelID int64, seq 
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, int64, int64, string, int) string); ok {
+	if rf, ok := ret.Get(1).(func(context.Context, string, int64, string, int) string); ok {
 		r1 = rf(ctx, channelID, seq, cursor, limit)
 	} else {
 		r1 = ret.Get(1).(string)
 	}
 
-	if rf, ok := ret.Get(2).(func(context.Context, int64, int64, string, int) error); ok {
+	if rf, ok := ret.Get(2).(func(context.Context, string, int64, string, int) error); ok {
 		r2 = rf(ctx, channelID, seq, cursor, limit)
 	} else {
 		r2 = ret.Error(2)
@@ -563,7 +685,7 @@ type MessageRepoMock_GetReaders_Call struct {
 
 // GetReaders is a helper method to define mock.On call
 //   - ctx context.Context
-//   - channelID int64
+//   - channelID string
 //   - seq int64
 //   - cursor string
 //   - limit int
@@ -571,9 +693,9 @@ func (_e *MessageRepoMock_Expecter) GetReaders(ctx interface{}, channelID interf
 	return &MessageRepoMock_GetReaders_Call{Call: _e.mock.On("GetReaders", ctx, channelID, seq, cursor, limit)}
 }
 
-func (_c *MessageRepoMock_GetReaders_Call) Run(run func(ctx context.Context, channelID int64, seq int64, cursor string, limit int)) *MessageRepoMock_GetReaders_Call {
+func (_c *MessageRepoMock_GetReaders_Call) Run(run func(ctx context.Context, channelID string, seq int64, cursor string, limit int)) *MessageRepoMock_GetReaders_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(int64), args[2].(int64), args[3].(string), args[4].(int))
+		run(args[0].(context.Context), args[1].(string), args[2].(int64), args[3].(string), args[4].(int))
 	})
 	return _c
 }
@@ -583,13 +705,13 @@ func (_c *MessageRepoMock_GetReaders_Call) Return(readers []string, nextCursor s
 	return _c
 }
 
-func (_c *MessageRepoMock_GetReaders_Call) RunAndReturn(run func(context.Context, int64, int64, string, int) ([]string, string, error)) *MessageRepoMock_GetReaders_Call {
+func (_c *MessageRepoMock_GetReaders_Call) RunAndReturn(run func(context.Context, string, int64, string, int) ([]string, string, error)) *MessageRepoMock_GetReaders_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // PostSystemMessage provides a mock function with given fields: ctx, tx, channelID, senderID, teamID, props
-func (_m *MessageRepoMock) PostSystemMessage(ctx context.Context, tx *gorm.DB, channelID int64, senderID string, teamID *string, props map[string]interface{}) (*repo.Message, error) {
+func (_m *MessageRepoMock) PostSystemMessage(ctx context.Context, tx *gorm.DB, channelID string, senderID string, teamID *string, props map[string]interface{}) (*repo.Message, error) {
 	ret := _m.Called(ctx, tx, channelID, senderID, teamID, props)
 
 	if len(ret) == 0 {
@@ -598,10 +720,10 @@ func (_m *MessageRepoMock) PostSystemMessage(ctx context.Context, tx *gorm.DB, c
 
 	var r0 *repo.Message
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, *gorm.DB, int64, string, *string, map[string]interface{}) (*repo.Message, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, *gorm.DB, string, string, *string, map[string]interface{}) (*repo.Message, error)); ok {
 		return rf(ctx, tx, channelID, senderID, teamID, props)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, *gorm.DB, int64, string, *string, map[string]interface{}) *repo.Message); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, *gorm.DB, string, string, *string, map[string]interface{}) *repo.Message); ok {
 		r0 = rf(ctx, tx, channelID, senderID, teamID, props)
 	} else {
 		if ret.Get(0) != nil {
@@ -609,7 +731,7 @@ func (_m *MessageRepoMock) PostSystemMessage(ctx context.Context, tx *gorm.DB, c
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, *gorm.DB, int64, string, *string, map[string]interface{}) error); ok {
+	if rf, ok := ret.Get(1).(func(context.Context, *gorm.DB, string, string, *string, map[string]interface{}) error); ok {
 		r1 = rf(ctx, tx, channelID, senderID, teamID, props)
 	} else {
 		r1 = ret.Error(1)
@@ -626,7 +748,7 @@ type MessageRepoMock_PostSystemMessage_Call struct {
 // PostSystemMessage is a helper method to define mock.On call
 //   - ctx context.Context
 //   - tx *gorm.DB
-//   - channelID int64
+//   - channelID string
 //   - senderID string
 //   - teamID *string
 //   - props map[string]interface{}
@@ -634,9 +756,9 @@ func (_e *MessageRepoMock_Expecter) PostSystemMessage(ctx interface{}, tx interf
 	return &MessageRepoMock_PostSystemMessage_Call{Call: _e.mock.On("PostSystemMessage", ctx, tx, channelID, senderID, teamID, props)}
 }
 
-func (_c *MessageRepoMock_PostSystemMessage_Call) Run(run func(ctx context.Context, tx *gorm.DB, channelID int64, senderID string, teamID *string, props map[string]interface{})) *MessageRepoMock_PostSystemMessage_Call {
+func (_c *MessageRepoMock_PostSystemMessage_Call) Run(run func(ctx context.Context, tx *gorm.DB, channelID string, senderID string, teamID *string, props map[string]interface{})) *MessageRepoMock_PostSystemMessage_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(*gorm.DB), args[2].(int64), args[3].(string), args[4].(*string), args[5].(map[string]interface{}))
+		run(args[0].(context.Context), args[1].(*gorm.DB), args[2].(string), args[3].(string), args[4].(*string), args[5].(map[string]interface{}))
 	})
 	return _c
 }
@@ -646,7 +768,7 @@ func (_c *MessageRepoMock_PostSystemMessage_Call) Return(_a0 *repo.Message, _a1 
 	return _c
 }
 
-func (_c *MessageRepoMock_PostSystemMessage_Call) RunAndReturn(run func(context.Context, *gorm.DB, int64, string, *string, map[string]interface{}) (*repo.Message, error)) *MessageRepoMock_PostSystemMessage_Call {
+func (_c *MessageRepoMock_PostSystemMessage_Call) RunAndReturn(run func(context.Context, *gorm.DB, string, string, *string, map[string]interface{}) (*repo.Message, error)) *MessageRepoMock_PostSystemMessage_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -699,7 +821,7 @@ func (_c *MessageRepoMock_Send_Call) RunAndReturn(run func(context.Context, *rep
 }
 
 // SoftDelete provides a mock function with given fields: ctx, msgID, callerID
-func (_m *MessageRepoMock) SoftDelete(ctx context.Context, msgID int64, callerID string) (*repo.Message, error) {
+func (_m *MessageRepoMock) SoftDelete(ctx context.Context, msgID string, callerID string) (*repo.Message, error) {
 	ret := _m.Called(ctx, msgID, callerID)
 
 	if len(ret) == 0 {
@@ -708,10 +830,10 @@ func (_m *MessageRepoMock) SoftDelete(ctx context.Context, msgID int64, callerID
 
 	var r0 *repo.Message
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, int64, string) (*repo.Message, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string, string) (*repo.Message, error)); ok {
 		return rf(ctx, msgID, callerID)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, int64, string) *repo.Message); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string, string) *repo.Message); ok {
 		r0 = rf(ctx, msgID, callerID)
 	} else {
 		if ret.Get(0) != nil {
@@ -719,7 +841,7 @@ func (_m *MessageRepoMock) SoftDelete(ctx context.Context, msgID int64, callerID
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, int64, string) error); ok {
+	if rf, ok := ret.Get(1).(func(context.Context, string, string) error); ok {
 		r1 = rf(ctx, msgID, callerID)
 	} else {
 		r1 = ret.Error(1)
@@ -735,15 +857,15 @@ type MessageRepoMock_SoftDelete_Call struct {
 
 // SoftDelete is a helper method to define mock.On call
 //   - ctx context.Context
-//   - msgID int64
+//   - msgID string
 //   - callerID string
 func (_e *MessageRepoMock_Expecter) SoftDelete(ctx interface{}, msgID interface{}, callerID interface{}) *MessageRepoMock_SoftDelete_Call {
 	return &MessageRepoMock_SoftDelete_Call{Call: _e.mock.On("SoftDelete", ctx, msgID, callerID)}
 }
 
-func (_c *MessageRepoMock_SoftDelete_Call) Run(run func(ctx context.Context, msgID int64, callerID string)) *MessageRepoMock_SoftDelete_Call {
+func (_c *MessageRepoMock_SoftDelete_Call) Run(run func(ctx context.Context, msgID string, callerID string)) *MessageRepoMock_SoftDelete_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(int64), args[2].(string))
+		run(args[0].(context.Context), args[1].(string), args[2].(string))
 	})
 	return _c
 }
@@ -753,13 +875,13 @@ func (_c *MessageRepoMock_SoftDelete_Call) Return(_a0 *repo.Message, _a1 error) 
 	return _c
 }
 
-func (_c *MessageRepoMock_SoftDelete_Call) RunAndReturn(run func(context.Context, int64, string) (*repo.Message, error)) *MessageRepoMock_SoftDelete_Call {
+func (_c *MessageRepoMock_SoftDelete_Call) RunAndReturn(run func(context.Context, string, string) (*repo.Message, error)) *MessageRepoMock_SoftDelete_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // UpdateContent provides a mock function with given fields: ctx, msgID, callerID, content
-func (_m *MessageRepoMock) UpdateContent(ctx context.Context, msgID int64, callerID string, content string) (*repo.Message, error) {
+func (_m *MessageRepoMock) UpdateContent(ctx context.Context, msgID string, callerID string, content string) (*repo.Message, error) {
 	ret := _m.Called(ctx, msgID, callerID, content)
 
 	if len(ret) == 0 {
@@ -768,10 +890,10 @@ func (_m *MessageRepoMock) UpdateContent(ctx context.Context, msgID int64, calle
 
 	var r0 *repo.Message
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, int64, string, string) (*repo.Message, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, string) (*repo.Message, error)); ok {
 		return rf(ctx, msgID, callerID, content)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, int64, string, string) *repo.Message); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, string) *repo.Message); ok {
 		r0 = rf(ctx, msgID, callerID, content)
 	} else {
 		if ret.Get(0) != nil {
@@ -779,7 +901,7 @@ func (_m *MessageRepoMock) UpdateContent(ctx context.Context, msgID int64, calle
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, int64, string, string) error); ok {
+	if rf, ok := ret.Get(1).(func(context.Context, string, string, string) error); ok {
 		r1 = rf(ctx, msgID, callerID, content)
 	} else {
 		r1 = ret.Error(1)
@@ -795,16 +917,16 @@ type MessageRepoMock_UpdateContent_Call struct {
 
 // UpdateContent is a helper method to define mock.On call
 //   - ctx context.Context
-//   - msgID int64
+//   - msgID string
 //   - callerID string
 //   - content string
 func (_e *MessageRepoMock_Expecter) UpdateContent(ctx interface{}, msgID interface{}, callerID interface{}, content interface{}) *MessageRepoMock_UpdateContent_Call {
 	return &MessageRepoMock_UpdateContent_Call{Call: _e.mock.On("UpdateContent", ctx, msgID, callerID, content)}
 }
 
-func (_c *MessageRepoMock_UpdateContent_Call) Run(run func(ctx context.Context, msgID int64, callerID string, content string)) *MessageRepoMock_UpdateContent_Call {
+func (_c *MessageRepoMock_UpdateContent_Call) Run(run func(ctx context.Context, msgID string, callerID string, content string)) *MessageRepoMock_UpdateContent_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(int64), args[2].(string), args[3].(string))
+		run(args[0].(context.Context), args[1].(string), args[2].(string), args[3].(string))
 	})
 	return _c
 }
@@ -814,7 +936,67 @@ func (_c *MessageRepoMock_UpdateContent_Call) Return(_a0 *repo.Message, _a1 erro
 	return _c
 }
 
-func (_c *MessageRepoMock_UpdateContent_Call) RunAndReturn(run func(context.Context, int64, string, string) (*repo.Message, error)) *MessageRepoMock_UpdateContent_Call {
+func (_c *MessageRepoMock_UpdateContent_Call) RunAndReturn(run func(context.Context, string, string, string) (*repo.Message, error)) *MessageRepoMock_UpdateContent_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// UpdateMessageProps provides a mock function with given fields: ctx, msgID, newProps
+func (_m *MessageRepoMock) UpdateMessageProps(ctx context.Context, msgID string, newProps string) (*repo.Message, error) {
+	ret := _m.Called(ctx, msgID, newProps)
+
+	if len(ret) == 0 {
+		panic("no return value specified for UpdateMessageProps")
+	}
+
+	var r0 *repo.Message
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, string, string) (*repo.Message, error)); ok {
+		return rf(ctx, msgID, newProps)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, string, string) *repo.Message); ok {
+		r0 = rf(ctx, msgID, newProps)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*repo.Message)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, string, string) error); ok {
+		r1 = rf(ctx, msgID, newProps)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// MessageRepoMock_UpdateMessageProps_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'UpdateMessageProps'
+type MessageRepoMock_UpdateMessageProps_Call struct {
+	*mock.Call
+}
+
+// UpdateMessageProps is a helper method to define mock.On call
+//   - ctx context.Context
+//   - msgID string
+//   - newProps string
+func (_e *MessageRepoMock_Expecter) UpdateMessageProps(ctx interface{}, msgID interface{}, newProps interface{}) *MessageRepoMock_UpdateMessageProps_Call {
+	return &MessageRepoMock_UpdateMessageProps_Call{Call: _e.mock.On("UpdateMessageProps", ctx, msgID, newProps)}
+}
+
+func (_c *MessageRepoMock_UpdateMessageProps_Call) Run(run func(ctx context.Context, msgID string, newProps string)) *MessageRepoMock_UpdateMessageProps_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(string), args[2].(string))
+	})
+	return _c
+}
+
+func (_c *MessageRepoMock_UpdateMessageProps_Call) Return(_a0 *repo.Message, _a1 error) *MessageRepoMock_UpdateMessageProps_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *MessageRepoMock_UpdateMessageProps_Call) RunAndReturn(run func(context.Context, string, string) (*repo.Message, error)) *MessageRepoMock_UpdateMessageProps_Call {
 	_c.Call.Return(run)
 	return _c
 }

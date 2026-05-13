@@ -46,30 +46,30 @@ type ChannelWithPreview struct {
 // MessageRepo write.
 type ChannelRepo interface {
 	Create(ctx context.Context, ch *Channel) error
-	GetByID(ctx context.Context, id int64) (*Channel, error)
-	Update(ctx context.Context, channelID int64, name, avatarURL string) error
-	IncrementSeq(ctx context.Context, tx *gorm.DB, channelID int64) (int64, error)
-	AddMember(ctx context.Context, channelID int64, userID string, role int16) error
-	RemoveMember(ctx context.Context, channelID int64, userID string) error
-	GetMember(ctx context.Context, channelID int64, userID string) (*ChannelMember, error)
-	ListMembers(ctx context.Context, channelID int64) ([]ChannelMember, error)
+	GetByID(ctx context.Context, id string) (*Channel, error)
+	Update(ctx context.Context, channelID string, name, avatarURL string) error
+	IncrementSeq(ctx context.Context, tx *gorm.DB, channelID string) (int64, error)
+	AddMember(ctx context.Context, channelID string, userID string, role int16) error
+	RemoveMember(ctx context.Context, channelID string, userID string) error
+	GetMember(ctx context.Context, channelID string, userID string) (*ChannelMember, error)
+	ListMembers(ctx context.Context, channelID string) ([]ChannelMember, error)
 	ListByUser(ctx context.Context, userID string) ([]Channel, error)
-	MarkRead(ctx context.Context, channelID int64, userID string, seq int64) error
-	IncrementPhantomCount(ctx context.Context, tx *gorm.DB, channelID int64, excludeUserIDs []string) error
+	MarkRead(ctx context.Context, channelID string, userID string, seq int64) error
+	IncrementPhantomCount(ctx context.Context, tx *gorm.DB, channelID string, excludeUserIDs []string) error
 	FindDM(ctx context.Context, userA, userB string) (*Channel, error)
 	ListByUserWithPreview(ctx context.Context, userID string) ([]ChannelWithPreview, error)
-	GetMemberChannelSeqs(ctx context.Context, userID string) (map[int64]int64, error)
+	GetMemberChannelSeqs(ctx context.Context, userID string) (map[string]int64, error)
 
 	// M3-A Topic (子群聊) 能力。CreateTopic 原子地创建 topic channel + 批量
 	// 注册成员；ListTopics 返回 parentID 下所有 topic（按 id 排序）。
 	CreateTopic(ctx context.Context, params CreateTopicParams) (*Channel, error)
-	ListTopics(ctx context.Context, parentID int64) ([]Channel, error)
+	ListTopics(ctx context.Context, parentID string) ([]Channel, error)
 
 	// AddMemberTx / RemoveMemberTx are tx-aware siblings of AddMember /
 	// RemoveMember. They exist so service-layer code can compose a system
 	// message insert + the membership mutation inside a single transaction.
-	AddMemberTx(ctx context.Context, tx *gorm.DB, channelID int64, userID string, role int16) error
-	RemoveMemberTx(ctx context.Context, tx *gorm.DB, channelID int64, userID string) error
+	AddMemberTx(ctx context.Context, tx *gorm.DB, channelID string, userID string, role int16) error
+	RemoveMemberTx(ctx context.Context, tx *gorm.DB, channelID string, userID string) error
 
 	// WithinTx runs fn inside a gorm transaction, exposing the tx handle so
 	// the caller can thread it through AddMemberTx / RemoveMemberTx /
@@ -79,13 +79,13 @@ type ChannelRepo interface {
 	// SoftDelete marks the channel as closed by stamping deleted_at = now().
 	// Idempotent: rows with deleted_at already set return ErrGone so the
 	// service layer can skip re-broadcasting channel_closed. (v0.7.3 gap #1)
-	SoftDelete(ctx context.Context, channelID int64) (*Channel, error)
+	SoftDelete(ctx context.Context, channelID string) (*Channel, error)
 
 	// UpdateMemberNickname overwrites channel_members.nick_name for the given
 	// (channel_id, user_id) tuple. Empty string is allowed (clears the
 	// override → falls back to global display name). Returns ErrNotFound when
 	// the member row does not exist. (v0.7.3 gap #5)
-	UpdateMemberNickname(ctx context.Context, channelID int64, userID, nickName string) error
+	UpdateMemberNickname(ctx context.Context, channelID string, userID, nickName string) error
 }
 
 type gormChannelRepo struct{ db *gorm.DB }
@@ -109,7 +109,7 @@ func (r *gormChannelRepo) Create(ctx context.Context, ch *Channel) error {
 	return nil
 }
 
-func (r *gormChannelRepo) GetByID(ctx context.Context, id int64) (*Channel, error) {
+func (r *gormChannelRepo) GetByID(ctx context.Context, id string) (*Channel, error) {
 	var ch Channel
 	if err := r.db.WithContext(ctx).First(&ch, id).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -122,7 +122,7 @@ func (r *gormChannelRepo) GetByID(ctx context.Context, id int64) (*Channel, erro
 
 // Update sets name and/or avatar_url. Empty strings leave the field unchanged.
 // Always bumps updated_at to now().
-func (r *gormChannelRepo) Update(ctx context.Context, channelID int64, name, avatarURL string) error {
+func (r *gormChannelRepo) Update(ctx context.Context, channelID string, name, avatarURL string) error {
 	err := r.db.WithContext(ctx).Exec(
 		`UPDATE channels
 		 SET name       = CASE WHEN ? <> '' THEN ? ELSE name END,
@@ -139,7 +139,7 @@ func (r *gormChannelRepo) Update(ctx context.Context, channelID int64, name, ava
 
 // IncrementSeq atomically bumps channels.seq and returns the new value.
 // If tx is nil, runs against the repo's own connection.
-func (r *gormChannelRepo) IncrementSeq(ctx context.Context, tx *gorm.DB, channelID int64) (int64, error) {
+func (r *gormChannelRepo) IncrementSeq(ctx context.Context, tx *gorm.DB, channelID string) (int64, error) {
 	var seq int64
 	err := r.dbOr(ctx, tx).Raw(
 		`UPDATE channels SET seq = seq + 1 WHERE id = ? RETURNING seq`,
@@ -151,7 +151,7 @@ func (r *gormChannelRepo) IncrementSeq(ctx context.Context, tx *gorm.DB, channel
 	return seq, nil
 }
 
-func (r *gormChannelRepo) AddMember(ctx context.Context, channelID int64, userID string, role int16) error {
+func (r *gormChannelRepo) AddMember(ctx context.Context, channelID string, userID string, role int16) error {
 	return r.AddMemberTx(ctx, nil, channelID, userID, role)
 }
 
@@ -159,7 +159,7 @@ func (r *gormChannelRepo) AddMember(ctx context.Context, channelID int64, userID
 // back to the repo's own connection; otherwise the INSERT runs inside the
 // caller's transaction so membership changes can be atomic with sibling
 // writes (see ChannelService.AddMember → system message).
-func (r *gormChannelRepo) AddMemberTx(ctx context.Context, tx *gorm.DB, channelID int64, userID string, role int16) error {
+func (r *gormChannelRepo) AddMemberTx(ctx context.Context, tx *gorm.DB, channelID string, userID string, role int16) error {
 	m := &ChannelMember{
 		UserID:    userID,
 		ChannelID: channelID,
@@ -175,13 +175,13 @@ func (r *gormChannelRepo) AddMemberTx(ctx context.Context, tx *gorm.DB, channelI
 	return nil
 }
 
-func (r *gormChannelRepo) RemoveMember(ctx context.Context, channelID int64, userID string) error {
+func (r *gormChannelRepo) RemoveMember(ctx context.Context, channelID string, userID string) error {
 	return r.RemoveMemberTx(ctx, nil, channelID, userID)
 }
 
 // RemoveMemberTx is the tx-aware variant of RemoveMember. DELETE is idempotent
 // — zero rows matched is not an error, matching the existing pgx semantics.
-func (r *gormChannelRepo) RemoveMemberTx(ctx context.Context, tx *gorm.DB, channelID int64, userID string) error {
+func (r *gormChannelRepo) RemoveMemberTx(ctx context.Context, tx *gorm.DB, channelID string, userID string) error {
 	err := r.dbOr(ctx, tx).
 		Where("user_id = ? AND channel_id = ?", userID, channelID).
 		Delete(&ChannelMember{}).Error
@@ -196,7 +196,7 @@ func (r *gormChannelRepo) WithinTx(ctx context.Context, fn func(tx *gorm.DB) err
 	return r.db.WithContext(ctx).Transaction(fn)
 }
 
-func (r *gormChannelRepo) GetMember(ctx context.Context, channelID int64, userID string) (*ChannelMember, error) {
+func (r *gormChannelRepo) GetMember(ctx context.Context, channelID string, userID string) (*ChannelMember, error) {
 	var m ChannelMember
 	err := r.db.WithContext(ctx).
 		Where("user_id = ? AND channel_id = ?", userID, channelID).
@@ -210,7 +210,7 @@ func (r *gormChannelRepo) GetMember(ctx context.Context, channelID int64, userID
 	return &m, nil
 }
 
-func (r *gormChannelRepo) ListMembers(ctx context.Context, channelID int64) ([]ChannelMember, error) {
+func (r *gormChannelRepo) ListMembers(ctx context.Context, channelID string) ([]ChannelMember, error) {
 	var members []ChannelMember
 	err := r.db.WithContext(ctx).
 		Where("channel_id = ?", channelID).
@@ -237,7 +237,7 @@ func (r *gormChannelRepo) ListByUser(ctx context.Context, userID string) ([]Chan
 	return channels, nil
 }
 
-func (r *gormChannelRepo) MarkRead(ctx context.Context, channelID int64, userID string, seq int64) error {
+func (r *gormChannelRepo) MarkRead(ctx context.Context, channelID string, userID string, seq int64) error {
 	err := r.db.WithContext(ctx).Exec(
 		`UPDATE channel_members
 		 SET last_read_seq = ?, phantom_at_read = phantom_count
@@ -253,7 +253,7 @@ func (r *gormChannelRepo) MarkRead(ctx context.Context, channelID int64, userID 
 // IncrementPhantomCount bumps phantom_count for every member of channelID
 // EXCEPT the users in excludeUserIDs. excludeUserIDs may be empty/nil.
 // If tx is nil, runs against the repo's own connection.
-func (r *gormChannelRepo) IncrementPhantomCount(ctx context.Context, tx *gorm.DB, channelID int64, excludeUserIDs []string) error {
+func (r *gormChannelRepo) IncrementPhantomCount(ctx context.Context, tx *gorm.DB, channelID string, excludeUserIDs []string) error {
 	// Normalise nil → empty slice so pq sends '{}'::text[] (not NULL).
 	// `user_id != ALL(NULL)` evaluates to NULL and matches no rows, breaking
 	// the "exclude nobody" case.
@@ -294,7 +294,7 @@ func (r *gormChannelRepo) FindDM(ctx context.Context, userA, userB string) (*Cha
 	if err != nil {
 		return nil, fmt.Errorf("find dm: %w", err)
 	}
-	if ch.ID == 0 {
+	if ch.ID == "" {
 		return nil, ErrNotFound
 	}
 	return &ch, nil
@@ -344,9 +344,9 @@ func (r *gormChannelRepo) ListByUserWithPreview(ctx context.Context, userID stri
 
 // GetMemberChannelSeqs returns {channel_id: seq} for every channel the user
 // belongs to. Used by the heartbeat to compute the pong diff.
-func (r *gormChannelRepo) GetMemberChannelSeqs(ctx context.Context, userID string) (map[int64]int64, error) {
+func (r *gormChannelRepo) GetMemberChannelSeqs(ctx context.Context, userID string) (map[string]int64, error) {
 	type row struct {
-		ID  int64
+		ID  string
 		Seq int64
 	}
 	var rows []row
@@ -360,7 +360,7 @@ func (r *gormChannelRepo) GetMemberChannelSeqs(ctx context.Context, userID strin
 	if err != nil {
 		return nil, fmt.Errorf("get member channel seqs: %w", err)
 	}
-	out := make(map[int64]int64, len(rows))
+	out := make(map[string]int64, len(rows))
 	for _, r := range rows {
 		out[r.ID] = r.Seq
 	}

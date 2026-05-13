@@ -24,7 +24,7 @@ import (
 // (topic / sub-channel). RootMessageID points at the message the topic was
 // branched from. Members & messages share the parent's tables + seq.
 type Channel struct {
-	ID            int64     `gorm:"primaryKey;autoIncrement"                                json:"id"`
+	ID            string    `gorm:"primaryKey;type:text"                                    json:"id"`
 	Type          int16     `gorm:"not null"                                                json:"type"`
 	Name          string    `gorm:"size:100;not null;default:''"                            json:"name"`
 	AvatarURL     string    `gorm:"column:avatar_url;not null;default:''"                   json:"avatar_url"`
@@ -38,8 +38,8 @@ type Channel struct {
 	Orient        int16     `gorm:"column:orient;not null;default:0"                        json:"orient"`
 	Permission    int16     `gorm:"column:permission;not null;default:0"                    json:"permission"`
 	IsTop         bool      `gorm:"column:is_top;not null;default:false"                    json:"is_top"`
-	RootID        *int64    `gorm:"column:root_id"                                          json:"root_id,omitempty"`
-	RootMessageID *int64    `gorm:"column:root_message_id"                                  json:"root_message_id,omitempty"`
+	RootID        *string   `gorm:"column:root_id;type:text"                                json:"root_id,omitempty"`
+	RootMessageID *string   `gorm:"column:root_message_id;type:text"                        json:"root_message_id,omitempty"`
 	CreatedAt     time.Time `gorm:"column:created_at;not null;default:now()"                json:"created_at"`
 	UpdatedAt     time.Time `gorm:"column:updated_at;not null;default:now()"                json:"updated_at"`
 	// DeletedAt is set when the owner soft-deletes ("解散") the channel via
@@ -62,7 +62,7 @@ func (Channel) TableName() string { return "channels" }
 // M4: UserID is now mm UserID (24-hex string).
 type ChannelMember struct {
 	UserID        string    `gorm:"column:user_id;type:text;primaryKey"                     json:"user_id"`
-	ChannelID     int64     `gorm:"column:channel_id;primaryKey"                            json:"channel_id"`
+	ChannelID     string    `gorm:"column:channel_id;type:text;primaryKey"                  json:"channel_id"`
 	Role          int16     `gorm:"not null;default:1"                                      json:"role"`
 	LastReadSeq   int64     `gorm:"column:last_read_seq;not null;default:0"                 json:"last_read_seq"`
 	PhantomCount  int64     `gorm:"column:phantom_count;not null;default:0"                 json:"phantom_count"`
@@ -90,8 +90,8 @@ func (ChannelMember) TableName() string { return "channel_members" }
 // the sender's team or the channel's team changes later, the historical row
 // keeps the original value). VisibleTo holds mm UserIDs.
 type Message struct {
-	ID            int64           `gorm:"primaryKey;autoIncrement"                                json:"id"`
-	ChannelID     int64           `gorm:"column:channel_id;not null"                              json:"channel_id"`
+	ID            string          `gorm:"primaryKey;type:text"                                    json:"id"`
+	ChannelID     string          `gorm:"column:channel_id;type:text;not null"                    json:"channel_id"`
 	Seq           int64           `gorm:"not null"                                                json:"seq"`
 	ClientMsgID   string          `gorm:"column:client_msg_id;size:36"                            json:"client_msg_id,omitempty"`
 	SenderID      string          `gorm:"column:sender_id;type:text;not null"                     json:"sender_id"`
@@ -99,8 +99,8 @@ type Message struct {
 	MsgType       int16           `gorm:"column:msg_type;not null;default:1"                      json:"msg_type"`
 	Content       string          `gorm:"not null;default:''"                                     json:"content"`
 	VisibleTo     pq.StringArray  `gorm:"column:visible_to;type:text[]"                           json:"visible_to,omitempty"`
-	ReplyTo       *int64          `gorm:"column:reply_to"                                         json:"reply_to,omitempty"`
-	ForwardedFrom *int64          `gorm:"column:forwarded_from"                                   json:"forwarded_from,omitempty"`
+	ReplyTo       *string         `gorm:"column:reply_to;type:text"                               json:"reply_to,omitempty"`
+	ForwardedFrom *string         `gorm:"column:forwarded_from;type:text"                         json:"forwarded_from,omitempty"`
 	CreatedAt     time.Time       `gorm:"column:created_at;not null;default:now()"                json:"created_at"`
 	UpdatedAt     *time.Time      `gorm:"column:updated_at"                                       json:"updated_at,omitempty"`
 	Deleted       bool            `gorm:"column:deleted;not null;default:false"                   json:"deleted,omitempty"`
@@ -145,7 +145,7 @@ const (
 //
 // M4: requester / addressee are mm UserIDs (24-hex string).
 type Friendship struct {
-	ID          int64     `gorm:"primaryKey;autoIncrement"                                                                            json:"id"`
+	ID          string    `gorm:"primaryKey;type:text"                                                                                json:"id"`
 	RequesterID string    `gorm:"column:requester_id;type:text;not null;uniqueIndex:uq_friendships_pair,priority:1"                   json:"requester_id"`
 	AddresseeID string    `gorm:"column:addressee_id;type:text;not null;uniqueIndex:uq_friendships_pair,priority:2"                   json:"addressee_id"`
 	Status      int16     `gorm:"not null;default:1"                                                                                  json:"status"`
@@ -160,7 +160,7 @@ func (Friendship) TableName() string { return "friendships" }
 //
 // M4: UploaderID is mm UserID (24-hex string).
 type File struct {
-	ID            int64     `gorm:"primaryKey;autoIncrement"                                json:"id"`
+	ID            string    `gorm:"primaryKey;type:text"                                    json:"id"`
 	UploaderID    string    `gorm:"column:uploader_id;type:text;not null"                   json:"uploader_id"`
 	FileName      string    `gorm:"column:file_name;size:255;not null"                      json:"file_name"`
 	FileSize      int64     `gorm:"column:file_size;not null"                               json:"file_size"`
@@ -175,8 +175,8 @@ func (File) TableName() string { return "files" }
 
 // MessageAttachment maps the message_attachments join table (composite PK).
 type MessageAttachment struct {
-	MessageID int64 `gorm:"column:message_id;primaryKey"                                json:"message_id"`
-	FileID    int64 `gorm:"column:file_id;primaryKey"                                   json:"file_id"`
+	MessageID string `gorm:"column:message_id;type:text;primaryKey"                     json:"message_id"`
+	FileID    string `gorm:"column:file_id;type:text;primaryKey"                        json:"file_id"`
 }
 
 // TableName pins the GORM-derived table name to the migration.
@@ -187,7 +187,7 @@ func (MessageAttachment) TableName() string { return "message_attachments" }
 // M4: UserID is mm UserID (24-hex string).
 type MessageFavorite struct {
 	UserID    string    `gorm:"column:user_id;type:text;primaryKey"                       json:"user_id"`
-	MessageID int64     `gorm:"column:message_id;primaryKey"                              json:"message_id"`
+	MessageID string    `gorm:"column:message_id;type:text;primaryKey"                    json:"message_id"`
 	CreatedAt time.Time `gorm:"column:created_at;not null;default:now()"                  json:"created_at"`
 }
 
@@ -215,7 +215,7 @@ func (Module) TableName() string { return "modules" }
 //
 // M4: UserID is mm UserID (24-hex string).
 type MessageReaction struct {
-	MessageID int64     `gorm:"column:message_id;primaryKey"                          json:"message_id"`
+	MessageID string    `gorm:"column:message_id;type:text;primaryKey"                json:"message_id"`
 	UserID    string    `gorm:"column:user_id;type:text;primaryKey"                   json:"user_id"`
 	Emoji     string    `gorm:"column:emoji;type:varchar(64);primaryKey"              json:"emoji"`
 	CreatedAt time.Time `gorm:"column:created_at;not null;default:now()"              json:"created_at"`
@@ -230,7 +230,7 @@ func (MessageReaction) TableName() string { return "message_reactions" }
 //
 // M4: UserID / AddedBy are mm UserIDs (24-hex string).
 type ChannelManager struct {
-	ChannelID int64     `gorm:"column:channel_id;primaryKey"                              json:"channel_id"`
+	ChannelID string    `gorm:"column:channel_id;type:text;primaryKey"                    json:"channel_id"`
 	UserID    string    `gorm:"column:user_id;type:text;primaryKey"                       json:"user_id"`
 	AddedBy   string    `gorm:"column:added_by;type:text;not null"                        json:"added_by"`
 	AddedAt   time.Time `gorm:"column:added_at;not null;default:now()"                    json:"added_at"`
@@ -244,8 +244,8 @@ func (ChannelManager) TableName() string { return "channel_managers" }
 //
 // M4: PinnedBy is a mm UserID (24-hex string).
 type ChannelPinnedMessage struct {
-	ChannelID int64     `gorm:"column:channel_id;primaryKey"                              json:"channel_id"`
-	MessageID int64     `gorm:"column:message_id;primaryKey"                              json:"message_id"`
+	ChannelID string    `gorm:"column:channel_id;type:text;primaryKey"                    json:"channel_id"`
+	MessageID string    `gorm:"column:message_id;type:text;primaryKey"                    json:"message_id"`
 	PinnedBy  string    `gorm:"column:pinned_by;type:text;not null"                       json:"pinned_by"`
 	PinnedAt  time.Time `gorm:"column:pinned_at;not null;default:now()"                   json:"pinned_at"`
 }

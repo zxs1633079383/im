@@ -12,7 +12,7 @@ import (
 // queries cses-side endpoints (or pulls profiles via the Redis HASH "User")
 // for that data, and im no longer keeps a local users table.
 type SearchRepo interface {
-	SearchMessages(ctx context.Context, q string, userID string, channelID int64, limit int) ([]MessageSearchResult, error)
+	SearchMessages(ctx context.Context, q string, userID string, channelID string, limit int) ([]MessageSearchResult, error)
 	SearchChannels(ctx context.Context, q string, callerID string, limit int) ([]Channel, error)
 }
 
@@ -43,7 +43,7 @@ func clampLimit(limit int) int {
 // SearchMessages returns messages whose content matches q (Postgres FTS,
 // 'simple' config) inside channels where userID is a member. When channelID
 // > 0 the search is scoped to that channel.
-func (r *gormSearchRepo) SearchMessages(ctx context.Context, q string, userID string, channelID int64, limit int) ([]MessageSearchResult, error) {
+func (r *gormSearchRepo) SearchMessages(ctx context.Context, q string, userID string, channelID string, limit int) ([]MessageSearchResult, error) {
 	limit = clampLimit(limit)
 	if strings.TrimSpace(q) == "" {
 		return nil, nil
@@ -61,7 +61,7 @@ func (r *gormSearchRepo) SearchMessages(ctx context.Context, q string, userID st
 
 	var rows []MessageSearchResult
 	var err error
-	if channelID > 0 {
+	if channelID != "" {
 		err = r.db.WithContext(ctx).Raw(
 			baseSelect+` AND m.channel_id = ? ORDER BY m.created_at DESC LIMIT ?`,
 			userID, q, channelID, limit,

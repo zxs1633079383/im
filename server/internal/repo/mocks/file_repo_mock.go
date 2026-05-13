@@ -23,7 +23,7 @@ func (_m *FileRepoMock) EXPECT() *FileRepoMock_Expecter {
 }
 
 // AttachToMessage provides a mock function with given fields: ctx, messageID, fileID
-func (_m *FileRepoMock) AttachToMessage(ctx context.Context, messageID int64, fileID int64) error {
+func (_m *FileRepoMock) AttachToMessage(ctx context.Context, messageID string, fileID string) error {
 	ret := _m.Called(ctx, messageID, fileID)
 
 	if len(ret) == 0 {
@@ -31,7 +31,7 @@ func (_m *FileRepoMock) AttachToMessage(ctx context.Context, messageID int64, fi
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, int64, int64) error); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string, string) error); ok {
 		r0 = rf(ctx, messageID, fileID)
 	} else {
 		r0 = ret.Error(0)
@@ -47,15 +47,15 @@ type FileRepoMock_AttachToMessage_Call struct {
 
 // AttachToMessage is a helper method to define mock.On call
 //   - ctx context.Context
-//   - messageID int64
-//   - fileID int64
+//   - messageID string
+//   - fileID string
 func (_e *FileRepoMock_Expecter) AttachToMessage(ctx interface{}, messageID interface{}, fileID interface{}) *FileRepoMock_AttachToMessage_Call {
 	return &FileRepoMock_AttachToMessage_Call{Call: _e.mock.On("AttachToMessage", ctx, messageID, fileID)}
 }
 
-func (_c *FileRepoMock_AttachToMessage_Call) Run(run func(ctx context.Context, messageID int64, fileID int64)) *FileRepoMock_AttachToMessage_Call {
+func (_c *FileRepoMock_AttachToMessage_Call) Run(run func(ctx context.Context, messageID string, fileID string)) *FileRepoMock_AttachToMessage_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(int64), args[2].(int64))
+		run(args[0].(context.Context), args[1].(string), args[2].(string))
 	})
 	return _c
 }
@@ -65,7 +65,7 @@ func (_c *FileRepoMock_AttachToMessage_Call) Return(_a0 error) *FileRepoMock_Att
 	return _c
 }
 
-func (_c *FileRepoMock_AttachToMessage_Call) RunAndReturn(run func(context.Context, int64, int64) error) *FileRepoMock_AttachToMessage_Call {
+func (_c *FileRepoMock_AttachToMessage_Call) RunAndReturn(run func(context.Context, string, string) error) *FileRepoMock_AttachToMessage_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -118,7 +118,7 @@ func (_c *FileRepoMock_Create_Call) RunAndReturn(run func(context.Context, *repo
 }
 
 // GetByID provides a mock function with given fields: ctx, id
-func (_m *FileRepoMock) GetByID(ctx context.Context, id int64) (*repo.File, error) {
+func (_m *FileRepoMock) GetByID(ctx context.Context, id string) (*repo.File, error) {
 	ret := _m.Called(ctx, id)
 
 	if len(ret) == 0 {
@@ -127,10 +127,10 @@ func (_m *FileRepoMock) GetByID(ctx context.Context, id int64) (*repo.File, erro
 
 	var r0 *repo.File
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, int64) (*repo.File, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string) (*repo.File, error)); ok {
 		return rf(ctx, id)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, int64) *repo.File); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string) *repo.File); ok {
 		r0 = rf(ctx, id)
 	} else {
 		if ret.Get(0) != nil {
@@ -138,7 +138,7 @@ func (_m *FileRepoMock) GetByID(ctx context.Context, id int64) (*repo.File, erro
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, int64) error); ok {
+	if rf, ok := ret.Get(1).(func(context.Context, string) error); ok {
 		r1 = rf(ctx, id)
 	} else {
 		r1 = ret.Error(1)
@@ -154,14 +154,14 @@ type FileRepoMock_GetByID_Call struct {
 
 // GetByID is a helper method to define mock.On call
 //   - ctx context.Context
-//   - id int64
+//   - id string
 func (_e *FileRepoMock_Expecter) GetByID(ctx interface{}, id interface{}) *FileRepoMock_GetByID_Call {
 	return &FileRepoMock_GetByID_Call{Call: _e.mock.On("GetByID", ctx, id)}
 }
 
-func (_c *FileRepoMock_GetByID_Call) Run(run func(ctx context.Context, id int64)) *FileRepoMock_GetByID_Call {
+func (_c *FileRepoMock_GetByID_Call) Run(run func(ctx context.Context, id string)) *FileRepoMock_GetByID_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(int64))
+		run(args[0].(context.Context), args[1].(string))
 	})
 	return _c
 }
@@ -171,13 +171,13 @@ func (_c *FileRepoMock_GetByID_Call) Return(_a0 *repo.File, _a1 error) *FileRepo
 	return _c
 }
 
-func (_c *FileRepoMock_GetByID_Call) RunAndReturn(run func(context.Context, int64) (*repo.File, error)) *FileRepoMock_GetByID_Call {
+func (_c *FileRepoMock_GetByID_Call) RunAndReturn(run func(context.Context, string) (*repo.File, error)) *FileRepoMock_GetByID_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // ListByMessage provides a mock function with given fields: ctx, messageID
-func (_m *FileRepoMock) ListByMessage(ctx context.Context, messageID int64) ([]repo.File, error) {
+func (_m *FileRepoMock) ListByMessage(ctx context.Context, messageID string) ([]repo.File, error) {
 	ret := _m.Called(ctx, messageID)
 
 	if len(ret) == 0 {
@@ -186,10 +186,10 @@ func (_m *FileRepoMock) ListByMessage(ctx context.Context, messageID int64) ([]r
 
 	var r0 []repo.File
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, int64) ([]repo.File, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string) ([]repo.File, error)); ok {
 		return rf(ctx, messageID)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, int64) []repo.File); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string) []repo.File); ok {
 		r0 = rf(ctx, messageID)
 	} else {
 		if ret.Get(0) != nil {
@@ -197,7 +197,7 @@ func (_m *FileRepoMock) ListByMessage(ctx context.Context, messageID int64) ([]r
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, int64) error); ok {
+	if rf, ok := ret.Get(1).(func(context.Context, string) error); ok {
 		r1 = rf(ctx, messageID)
 	} else {
 		r1 = ret.Error(1)
@@ -213,14 +213,14 @@ type FileRepoMock_ListByMessage_Call struct {
 
 // ListByMessage is a helper method to define mock.On call
 //   - ctx context.Context
-//   - messageID int64
+//   - messageID string
 func (_e *FileRepoMock_Expecter) ListByMessage(ctx interface{}, messageID interface{}) *FileRepoMock_ListByMessage_Call {
 	return &FileRepoMock_ListByMessage_Call{Call: _e.mock.On("ListByMessage", ctx, messageID)}
 }
 
-func (_c *FileRepoMock_ListByMessage_Call) Run(run func(ctx context.Context, messageID int64)) *FileRepoMock_ListByMessage_Call {
+func (_c *FileRepoMock_ListByMessage_Call) Run(run func(ctx context.Context, messageID string)) *FileRepoMock_ListByMessage_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(int64))
+		run(args[0].(context.Context), args[1].(string))
 	})
 	return _c
 }
@@ -230,7 +230,7 @@ func (_c *FileRepoMock_ListByMessage_Call) Return(_a0 []repo.File, _a1 error) *F
 	return _c
 }
 
-func (_c *FileRepoMock_ListByMessage_Call) RunAndReturn(run func(context.Context, int64) ([]repo.File, error)) *FileRepoMock_ListByMessage_Call {
+func (_c *FileRepoMock_ListByMessage_Call) RunAndReturn(run func(context.Context, string) ([]repo.File, error)) *FileRepoMock_ListByMessage_Call {
 	_c.Call.Return(run)
 	return _c
 }

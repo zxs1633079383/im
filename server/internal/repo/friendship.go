@@ -30,8 +30,8 @@ type PendingRequest struct {
 // to the database. Empty string is returned on any error.
 type FriendshipRepo interface {
 	SendRequest(ctx context.Context, requesterID, addresseeID string) error
-	AcceptRequest(ctx context.Context, friendshipID int64, userID string) (requesterID string, err error)
-	RejectRequest(ctx context.Context, friendshipID int64, userID string) (requesterID string, err error)
+	AcceptRequest(ctx context.Context, friendshipID string, userID string) (requesterID string, err error)
+	RejectRequest(ctx context.Context, friendshipID string, userID string) (requesterID string, err error)
 	ListFriends(ctx context.Context, userID string) ([]string, error)
 	ListPendingRequests(ctx context.Context, userID string) ([]PendingRequest, error)
 	GetFriendship(ctx context.Context, userA, userB string) (*Friendship, error)
@@ -58,12 +58,12 @@ func (r *gormFriendshipRepo) SendRequest(ctx context.Context, requesterID, addre
 // AcceptRequest flips the pending friendship to Accepted and returns the
 // row's requester mm UserID so the caller can push a real-time event back
 // to the original sender.
-func (r *gormFriendshipRepo) AcceptRequest(ctx context.Context, friendshipID int64, userID string) (string, error) {
+func (r *gormFriendshipRepo) AcceptRequest(ctx context.Context, friendshipID string, userID string) (string, error) {
 	return r.transitionPending(ctx, friendshipID, userID, FriendshipAccepted)
 }
 
 // RejectRequest mirrors AcceptRequest but transitions the row to Rejected.
-func (r *gormFriendshipRepo) RejectRequest(ctx context.Context, friendshipID int64, userID string) (string, error) {
+func (r *gormFriendshipRepo) RejectRequest(ctx context.Context, friendshipID string, userID string) (string, error) {
 	return r.transitionPending(ctx, friendshipID, userID, FriendshipRejected)
 }
 
@@ -71,7 +71,7 @@ func (r *gormFriendshipRepo) RejectRequest(ctx context.Context, friendshipID int
 // status, returning the row's requester mm UserID. Gated on addressee_id =
 // userID so only the request's target can act. Returns ErrNotFound if no
 // matching Pending row exists.
-func (r *gormFriendshipRepo) transitionPending(ctx context.Context, friendshipID int64, userID string, to int16) (string, error) {
+func (r *gormFriendshipRepo) transitionPending(ctx context.Context, friendshipID string, userID string, to int16) (string, error) {
 	var f Friendship
 	if err := r.db.WithContext(ctx).
 		Where("id = ? AND addressee_id = ? AND status = ?", friendshipID, userID, FriendshipPending).

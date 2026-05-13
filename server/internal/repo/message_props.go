@@ -27,7 +27,7 @@ import (
 // jsonb_set + atomic predicate instead.
 func (r *gormMessageRepo) UpdateMessageProps(
 	ctx context.Context,
-	msgID int64,
+	msgID string,
 	newProps string,
 ) (*Message, error) {
 	ctx, span := tracer.Start(ctx, "MessageRepo.UpdateMessageProps")

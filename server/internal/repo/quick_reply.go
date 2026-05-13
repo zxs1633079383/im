@@ -12,7 +12,7 @@ import (
 // QuickReply maps the quick_replies table — a per-user preset the client
 // injects into normal messages.
 type QuickReply struct {
-	ID        int64     `gorm:"primaryKey;autoIncrement"                 json:"id"`
+	ID        string    `gorm:"primaryKey;type:text"                     json:"id"`
 	UserID    string    `gorm:"column:user_id;type:text;not null"        json:"user_id"`
 	Label     string    `gorm:"not null"                                 json:"label"`
 	Content   string    `gorm:"not null"                                 json:"content"`
@@ -27,10 +27,10 @@ func (QuickReply) TableName() string { return "quick_replies" }
 // QuickReplyRepo is the data-access surface.
 type QuickReplyRepo interface {
 	Create(ctx context.Context, q *QuickReply) error
-	GetByID(ctx context.Context, id int64) (*QuickReply, error)
+	GetByID(ctx context.Context, id string) (*QuickReply, error)
 	ListByUser(ctx context.Context, userID string) ([]QuickReply, error)
-	Update(ctx context.Context, id int64, fields QuickReplyPatch) error
-	Delete(ctx context.Context, id int64) error
+	Update(ctx context.Context, id string, fields QuickReplyPatch) error
+	Delete(ctx context.Context, id string) error
 }
 
 // QuickReplyPatch is the partial-update shape. nil field = "leave unchanged".
@@ -54,7 +54,7 @@ func (r *gormQuickReplyRepo) Create(ctx context.Context, q *QuickReply) error {
 }
 
 // GetByID returns the quick reply by PK.
-func (r *gormQuickReplyRepo) GetByID(ctx context.Context, id int64) (*QuickReply, error) {
+func (r *gormQuickReplyRepo) GetByID(ctx context.Context, id string) (*QuickReply, error) {
 	var q QuickReply
 	if err := r.db.WithContext(ctx).First(&q, id).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -79,7 +79,7 @@ func (r *gormQuickReplyRepo) ListByUser(ctx context.Context, userID string) ([]Q
 }
 
 // Update applies the patch to a quick reply. An empty patch is a no-op.
-func (r *gormQuickReplyRepo) Update(ctx context.Context, id int64, fields QuickReplyPatch) error {
+func (r *gormQuickReplyRepo) Update(ctx context.Context, id string, fields QuickReplyPatch) error {
 	updates := map[string]any{}
 	if fields.Label != nil {
 		updates["label"] = *fields.Label
@@ -107,7 +107,7 @@ func (r *gormQuickReplyRepo) Update(ctx context.Context, id int64, fields QuickR
 }
 
 // Delete removes the quick reply by PK.
-func (r *gormQuickReplyRepo) Delete(ctx context.Context, id int64) error {
+func (r *gormQuickReplyRepo) Delete(ctx context.Context, id string) error {
 	res := r.db.WithContext(ctx).Delete(&QuickReply{}, id)
 	if res.Error != nil {
 		return fmt.Errorf("delete quick reply: %w", res.Error)

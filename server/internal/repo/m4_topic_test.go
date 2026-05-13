@@ -10,7 +10,7 @@ func TestCollectTopicMembers_M4(t *testing.T) {
 		other1  = "111111111111111111111111"
 		other2  = "222222222222222222222222"
 	)
-	channelID := int64(99)
+	channelID := "01TEST_CHANNEL_99"
 
 	t.Run("creator only — no extra members", func(t *testing.T) {
 		got := collectTopicMembers(channelID, creator, nil)

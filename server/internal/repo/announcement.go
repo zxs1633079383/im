@@ -14,8 +14,8 @@ import (
 // as a string — callers decide the concrete schema. Deleted is a soft-delete
 // flag (the row stays in the DB so acks remain auditable).
 type Announcement struct {
-	ID        int64     `gorm:"primaryKey;autoIncrement"                                  json:"id"`
-	ChannelID int64     `gorm:"column:channel_id;not null"                                json:"channel_id"`
+	ID        string    `gorm:"primaryKey;type:text"                                      json:"id"`
+	ChannelID string    `gorm:"column:channel_id;type:text;not null"                      json:"channel_id"`
 	CreatorID string    `gorm:"column:creator_id;type:text;not null"                      json:"creator_id"`
 	Title     string    `gorm:"not null"                                                  json:"title"`
 	Content   string    `gorm:"not null"                                                  json:"content"`
@@ -31,7 +31,7 @@ func (Announcement) TableName() string { return "announcements" }
 // AnnouncementAck maps the announcement_acknowledgements table — a user has
 // acknowledged a specific announcement.
 type AnnouncementAck struct {
-	AnnouncementID int64     `gorm:"column:announcement_id;primaryKey"                          json:"announcement_id"`
+	AnnouncementID string    `gorm:"column:announcement_id;type:text;primaryKey"                json:"announcement_id"`
 	UserID         string    `gorm:"column:user_id;type:text;primaryKey"                        json:"user_id"`
 	AcknowledgedAt time.Time `gorm:"column:acknowledged_at;not null;default:now()"              json:"acknowledged_at"`
 }
@@ -42,12 +42,12 @@ func (AnnouncementAck) TableName() string { return "announcement_acknowledgement
 // AnnouncementRepo is the data access layer for channel announcements.
 type AnnouncementRepo interface {
 	Create(ctx context.Context, a *Announcement) error
-	GetByID(ctx context.Context, id int64) (*Announcement, error)
-	ListByChannel(ctx context.Context, channelID int64, limit, offset int) ([]Announcement, error)
-	SoftDelete(ctx context.Context, id int64) error
+	GetByID(ctx context.Context, id string) (*Announcement, error)
+	ListByChannel(ctx context.Context, channelID string, limit, offset int) ([]Announcement, error)
+	SoftDelete(ctx context.Context, id string) error
 
-	AddAck(ctx context.Context, announcementID int64, userID string) error
-	ListAcks(ctx context.Context, announcementID int64) ([]AnnouncementAck, error)
+	AddAck(ctx context.Context, announcementID string, userID string) error
+	ListAcks(ctx context.Context, announcementID string) ([]AnnouncementAck, error)
 }
 
 type gormAnnouncementRepo struct{ db *gorm.DB }
@@ -71,7 +71,7 @@ func (r *gormAnnouncementRepo) Create(ctx context.Context, a *Announcement) erro
 
 // GetByID returns the announcement (including soft-deleted ones — callers
 // filter as appropriate). ErrNotFound if missing.
-func (r *gormAnnouncementRepo) GetByID(ctx context.Context, id int64) (*Announcement, error) {
+func (r *gormAnnouncementRepo) GetByID(ctx context.Context, id string) (*Announcement, error) {
 	var a Announcement
 	if err := r.db.WithContext(ctx).First(&a, id).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -84,7 +84,7 @@ func (r *gormAnnouncementRepo) GetByID(ctx context.Context, id int64) (*Announce
 
 // ListByChannel returns non-deleted announcements, newest first. limit/offset
 // enable pagination; caller can pass limit=0 for "all".
-func (r *gormAnnouncementRepo) ListByChannel(ctx context.Context, channelID int64, limit, offset int) ([]Announcement, error) {
+func (r *gormAnnouncementRepo) ListByChannel(ctx context.Context, channelID string, limit, offset int) ([]Announcement, error) {
 	q := r.db.WithContext(ctx).
 		Where("channel_id = ? AND deleted = FALSE", channelID).
 		Order("created_at DESC")
@@ -99,7 +99,7 @@ func (r *gormAnnouncementRepo) ListByChannel(ctx context.Context, channelID int6
 }
 
 // SoftDelete flips deleted=true. Idempotent.
-func (r *gormAnnouncementRepo) SoftDelete(ctx context.Context, id int64) error {
+func (r *gormAnnouncementRepo) SoftDelete(ctx context.Context, id string) error {
 	res := r.db.WithContext(ctx).Model(&Announcement{}).
 		Where("id = ?", id).
 		Updates(map[string]any{"deleted": true, "updated_at": gorm.Expr("now()")})
@@ -113,7 +113,7 @@ func (r *gormAnnouncementRepo) SoftDelete(ctx context.Context, id int64) error {
 }
 
 // AddAck inserts an ack row. Idempotent via ON CONFLICT DO NOTHING.
-func (r *gormAnnouncementRepo) AddAck(ctx context.Context, announcementID int64, userID string) error {
+func (r *gormAnnouncementRepo) AddAck(ctx context.Context, announcementID string, userID string) error {
 	ack := &AnnouncementAck{AnnouncementID: announcementID, UserID: userID}
 	err := r.db.WithContext(ctx).Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "announcement_id"}, {Name: "user_id"}},
@@ -126,7 +126,7 @@ func (r *gormAnnouncementRepo) AddAck(ctx context.Context, announcementID int64,
 }
 
 // ListAcks returns acks for a given announcement, oldest-first.
-func (r *gormAnnouncementRepo) ListAcks(ctx context.Context, announcementID int64) ([]AnnouncementAck, error) {
+func (r *gormAnnouncementRepo) ListAcks(ctx context.Context, announcementID string) ([]AnnouncementAck, error) {
 	var acks []AnnouncementAck
 	err := r.db.WithContext(ctx).
 		Where("announcement_id = ?", announcementID).
