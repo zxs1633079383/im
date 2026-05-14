@@ -9,27 +9,45 @@ import (
 )
 
 type Config struct {
-	PG      PGConfig      `yaml:"pg"`
-	Redis   RedisConfig   `yaml:"redis"`
-	Pulsar  PulsarConfig  `yaml:"pulsar"`
-	Gateway GatewayConfig `yaml:"gateway"`
+	PG            PGConfig            `yaml:"pg"`
+	Redis         RedisConfig         `yaml:"redis"`
+	Pulsar        PulsarConfig        `yaml:"pulsar"`
+	Gateway       GatewayConfig       `yaml:"gateway"`
+	Observability ObservabilityConfig `yaml:"observability"`
+}
+
+// ObservabilityConfig points the OTel SDK at a collector.
+//
+// Endpoint is OTLP/gRPC host:port (no scheme). When empty the SDK falls back
+// to the OTEL_EXPORTER_OTLP_ENDPOINT env var (default localhost:4317), which
+// is convenient for local dev but throws "connection refused" in pre/prod
+// where the collector is named (e.g. jaeger-cses-pre-collector.jaeger-cses
+// .svc.cluster.local:4317). Disabled short-circuits Init to a noop.
+//
+// SampleRatio is a parent-based head sampler ratio (0.0..1.0). Zero means
+// "let Init pick the default" (1.0 — sample everything).
+type ObservabilityConfig struct {
+	Endpoint    string  `yaml:"endpoint"`
+	Disabled    bool    `yaml:"disabled"`
+	SampleRatio float64 `yaml:"sample_ratio"`
 }
 
 // PGConfig mirrors the Java HikariCP knobs so the two services use
 // comparable pool sizes when they share the same Postgres instance.
 //
 // Java (reference):
-//   maximum-pool-size: 300
-//   minimum-idle: 1
-//   idle-timeout: 300000        # 300s
-//   max-lifetime: 600000        # 600s
-//   connection-timeout: 30000   # handled at context level on the Go side
+//
+//	maximum-pool-size: 300
+//	minimum-idle: 1
+//	idle-timeout: 300000        # 300s
+//	max-lifetime: 600000        # 600s
+//	connection-timeout: 30000   # handled at context level on the Go side
 type PGConfig struct {
-	DSN             string `yaml:"dsn"`
-	MaxConns        int    `yaml:"max_conns"`        // ~= HikariCP maximum-pool-size
-	MaxIdle         int    `yaml:"max_idle"`         // Go has no minimum-idle; set to ~10% of MaxConns
-	ConnMaxLifeSec  int    `yaml:"conn_max_life_s"`  // ~= HikariCP max-lifetime, seconds
-	ConnMaxIdleSec  int    `yaml:"conn_max_idle_s"`  // ~= HikariCP idle-timeout, seconds
+	DSN            string `yaml:"dsn"`
+	MaxConns       int    `yaml:"max_conns"`       // ~= HikariCP maximum-pool-size
+	MaxIdle        int    `yaml:"max_idle"`        // Go has no minimum-idle; set to ~10% of MaxConns
+	ConnMaxLifeSec int    `yaml:"conn_max_life_s"` // ~= HikariCP max-lifetime, seconds
+	ConnMaxIdleSec int    `yaml:"conn_max_idle_s"` // ~= HikariCP idle-timeout, seconds
 }
 
 type RedisConfig struct {
@@ -66,7 +84,7 @@ type PulsarConfig struct {
 type GatewayConfig struct {
 	HTTPAddr  string `yaml:"http_addr"`
 	JWTSecret string `yaml:"jwt_secret"`
-	ID        string `yaml:"id"`        // resolved at runtime from HOSTNAME or UUID if blank
+	ID        string `yaml:"id"`         // resolved at runtime from HOSTNAME or UUID if blank
 	UploadDir string `yaml:"upload_dir"` // default: /data/uploads
 }
 
@@ -135,6 +153,12 @@ func applyEnvOverrides(cfg *Config) {
 	}
 	if v := os.Getenv("HOSTNAME"); v != "" && cfg.Gateway.ID == "" {
 		cfg.Gateway.ID = v
+	}
+	if v := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"); v != "" && cfg.Observability.Endpoint == "" {
+		cfg.Observability.Endpoint = v
+	}
+	if v := os.Getenv("OTEL_DISABLED"); v == "true" || v == "1" {
+		cfg.Observability.Disabled = true
 	}
 }
 

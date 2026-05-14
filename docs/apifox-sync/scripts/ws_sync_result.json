@@ -1,0 +1,108 @@
+{
+  "created": [
+    {
+      "name": "WS 连接握手 / Upgrade",
+      "id": 456223226
+    },
+    {
+      "name": "ping → pong (心跳，client→server)",
+      "id": 456223227
+    },
+    {
+      "name": "pong (心跳应答，server→client)",
+      "id": 456223228
+    },
+    {
+      "name": "send (客户端发消息)",
+      "id": 456223229
+    },
+    {
+      "name": "push_ack (客户端 ACK 推送)",
+      "id": 456223230
+    },
+    {
+      "name": "sync (重连上报本地 seq)",
+      "id": 456223231
+    },
+    {
+      "name": "push_msg (新消息推送)",
+      "id": 456223232
+    },
+    {
+      "name": "send_ack (服务端确认 send)",
+      "id": 456223234
+    },
+    {
+      "name": "sync_resp (sync 响应)",
+      "id": 456223236
+    },
+    {
+      "name": "read_sync (同账号他设备已读同步)",
+      "id": 456223237
+    },
+    {
+      "name": "friend_event (好友事件)",
+      "id": 456223241
+    },
+    {
+      "name": "channel_event (加入 channel 事件)",
+      "id": 456223242
+    },
+    {
+      "name": "msg_updated (消息被编辑)",
+      "id": 456223243
+    },
+    {
+      "name": "msg_deleted (消息被撤回)",
+      "id": 456223244
+    },
+    {
+      "name": "announcement_posted (新公告)",
+      "id": 456223245
+    },
+    {
+      "name": "urgent_posted (加急消息)",
+      "id": 456223246
+    },
+    {
+      "name": "approval_updated (审批状态变更)",
+      "id": 456223247
+    },
+    {
+      "name": "notification_received (新通知)",
+      "id": 456223248
+    },
+    {
+      "name": "reaction_added (添加 emoji 反应)",
+      "id": 456223249
+    },
+    {
+      "name": "reaction_removed (移除 emoji 反应)",
+      "id": 456223251
+    },
+    {
+      "name": "channel_top_updated (channel 置顶状态)",
+      "id": 456223252
+    },
+    {
+      "name": "channel_info_updated (channel 元信息变化)",
+      "id": 456223253
+    },
+    {
+      "name": "channel_closed (channel 已解散)",
+      "id": 456223254
+    },
+    {
+      "name": "channel_member_updated (成员变更)",
+      "id": 456223256
+    },
+    {
+      "name": "schedule_created (定时消息已创建)",
+      "id": 456223257
+    },
+    {
+      "name": "schedule_canceled (定时消息已取消)",
+      "id": 456223258
+    }
+  ]
+}

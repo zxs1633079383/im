@@ -312,9 +312,9 @@ func RegisterMessageRoutes(authed *gin.RouterGroup, svc *service.MessageService,
 			msgs = []repo.Message{}
 		}
 		c.JSON(200, gin.H{
-			"messages":   msgs,
-			"has_older":  hasOlder,
-			"has_newer":  hasNewer,
+			"messages":  msgs,
+			"has_older": hasOlder,
+			"has_newer": hasNewer,
 		})
 	})
 

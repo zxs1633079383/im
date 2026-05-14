@@ -210,6 +210,7 @@ func (h *WsHandler) readPump(conn *Conn) {
 		if err != nil {
 			break // connection closed or timed out
 		}
+		metrics().WSFramesIn.Add(context.Background(), 1)
 		// Reset read deadline on any inbound traffic.
 		conn.ws.SetReadDeadline(time.Now().Add(pongTimeout)) //nolint:errcheck
 

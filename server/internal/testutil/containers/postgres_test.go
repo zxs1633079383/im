@@ -21,7 +21,9 @@ func TestStartPostgres_Smoke(t *testing.T) {
 
 	require.NoError(t, db.Ping())
 
+	// v0.7.4: users 表已下线 (UserData 移到 mm 外部仓库)。改用 channels 表做容器
+	// smoke (channels 是 im 自管的核心表，container init 应能跑通 migrations 创建)。
 	var n int
-	require.NoError(t, db.QueryRow("SELECT count(*) FROM users").Scan(&n))
-	require.Equal(t, 0, n, "fresh container should have no users")
+	require.NoError(t, db.QueryRow("SELECT count(*) FROM channels").Scan(&n))
+	require.Equal(t, 0, n, "fresh container should have no channels")
 }

@@ -11,10 +11,15 @@ run-dev:
 	IM_ENV=dev \
 	IM_CONSUL_URL=http://consul-pre.jinqidongli.com \
 	IM_CONSUL_KEY=im-go/dev/config.yaml \
+	IM_REDIS_CLUSTER=true \
 	OTEL_EXPORTER_OTLP_ENDPOINT=http://192.168.6.66:32317 \
 	OTEL_EXPORTER_OTLP_INSECURE=true \
 	OTEL_SERVICE_NAME=im-gateway-local \
 	go run ./cmd/gateway
+# IM_REDIS_CLUSTER=true 必须强制 override：consul-pre 的 im-go/dev/config.yaml 里
+# cluster: false，但实际 pre Redis 是 Cluster 部署。不 override 的话 go-redis 跑
+# single client 模式连 cluster headless DNS 拿不到 UserData:<id> → 鉴权全 401。
+# 详见 harness/C010 §4.6 + docs/apifox-sync/01-auth-and-sync.md §6 troubleshoot。
 
 # Local debugging against the pre cluster's exact config (im_pre database).
 # DANGEROUS: hits the same DB the cluster pod uses. Use only when reproducing
@@ -23,6 +28,7 @@ run-pre-tunnel:
 	IM_ENV=pre \
 	IM_CONSUL_URL=http://consul-pre.jinqidongli.com \
 	IM_CONSUL_KEY=im-go/pre/config.yaml \
+	IM_REDIS_CLUSTER=true \
 	IM_GATEWAY_JWT_SECRET=$$(kubectl -n im-v2 get secret im-gateway-secret -o jsonpath='{.data.jwt-secret}' | base64 -d) \
 	OTEL_EXPORTER_OTLP_ENDPOINT=http://192.168.6.66:32317 \
 	OTEL_EXPORTER_OTLP_INSECURE=true \
@@ -34,6 +40,7 @@ run-message-dev:
 	IM_ENV=dev \
 	IM_CONSUL_URL=http://consul-pre.jinqidongli.com \
 	IM_CONSUL_KEY=im-go/dev/config.yaml \
+	IM_REDIS_CLUSTER=true \
 	OTEL_EXPORTER_OTLP_ENDPOINT=http://192.168.6.66:32317 \
 	OTEL_EXPORTER_OTLP_INSECURE=true \
 	OTEL_SERVICE_NAME=im-message-local \
@@ -46,6 +53,7 @@ run-sync-stub:
 	IM_ENV=dev \
 	IM_CONSUL_URL=http://consul-pre.jinqidongli.com \
 	IM_CONSUL_KEY=im-go/dev/config.yaml \
+	IM_REDIS_CLUSTER=true \
 	OTEL_EXPORTER_OTLP_ENDPOINT=http://192.168.6.66:32317 \
 	OTEL_EXPORTER_OTLP_INSECURE=true \
 	OTEL_SERVICE_NAME=im-sync-local \
@@ -83,6 +91,10 @@ build-sync:
 	go build -o bin/sync ./cmd/sync
 
 build-all: build-gateway build-message build-sync
+
+
+DATABASE_URL := $(shell yq e '.pg.dsn' config.yaml)
+
 
 migrate-up:
 	migrate -path migrations -database "$(DATABASE_URL)" up

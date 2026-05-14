@@ -69,5 +69,10 @@ func Open(cfg Config) (*gorm.DB, error) {
 	sqlDB.SetMaxIdleConns(cfg.MaxIdle)
 	sqlDB.SetConnMaxLifetime(cfg.ConnMaxLifetime)
 	sqlDB.SetConnMaxIdleTime(cfg.ConnMaxIdleTime)
+
+	// Wire ObservableGauges that sample sqlDB.Stats() on every Prom scrape.
+	// Safe to call repeatedly — registerDBPoolMetrics is sync.Once-guarded.
+	registerDBPoolMetrics(sqlDB)
+
 	return db, nil
 }

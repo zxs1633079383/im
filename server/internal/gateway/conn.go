@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"context"
 	"encoding/json"
 	"sync"
 	"sync/atomic"
@@ -176,5 +177,6 @@ func (c *Conn) writePump() {
 		if err := c.ws.WriteMessage(websocket.TextMessage, b); err != nil {
 			break
 		}
+		metrics().WSFramesOut.Add(context.Background(), 1)
 	}
 }

@@ -29,11 +29,16 @@ var PrometheusHandler http.Handler
 
 // Config configures the OpenTelemetry SDK.
 // SampleRatio defaults to 1.0 if zero. Disabled returns a noop shutdown.
+//
+// Endpoint is OTLP/gRPC host:port (no scheme). When empty the SDK falls back
+// to OTEL_EXPORTER_OTLP_ENDPOINT (default localhost:4317), preserving the
+// historical env-driven behaviour for local dev.
 type Config struct {
 	ServiceName    string
 	ServiceVersion string
 	SampleRatio    float64
 	Disabled       bool
+	Endpoint       string
 }
 
 // ShutdownFunc flushes pending exports and shuts down providers.
@@ -61,7 +66,11 @@ func Init(ctx context.Context, cfg Config) (ShutdownFunc, error) {
 		return nil, fmt.Errorf("resource: %w", err)
 	}
 
-	traceExp, err := otlptracegrpc.New(ctx, otlptracegrpc.WithInsecure())
+	traceOpts := []otlptracegrpc.Option{otlptracegrpc.WithInsecure()}
+	if cfg.Endpoint != "" {
+		traceOpts = append(traceOpts, otlptracegrpc.WithEndpoint(cfg.Endpoint))
+	}
+	traceExp, err := otlptracegrpc.New(ctx, traceOpts...)
 	if err != nil {
 		return nil, fmt.Errorf("trace exporter: %w", err)
 	}
@@ -75,7 +84,11 @@ func Init(ctx context.Context, cfg Config) (ShutdownFunc, error) {
 		propagation.TraceContext{}, propagation.Baggage{},
 	))
 
-	metricExp, err := otlpmetricgrpc.New(ctx, otlpmetricgrpc.WithInsecure())
+	metricOpts := []otlpmetricgrpc.Option{otlpmetricgrpc.WithInsecure()}
+	if cfg.Endpoint != "" {
+		metricOpts = append(metricOpts, otlpmetricgrpc.WithEndpoint(cfg.Endpoint))
+	}
+	metricExp, err := otlpmetricgrpc.New(ctx, metricOpts...)
 	if err != nil {
 		return nil, fmt.Errorf("metric exporter: %w", err)
 	}

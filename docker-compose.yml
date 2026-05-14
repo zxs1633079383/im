@@ -20,12 +20,13 @@ services:
   pulsar:
     image: apachepulsar/pulsar:3.3.0
     container_name: im-pulsar
-    command: bin/pulsar standalone
+    command: bash /pulsar/init.sh
     ports:
       - "6650:6650"
       - "8088:8080"
     volumes:
       - im-pulsardata:/pulsar/data
+      - ./docker/pulsar-init.sh:/pulsar/init.sh:ro
 
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.110.0

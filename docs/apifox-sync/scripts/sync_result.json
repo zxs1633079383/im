@@ -1,0 +1,465 @@
+{
+  "created": [
+    {
+      "path": "/healthz",
+      "method": "GET",
+      "id": 456221762
+    },
+    {
+      "path": "/readyz",
+      "method": "GET",
+      "id": 456221765
+    },
+    {
+      "path": "/metrics",
+      "method": "GET",
+      "id": 456221766
+    },
+    {
+      "path": "/api/register",
+      "method": "POST",
+      "id": 456221767
+    },
+    {
+      "path": "/api/login",
+      "method": "POST",
+      "id": 456221768
+    },
+    {
+      "path": "/api/me",
+      "method": "GET",
+      "id": 456221769
+    },
+    {
+      "path": "/api/channels/:id/messages",
+      "method": "POST",
+      "id": 456221770
+    },
+    {
+      "path": "/api/channels/:id/messages",
+      "method": "GET",
+      "id": 456221771
+    },
+    {
+      "path": "/api/channels/:id/read",
+      "method": "POST",
+      "id": 456221772
+    },
+    {
+      "path": "/api/channels/:id/messages/around",
+      "method": "GET",
+      "id": 456221773
+    },
+    {
+      "path": "/api/messages/:id/readers",
+      "method": "GET",
+      "id": 456221774
+    },
+    {
+      "path": "/api/messages/:id/replies",
+      "method": "GET",
+      "id": 456221775
+    },
+    {
+      "path": "/api/messages/:id/replies/branch",
+      "method": "GET",
+      "id": 456221776
+    },
+    {
+      "path": "/api/messages/:id",
+      "method": "PATCH",
+      "id": 456221777
+    },
+    {
+      "path": "/api/messages/:id",
+      "method": "DELETE",
+      "id": 456221778
+    },
+    {
+      "path": "/api/messages/forward",
+      "method": "POST",
+      "id": 456221781
+    },
+    {
+      "path": "/api/messages/batch",
+      "method": "POST",
+      "id": 456221782
+    },
+    {
+      "path": "/api/messages/:id/after",
+      "method": "GET",
+      "id": 456221784
+    },
+    {
+      "path": "/api/messages/:id/received",
+      "method": "POST",
+      "id": 456221785
+    },
+    {
+      "path": "/api/messages/urgent",
+      "method": "POST",
+      "id": 456221794
+    },
+    {
+      "path": "/api/messages/:id/urgent/confirm",
+      "method": "POST",
+      "id": 456221799
+    },
+    {
+      "path": "/api/messages/:id/urgent/cancel",
+      "method": "POST",
+      "id": 456221800
+    },
+    {
+      "path": "/api/messages/:id/urgent/confirmations",
+      "method": "GET",
+      "id": 456221802
+    },
+    {
+      "path": "/api/messages/scheduled",
+      "method": "POST",
+      "id": 456221803
+    },
+    {
+      "path": "/api/messages/scheduled/:id",
+      "method": "DELETE",
+      "id": 456221805
+    },
+    {
+      "path": "/api/messages/scheduled",
+      "method": "GET",
+      "id": 456221806
+    },
+    {
+      "path": "/api/sync",
+      "method": "POST",
+      "id": 456221807
+    },
+    {
+      "path": "/api/messages/read-stats",
+      "method": "GET",
+      "id": 456221808
+    },
+    {
+      "path": "/api/channels",
+      "method": "POST",
+      "id": 456221811
+    },
+    {
+      "path": "/api/channels/dm",
+      "method": "POST",
+      "id": 456221814
+    },
+    {
+      "path": "/api/channels",
+      "method": "GET",
+      "id": 456221821
+    },
+    {
+      "path": "/api/channels/:id",
+      "method": "GET",
+      "id": 456221822
+    },
+    {
+      "path": "/api/channels/:id",
+      "method": "PUT",
+      "id": 456221823
+    },
+    {
+      "path": "/api/channels/:id",
+      "method": "PATCH",
+      "id": 456221829
+    },
+    {
+      "path": "/api/channels/:id",
+      "method": "DELETE",
+      "id": 456221830
+    },
+    {
+      "path": "/api/channels/:id/leave",
+      "method": "POST",
+      "id": 456221877
+    },
+    {
+      "path": "/api/channels/:id/members",
+      "method": "POST",
+      "id": 456221879
+    },
+    {
+      "path": "/api/channels/:id/members/:user_id",
+      "method": "DELETE",
+      "id": 456221881
+    },
+    {
+      "path": "/api/channels/:id/members",
+      "method": "GET",
+      "id": 456221882
+    },
+    {
+      "path": "/api/channels/:id/members/:user_id",
+      "method": "PATCH",
+      "id": 456221888
+    },
+    {
+      "path": "/api/channels/:id/members/:user_id/nickname",
+      "method": "PATCH",
+      "id": 456221890
+    },
+    {
+      "path": "/api/channels/:id/managers/:user_id",
+      "method": "POST",
+      "id": 456221891
+    },
+    {
+      "path": "/api/channels/:id/managers/:user_id",
+      "method": "DELETE",
+      "id": 456221892
+    },
+    {
+      "path": "/api/channels/:id/managers",
+      "method": "GET",
+      "id": 456221894
+    },
+    {
+      "path": "/api/channels/:id/pins/:message_id",
+      "method": "POST",
+      "id": 456221900
+    },
+    {
+      "path": "/api/channels/:id/pins/:message_id",
+      "method": "DELETE",
+      "id": 456221902
+    },
+    {
+      "path": "/api/channels/:id/pins",
+      "method": "GET",
+      "id": 456221906
+    },
+    {
+      "path": "/api/channels/:id/topics",
+      "method": "POST",
+      "id": 456221907
+    },
+    {
+      "path": "/api/channels/:id/topics",
+      "method": "GET",
+      "id": 456221908
+    },
+    {
+      "path": "/api/announcements",
+      "method": "POST",
+      "id": 456221910
+    },
+    {
+      "path": "/api/announcements/:id/read",
+      "method": "POST",
+      "id": 456221911
+    },
+    {
+      "path": "/api/announcements/:id/acks",
+      "method": "GET",
+      "id": 456221912
+    },
+    {
+      "path": "/api/announcements/:id",
+      "method": "DELETE",
+      "id": 456221914
+    },
+    {
+      "path": "/api/channels/:id/announcements",
+      "method": "GET",
+      "id": 456221915
+    },
+    {
+      "path": "/api/announcements/:id",
+      "method": "GET",
+      "id": 456221916
+    },
+    {
+      "path": "/api/approvals",
+      "method": "POST",
+      "id": 456221940
+    },
+    {
+      "path": "/api/approvals/:id/approve",
+      "method": "POST",
+      "id": 456221942
+    },
+    {
+      "path": "/api/approvals/:id/reject",
+      "method": "POST",
+      "id": 456221943
+    },
+    {
+      "path": "/api/approvals/:id/cancel",
+      "method": "POST",
+      "id": 456221945
+    },
+    {
+      "path": "/api/approvals/pending",
+      "method": "GET",
+      "id": 456221948
+    },
+    {
+      "path": "/api/approvals/mine",
+      "method": "GET",
+      "id": 456221950
+    },
+    {
+      "path": "/api/approvals/:id",
+      "method": "GET",
+      "id": 456221951
+    },
+    {
+      "path": "/api/notifications",
+      "method": "POST",
+      "id": 456221953
+    },
+    {
+      "path": "/api/notifications/received",
+      "method": "GET",
+      "id": 456221954
+    },
+    {
+      "path": "/api/notifications/sent",
+      "method": "GET",
+      "id": 456221955
+    },
+    {
+      "path": "/api/notifications/:id/read",
+      "method": "POST",
+      "id": 456221968
+    },
+    {
+      "path": "/api/messages/:id/reactions",
+      "method": "POST",
+      "id": 456221971
+    },
+    {
+      "path": "/api/messages/:id/reactions/:emoji",
+      "method": "DELETE",
+      "id": 456221977
+    },
+    {
+      "path": "/api/messages/:id/reactions",
+      "method": "GET",
+      "id": 456221979
+    },
+    {
+      "path": "/api/quick-replies",
+      "method": "POST",
+      "id": 456221981
+    },
+    {
+      "path": "/api/quick-replies",
+      "method": "GET",
+      "id": 456221983
+    },
+    {
+      "path": "/api/quick-replies/:id",
+      "method": "PATCH",
+      "id": 456221984
+    },
+    {
+      "path": "/api/quick-replies/:id",
+      "method": "DELETE",
+      "id": 456221985
+    },
+    {
+      "path": "/api/favorites/:message_id",
+      "method": "POST",
+      "id": 456221986
+    },
+    {
+      "path": "/api/favorites/:message_id",
+      "method": "DELETE",
+      "id": 456221988
+    },
+    {
+      "path": "/api/favorites",
+      "method": "GET",
+      "id": 456221998
+    },
+    {
+      "path": "/api/friends/request",
+      "method": "POST",
+      "id": 456221999
+    },
+    {
+      "path": "/api/friends/accept",
+      "method": "POST",
+      "id": 456222000
+    },
+    {
+      "path": "/api/friends/reject",
+      "method": "POST",
+      "id": 456222001
+    },
+    {
+      "path": "/api/friends",
+      "method": "GET",
+      "id": 456222002
+    },
+    {
+      "path": "/api/friends/pending",
+      "method": "GET",
+      "id": 456222005
+    },
+    {
+      "path": "/api/friends/block",
+      "method": "POST",
+      "id": 456222006
+    },
+    {
+      "path": "/api/users/search",
+      "method": "GET",
+      "id": 456222008
+    },
+    {
+      "path": "/api/files",
+      "method": "POST",
+      "id": 456222010
+    },
+    {
+      "path": "/api/files/:id",
+      "method": "GET",
+      "id": 456222014
+    },
+    {
+      "path": "/api/messages/:id/attachments",
+      "method": "GET",
+      "id": 456222016
+    },
+    {
+      "path": "/api/presence",
+      "method": "GET",
+      "id": 456222017
+    },
+    {
+      "path": "/api/channels/online-status",
+      "method": "GET",
+      "id": 456222018
+    },
+    {
+      "path": "/api/modules",
+      "method": "GET",
+      "id": 456222019
+    },
+    {
+      "path": "/api/settings",
+      "method": "GET",
+      "id": 456222020
+    },
+    {
+      "path": "/api/settings",
+      "method": "PUT",
+      "id": 456222031
+    },
+    {
+      "path": "/api/search",
+      "method": "GET",
+      "id": 456222032
+    }
+  ],
+  "failed": []
+}

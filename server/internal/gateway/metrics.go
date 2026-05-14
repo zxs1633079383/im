@@ -20,6 +20,12 @@ type gwMetrics struct {
 	// ProdActive: live count of cached Pulsar producers; goes up/down on
 	// cache fills + LRU evictions.
 	ProdActive metric.Int64UpDownCounter
+	// WSFramesIn: rate of inbound WebSocket frames (post JSON-decode).
+	// Counts every successful ReadMessage call in WsHandler.readPump.
+	WSFramesIn metric.Int64Counter
+	// WSFramesOut: rate of outbound WebSocket frames. Counts every successful
+	// WriteMessage call in Conn.writePump.
+	WSFramesOut metric.Int64Counter
 }
 
 var (
@@ -45,6 +51,14 @@ func metrics() *gwMetrics {
 		m.ProdActive, _ = meter.Int64UpDownCounter(
 			"im.pulsar.producer.active",
 			metric.WithDescription("Active Pulsar producers in LRU cache"),
+		)
+		m.WSFramesIn, _ = meter.Int64Counter(
+			"im.ws.frames.in",
+			metric.WithDescription("Inbound WebSocket frames received from clients"),
+		)
+		m.WSFramesOut, _ = meter.Int64Counter(
+			"im.ws.frames.out",
+			metric.WithDescription("Outbound WebSocket frames written to clients"),
 		)
 		gwMetricsInstance = m
 	})

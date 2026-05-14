@@ -13,3 +13,13 @@ pulsar:
 gateway:
   http_addr: ":8080"
   jwt_secret: "change-me-in-production-use-32-bytes-min"
+
+observability:
+  # OTLP/gRPC host:port, NO scheme. Leave empty to fall back to the SDK
+  # default / OTEL_EXPORTER_OTLP_ENDPOINT env var (localhost:4317).
+  # Pre example: jaeger-cses-pre-collector.jaeger-cses.svc.cluster.local:4317
+  endpoint: ""
+  # Set true to short-circuit Init to a noop (no exporter dial-out).
+  disabled: false
+  # Parent-based head sample ratio 0..1. 0 means "use Init default" (1.0).
+  sample_ratio: 0

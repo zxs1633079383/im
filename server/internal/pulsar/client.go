@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"time"
 
 	pulsarclient "github.com/apache/pulsar-client-go/pulsar"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	otelmetric "go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -150,6 +152,16 @@ func (cs *Consumer) Consume(ctx context.Context) error {
 				return nil // clean shutdown
 			}
 			return fmt.Errorf("receive: %w", err)
+		}
+
+		// Record broker→consumer lag before any handler work runs. msg.PublishTime
+		// is the broker's ingest timestamp; the delta exposes subscription
+		// back-pressure independent of handler duration.
+		if pt := msg.PublishTime(); !pt.IsZero() {
+			metrics().ConsumeLag.Record(ctx,
+				float64(time.Since(pt).Milliseconds()),
+				otelmetric.WithAttributes(attribute.String("topic", cs.topic)),
+			)
 		}
 
 		msgCtx := otel.GetTextMapPropagator().Extract(ctx,

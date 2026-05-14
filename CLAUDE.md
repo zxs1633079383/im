@@ -246,6 +246,9 @@ cat docs/harness/README.md | head -40     # 看 active 索引
 | C006 | httpexpect v2 路径禁拼 `?q=`，必须 `.WithQuery` | active |
 | C007 | 全局 responseEnvelope 中间件已生效，handler 禁止再 wrap status/data | active |
 | C008 | 84 路由 + 22 WSMessageType 必有匹配 TestM4* 集成测试，CI gate 卡 grep | active |
+| C009 | 加 / 改 middleware 必须 sweep 所有 test helper（Run #1 ~120 fail 教训） | active |
+| C010 | v0.7.4 鉴权：Redis `UserData:<userId>` STRING + companyId header；本地 dev 必须 `IM_REDIS_CLUSTER=true` 跑 cluster client | active |
+| C011 | channels.team_id 必须 TEXT NULL，companyId 缺省时不阻塞主流程 | active |
 
 ### 8.5 引用规范
 

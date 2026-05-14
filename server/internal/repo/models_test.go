@@ -23,8 +23,9 @@ func TestModels_NoSchemaDrift(t *testing.T) {
 		name string
 		dest any
 	}
+	// C012 P-E: User 模型在 v0.7.4 UserData 漂移后已从 repo/ 移除（外部 mm UserData 仓库），
+	// 此处 dead reference 删除，剩余模型继续验 schema drift。
 	cases := []modelCase{
-		{"User", &User{}},
 		{"Channel", &Channel{}},
 		{"ChannelMember", &ChannelMember{}},
 		{"Message", &Message{}},

@@ -265,21 +265,6 @@ func run() int {
 	log := slog.New(observability.NewTraceHandler(baseHandler))
 	slog.SetDefault(log)
 
-	otelShutdown, err := observability.Init(context.Background(), observability.Config{
-		ServiceName:    "im-message",
-		ServiceVersion: "dev",
-		Disabled:       os.Getenv("OTEL_DISABLED") == "true",
-	})
-	if err != nil {
-		log.Error("otel init", "error", err)
-		return 1
-	}
-	defer func() {
-		shutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		_ = otelShutdown(shutCtx)
-	}()
-
 	cfgPath := os.Getenv("IM_CONFIG")
 	if cfgPath == "" {
 		cfgPath = "config.yaml"
@@ -290,6 +275,27 @@ func run() int {
 		log.Error("load config", "error", err)
 		return 1
 	}
+
+	// OTel Init reads endpoint / disabled flags from cfg.Observability so the
+	// collector address lives next to the rest of the deploy-specific knobs
+	// in config.yaml. Env overrides (OTEL_EXPORTER_OTLP_ENDPOINT / OTEL_DISABLED)
+	// were already folded into cfg by applyEnvOverrides.
+	otelShutdown, err := observability.Init(context.Background(), observability.Config{
+		ServiceName:    "im-message",
+		ServiceVersion: "dev",
+		Endpoint:       cfg.Observability.Endpoint,
+		SampleRatio:    cfg.Observability.SampleRatio,
+		Disabled:       cfg.Observability.Disabled,
+	})
+	if err != nil {
+		log.Error("otel init", "error", err)
+		return 1
+	}
+	defer func() {
+		shutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = otelShutdown(shutCtx)
+	}()
 
 	// Open the GORM-backed Postgres connection. The repo package owns the
 	// pool; we close the underlying *sql.DB on shutdown.

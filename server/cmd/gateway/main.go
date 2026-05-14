@@ -32,21 +32,6 @@ func run() int {
 	log := slog.New(observability.NewTraceHandler(baseHandler))
 	slog.SetDefault(log)
 
-	otelShutdown, err := observability.Init(context.Background(), observability.Config{
-		ServiceName:    "im-gateway",
-		ServiceVersion: "dev",
-		Disabled:       os.Getenv("OTEL_DISABLED") == "true",
-	})
-	if err != nil {
-		log.Error("otel init", "error", err)
-		return 1
-	}
-	defer func() {
-		shutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		_ = otelShutdown(shutCtx)
-	}()
-
 	cfgPath := os.Getenv("IM_CONFIG")
 	if cfgPath == "" {
 		cfgPath = "config.yaml"
@@ -60,6 +45,27 @@ func run() int {
 		return 1
 	}
 	log.Info("config loaded", "source", src)
+
+	// OTel Init reads endpoint / disabled flags from cfg.Observability so the
+	// collector address lives next to the rest of the deploy-specific knobs
+	// in config.yaml. Env overrides (OTEL_EXPORTER_OTLP_ENDPOINT / OTEL_DISABLED)
+	// were already folded into cfg by applyEnvOverrides.
+	otelShutdown, err := observability.Init(context.Background(), observability.Config{
+		ServiceName:    "im-gateway",
+		ServiceVersion: "dev",
+		Endpoint:       cfg.Observability.Endpoint,
+		SampleRatio:    cfg.Observability.SampleRatio,
+		Disabled:       cfg.Observability.Disabled,
+	})
+	if err != nil {
+		log.Error("otel init", "error", err)
+		return 1
+	}
+	defer func() {
+		shutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = otelShutdown(shutCtx)
+	}()
 
 	if cfg.Gateway.JWTSecret == "" {
 		log.Error("gateway.jwt_secret must not be empty")
@@ -601,9 +607,8 @@ func corsMiddleware(next http.Handler) http.Handler {
 		}
 		w.Header().Set("Access-Control-Allow-Origin", origin)
 		w.Header().Set("Vary", "Origin")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, PATCH, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers",
-			"Content-Type, Authorization, cookieId, userId, companyId, X-Request-Id, X-Request-Source")
+		w.Header().Set("Access-Control-Allow-Methods", "*")
+		w.Header().Set("Access-Control-Allow-Headers", "*")
 		w.Header().Set("Access-Control-Allow-Credentials", "true")
 		w.Header().Set("Access-Control-Max-Age", "600")
 		if r.Method == http.MethodOptions {

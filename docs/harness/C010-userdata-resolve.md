@@ -166,7 +166,21 @@ grep -rEn 'GetHeader\("(Company-Id|X-Team-Id|X-Company-Id)"\)' server/internal/ 
   switch 到 v0.7.4 形态，**调用方零改动**只要追加 `WithHeader(middleware.MMTeamHeader,
   RealCompanyID)` 即可补 team 上下文
 
-### 4.5 手工 smoke
+### 4.6 启动脚本必含 `IM_REDIS_CLUSTER=true`（本地 dev 强制 override）
+
+`consul-pre` 下发的 `im-go/dev/config.yaml` 配 `cluster: false`，但 pre Redis 实际是
+Cluster 部署。本地 / 集群启动入口必须 env override 成 `true`，否则 go-redis 跑 single
+client 模式 → 拿不到 `UserData:<id>` → 鉴权全 401。
+
+CI gate（grep 必须 ≥ 4 条命中，少于则启动入口漏 override）：
+
+```bash
+grep -nE 'IM_REDIS_CLUSTER\s*=\s*true|"IM_REDIS_CLUSTER=true"' \
+     server/Makefile server/scripts/run-all-dev.sh deploy/k8s/20-deployment.yaml | wc -l
+# 期望 ≥ 4（Makefile 3 个 run target + run-all-dev.sh COMMON_ENV + k8s deployment）
+```
+
+### 4.7 手工 smoke
 
 ```bash
 # pre 集群灌张立超 cookie（v0.7.4 形态）

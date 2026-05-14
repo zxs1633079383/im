@@ -265,6 +265,7 @@ func (r *gormChannelRepo) ListMembers(ctx context.Context, channelID string) ([]
 	if err != nil {
 		return nil, fmt.Errorf("list members: %w", err)
 	}
+	metrics().ChannelMembersCount.Record(ctx, int64(len(members)))
 	return members, nil
 }
 
