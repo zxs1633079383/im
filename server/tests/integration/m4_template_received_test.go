@@ -5,7 +5,6 @@ package integration
 import (
 	"context"
 	"encoding/json"
-	"strconv"
 	"testing"
 	"time"
 
@@ -31,7 +30,7 @@ func TestM4TemplateReceived_HappyPath(t *testing.T) {
 		WithHeader(middleware.MMCookieHeader, cookieSender).
 		WithJSON(map[string]any{"peer_id": recvID}).
 		Expect().Status(201))
-	channelID := int64(dm.Value("id").Number().Raw())
+	channelID := dm.Value("id").String().Raw()
 
 	// Seed a template message directly via the repo. Send() doesn't accept
 	// arbitrary props, so we go around it — this is the canonical pattern
@@ -51,16 +50,16 @@ func TestM4TemplateReceived_HappyPath(t *testing.T) {
 	msgID := msg.ID
 
 	// Receiver clicks "received" — server appends recvID to userIds.
-	body := successBody(env.expect.POST("/api/messages/"+strconv.FormatInt(msgID, 10)+"/received").
+	body := successBody(env.expect.POST("/api/messages/"+msgID+"/received").
 		WithHeader(middleware.MMCookieHeader, cookieRecv).
 		Expect().Status(200))
-	body.Value("id").Number().IsEqual(float64(msgID))
+	body.Value("id").String().IsEqual(msgID)
 
 	props := decodeTemplateProps(t, body)
 	require.Equal(t, []any{recvID}, props["userIds"])
 
 	// Idempotent re-click — userIds should not duplicate.
-	body2 := successBody(env.expect.POST("/api/messages/"+strconv.FormatInt(msgID, 10)+"/received").
+	body2 := successBody(env.expect.POST("/api/messages/"+msgID+"/received").
 		WithHeader(middleware.MMCookieHeader, cookieRecv).
 		Expect().Status(200))
 	props2 := decodeTemplateProps(t, body2)
@@ -78,7 +77,7 @@ func TestM4TemplateReceived_NotTemplate(t *testing.T) {
 		WithHeader(middleware.MMCookieHeader, cookieSender).
 		WithJSON(map[string]any{"peer_id": recvID}).
 		Expect().Status(201))
-	channelID := int64(dm.Value("id").Number().Raw())
+	channelID := dm.Value("id").String().Raw()
 
 	// A plain message — no props.
 	msg := &repo.Message{
@@ -91,7 +90,7 @@ func TestM4TemplateReceived_NotTemplate(t *testing.T) {
 	defer cancel()
 	require.NoError(t, env.messages.Send(ctx, msg))
 
-	env.expect.POST("/api/messages/"+strconv.FormatInt(msg.ID, 10)+"/received").
+	env.expect.POST("/api/messages/"+msg.ID+"/received").
 		WithHeader(middleware.MMCookieHeader, cookieRecv).
 		Expect().Status(422)
 }

@@ -30,7 +30,6 @@ package integration
 // (930-939).
 
 import (
-	"strconv"
 	"testing"
 	"time"
 
@@ -56,7 +55,7 @@ func TestM4WSReactionAdded_HappyPath(t *testing.T) {
 	wcA := wsDial(t, env, cookieA)
 	time.Sleep(settleDelay)
 
-	env.expect.POST("/api/messages/"+strconv.FormatInt(msg.ID, 10)+"/reactions").
+	env.expect.POST("/api/messages/"+msg.ID+"/reactions").
 		WithHeader(middleware.MMCookieHeader, cookieB).
 		WithJSON(map[string]any{"emoji": ":thumbsup:"}).
 		Expect().Status(201)
@@ -67,8 +66,8 @@ func TestM4WSReactionAdded_HappyPath(t *testing.T) {
 	// so the test stays decoupled from the unexported struct name.
 	var p map[string]any
 	decodePayload(t, frame, &p)
-	require.Equal(t, float64(channelID), p["channel_id"], "reaction_added channel_id")
-	require.Equal(t, float64(msg.ID), p["message_id"], "reaction_added message_id")
+	require.Equal(t, channelID, p["channel_id"], "reaction_added channel_id")
+	require.Equal(t, msg.ID, p["message_id"], "reaction_added message_id")
 	require.Equal(t, userB, p["user_id"], "reaction_added user_id must be the reactor")
 	require.Equal(t, ":thumbsup:", p["emoji"], "reaction_added emoji")
 }
@@ -92,21 +91,21 @@ func TestM4WSReactionRemoved_HappyPath(t *testing.T) {
 	// Step 1 — B adds the emoji (also fans out a reaction_added frame; the
 	// expectFrame loop below skips it transparently while waiting for the
 	// removed frame).
-	env.expect.POST("/api/messages/"+strconv.FormatInt(msg.ID, 10)+"/reactions").
+	env.expect.POST("/api/messages/"+msg.ID+"/reactions").
 		WithHeader(middleware.MMCookieHeader, cookieB).
 		WithJSON(map[string]any{"emoji": ":fire:"}).
 		Expect().Status(201)
 
 	// Step 2 — B removes it. This is the frame under test.
-	env.expect.DELETE("/api/messages/"+strconv.FormatInt(msg.ID, 10)+"/reactions/:fire:").
+	env.expect.DELETE("/api/messages/"+msg.ID+"/reactions/:fire:").
 		WithHeader(middleware.MMCookieHeader, cookieB).
 		Expect().Status(200)
 
 	frame := wcA.expectFrame(gateway.TypeReactionRemoved, 5*time.Second)
 	var p map[string]any
 	decodePayload(t, frame, &p)
-	require.Equal(t, float64(channelID), p["channel_id"], "reaction_removed channel_id")
-	require.Equal(t, float64(msg.ID), p["message_id"], "reaction_removed message_id")
+	require.Equal(t, channelID, p["channel_id"], "reaction_removed channel_id")
+	require.Equal(t, msg.ID, p["message_id"], "reaction_removed message_id")
 	require.Equal(t, userB, p["user_id"], "reaction_removed user_id must be the actor")
 	require.Equal(t, ":fire:", p["emoji"], "reaction_removed emoji")
 }
@@ -135,7 +134,8 @@ func TestM4WSReadSync_HappyPath(t *testing.T) {
 	wcA2 := wsDial(t, env, cookieA)
 	time.Sleep(settleDelay)
 
-	const channelID int64 = 7777
+	// C012 P-D: channelID is TEXT (string) post-migration.
+	const channelID = "7777"
 	const readSeq int64 = 42
 	env.hub.PushToUser(userA, gateway.TypeReadSync, gateway.ReadSyncPayload{
 		ChannelID: channelID,

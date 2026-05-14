@@ -2,7 +2,6 @@ package http
 
 import (
 	"errors"
-	"strconv"
 
 	"github.com/gin-gonic/gin"
 
@@ -15,7 +14,7 @@ import (
 // nil = no real-time notifications (the integration / unit tests don't need
 // a live hub).
 type ChannelEventPusher interface {
-	PushChannelEvent(targetUserID string, eventType string, channelID int64, name string)
+	PushChannelEvent(targetUserID string, eventType string, channelID string, name string)
 }
 
 // Request bodies. M4: user-id fields are mm UserIDs (24-hex strings).
@@ -37,17 +36,19 @@ type addMemberReq struct {
 	UserID string `json:"user_id"`
 }
 
-// pathInt64 parses :name as int64. Returns ok=false and writes a 400 on
-// parse failure so the caller can early-return — same pattern as
-// userIDFromCtx.
-func pathInt64(c *gin.Context, name string) (int64, bool) {
+// pathInt64 parses :name as a non-empty path parameter.
+//
+// C012 P-D: post-migration, all entity IDs are TEXT (string) — this helper
+// retains its name for diff minimization but now returns (string, bool).
+// Returns ok=false and writes a 400 on missing param so the caller can
+// early-return — same pattern as userIDFromCtx.
+func pathInt64(c *gin.Context, name string) (string, bool) {
 	s := c.Param(name)
-	v, err := strconv.ParseInt(s, 10, 64)
-	if err != nil || s == "" {
+	if s == "" {
 		c.JSON(400, gin.H{"error": "invalid " + name})
-		return 0, false
+		return "", false
 	}
-	return v, true
+	return s, true
 }
 
 // RegisterChannelRoutes wires the nine channel endpoints onto authed. authed

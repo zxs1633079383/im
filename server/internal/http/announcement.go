@@ -20,7 +20,7 @@ const (
 
 // saveAnnouncementReq is the POST /api/announcements body.
 type saveAnnouncementReq struct {
-	ChannelID int64            `json:"channel_id"`
+	ChannelID string           `json:"channel_id"`
 	Title     string           `json:"title"`
 	Content   string           `json:"content"`
 	Props     *json.RawMessage `json:"props,omitempty"`
@@ -46,7 +46,7 @@ func RegisterAnnouncementRoutes(
 			c.JSON(400, gin.H{"error": "invalid JSON"})
 			return
 		}
-		if in.ChannelID == 0 {
+		if in.ChannelID == "" {
 			c.JSON(422, gin.H{"error": "channel_id is required"})
 			return
 		}

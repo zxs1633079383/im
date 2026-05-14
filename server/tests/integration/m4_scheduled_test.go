@@ -9,7 +9,6 @@
 package integration
 
 import (
-	"strconv"
 	"testing"
 	"time"
 
@@ -36,7 +35,7 @@ func TestM4ScheduledCreate_HappyPath(t *testing.T) {
 		}).
 		Expect().Status(201))
 	data.Value("id").Number().Gt(0)
-	data.Value("channel_id").Number().IsEqual(float64(channelID))
+	data.Value("channel_id").String().IsEqual(channelID)
 }
 
 // TestM4ScheduledCancel_HappyPath — sender DELETE on a pending scheduled row
@@ -57,9 +56,9 @@ func TestM4ScheduledCancel_HappyPath(t *testing.T) {
 			"scheduled_at": scheduledAt,
 		}).
 		Expect().Status(201))
-	id := int64(create.Value("id").Number().Raw())
+	id := create.Value("id").String().Raw()
 
-	env.expect.DELETE("/api/messages/scheduled/"+strconv.FormatInt(id, 10)).
+	env.expect.DELETE("/api/messages/scheduled/"+id).
 		WithHeader(middleware.MMCookieHeader, cookieOwner).
 		Expect().Status(200)
 }

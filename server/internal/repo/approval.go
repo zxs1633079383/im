@@ -21,7 +21,7 @@ const (
 // string — callers decide the concrete schema. DecidedAt / DecisionNote are
 // filled in by Decide(); they stay nil/empty while the approval is pending.
 type Approval struct {
-	ID           string     `gorm:"primaryKey;type:text"                           json:"id"`
+	ID           string     `gorm:"primaryKey;type:text;default:gen_random_uuid()::text"                           json:"id"`
 	ChannelID    string     `gorm:"column:channel_id;type:text;not null"           json:"channel_id"`
 	RequesterID  string     `gorm:"column:requester_id;type:text;not null"         json:"requester_id"`
 	ApproverID   string     `gorm:"column:approver_id;type:text;not null"          json:"approver_id"`
@@ -79,7 +79,7 @@ func (r *gormApprovalRepo) Create(ctx context.Context, a *Approval) error {
 // GetByID returns the approval by primary key. ErrNotFound if missing.
 func (r *gormApprovalRepo) GetByID(ctx context.Context, id string) (*Approval, error) {
 	var a Approval
-	if err := r.db.WithContext(ctx).First(&a, id).Error; err != nil {
+	if err := r.db.WithContext(ctx).First(&a, "id = ?", id).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrNotFound
 		}

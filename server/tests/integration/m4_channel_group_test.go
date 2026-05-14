@@ -31,7 +31,7 @@ func TestM4ChannelCreateGroup(t *testing.T) {
 
 	created.Value("name").IsEqual("m4-group-happy")
 	created.Value("creator_id").IsEqual(ownerID)
-	channelID := int64(created.Value("id").Number().Raw())
+	channelID := created.Value("id").String().Raw()
 	require.NotZero(t, channelID)
 
 	// Persisted member set must contain owner + the two members. Ordering

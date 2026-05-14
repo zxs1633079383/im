@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"strconv"
 	"syscall"
 	"time"
 
@@ -428,12 +427,13 @@ type hubMessagePusher struct {
 	xpod crossPodDeps
 }
 
-func (p *hubMessagePusher) BroadcastMessage(channelID int64, userIDs []string, msg *repo.Message) {
+// C012 P-D: channelID is TEXT (string); broadcast key is the id verbatim.
+func (p *hubMessagePusher) BroadcastMessage(channelID string, userIDs []string, msg *repo.Message) {
 	if len(userIDs) == 0 {
 		return
 	}
 	payload := gateway.PushMsgPayload{
-		PushID:    fmt.Sprintf("http-%d-%d", msg.ChannelID, msg.Seq),
+		PushID:    fmt.Sprintf("http-%s-%d", msg.ChannelID, msg.Seq),
 		Type:      gateway.NoticeTypeForMsgType(msg.MsgType),
 		ChannelID: msg.ChannelID,
 		Seq:       msg.Seq,
@@ -445,8 +445,7 @@ func (p *hubMessagePusher) BroadcastMessage(channelID int64, userIDs []string, m
 		Props:     gateway.DerefStringPtr(msg.Props),
 		CreatedAt: msg.CreatedAt,
 	}
-	p.xpod.broadcast(userIDs, strconv.FormatInt(channelID, 10),
-		gateway.TypePushMsg, payload)
+	p.xpod.broadcast(userIDs, channelID, gateway.TypePushMsg, payload)
 }
 
 // hubReadSyncer adapts crossPodDeps to imhttp.ReadSyncPusher.
@@ -454,7 +453,8 @@ type hubReadSyncer struct {
 	xpod crossPodDeps
 }
 
-func (s *hubReadSyncer) PushReadSync(userID string, channelID, readSeq int64) {
+// C012 P-D: channelID is TEXT (string); readSeq stays int64 (monotonic counter).
+func (s *hubReadSyncer) PushReadSync(userID string, channelID string, readSeq int64) {
 	s.xpod.dispatch(userID, gateway.TypeReadSync, gateway.ReadSyncPayload{
 		ChannelID: channelID,
 		ReadSeq:   readSeq,
@@ -478,7 +478,8 @@ type hubChannelEventPusher struct {
 	xpod crossPodDeps
 }
 
-func (p *hubChannelEventPusher) PushChannelEvent(targetUserID string, eventType string, channelID int64, name string) {
+// C012 P-D: channelID is TEXT (string).
+func (p *hubChannelEventPusher) PushChannelEvent(targetUserID string, eventType string, channelID string, name string) {
 	p.xpod.dispatch(targetUserID, gateway.TypeChannelEvent, gateway.ChannelEventPayload{
 		EventType: eventType,
 		ChannelID: channelID,
@@ -508,7 +509,8 @@ func (p *hubUserEventPusher) PushUserEvent(userID string, eventType string, payl
 // BroadcastMemberEvent satisfies service.ChannelMemberBroadcaster. Fans the
 // channel_member_updated payload to every member by re-using the existing
 // ListMembers + crossPodBroadcast path. (v0.7.3 gap #4 + #5.)
-func (b *hubEventBroadcaster) BroadcastMemberEvent(channelID int64, eventType string, payload any) {
+// C012 P-D: channelID is TEXT (string); pass through to xpod.broadcast.
+func (b *hubEventBroadcaster) BroadcastMemberEvent(channelID string, eventType string, payload any) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	members, err := b.svc.ListMembers(ctx, channelID)
@@ -521,8 +523,7 @@ func (b *hubEventBroadcaster) BroadcastMemberEvent(channelID int64, eventType st
 	for _, m := range members {
 		uids = append(uids, m.UserID)
 	}
-	b.xpod.broadcast(uids, strconv.FormatInt(channelID, 10),
-		gateway.WSMessageType(eventType), payload)
+	b.xpod.broadcast(uids, channelID, gateway.WSMessageType(eventType), payload)
 }
 
 // hubEventBroadcaster implements imhttp.MessageEventBroadcaster. It fans
@@ -534,7 +535,8 @@ type hubEventBroadcaster struct {
 	svc  *service.MessageService
 }
 
-func (b *hubEventBroadcaster) BroadcastToMembers(channelID int64, eventType imhttp.MessageEventType, payload any) {
+// C012 P-D: channelID is TEXT (string).
+func (b *hubEventBroadcaster) BroadcastToMembers(channelID string, eventType imhttp.MessageEventType, payload any) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	members, err := b.svc.ListMembers(ctx, channelID)
@@ -546,8 +548,7 @@ func (b *hubEventBroadcaster) BroadcastToMembers(channelID int64, eventType imht
 	for _, m := range members {
 		uids = append(uids, m.UserID)
 	}
-	b.xpod.broadcast(uids, strconv.FormatInt(channelID, 10),
-		gateway.WSMessageType(eventType), payload)
+	b.xpod.broadcast(uids, channelID, gateway.WSMessageType(eventType), payload)
 }
 
 // hubReactionPusher implements imhttp.ReactionEventPusher. Reactions fan
@@ -559,7 +560,8 @@ type hubReactionPusher struct {
 	svc  *service.MessageService
 }
 
-func (p *hubReactionPusher) BroadcastReaction(channelID int64, eventType imhttp.ReactionEventType, payload any) {
+// C012 P-D: channelID is TEXT (string).
+func (p *hubReactionPusher) BroadcastReaction(channelID string, eventType imhttp.ReactionEventType, payload any) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	members, err := p.svc.ListMembers(ctx, channelID)
@@ -571,8 +573,7 @@ func (p *hubReactionPusher) BroadcastReaction(channelID int64, eventType imhttp.
 	for _, m := range members {
 		uids = append(uids, m.UserID)
 	}
-	p.xpod.broadcast(uids, strconv.FormatInt(channelID, 10),
-		gateway.WSMessageType(eventType), payload)
+	p.xpod.broadcast(uids, channelID, gateway.WSMessageType(eventType), payload)
 }
 
 // corsMiddleware adds permissive CORS headers for local Tauri development.

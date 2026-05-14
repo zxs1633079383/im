@@ -28,7 +28,7 @@ func TestM4ChannelCreateDM(t *testing.T) {
 		Expect().Status(201))
 
 	created.Value("type").Number().IsEqual(1) // ChannelTypeDM
-	createdID := int64(created.Value("id").Number().Raw())
+	createdID := created.Value("id").String().Raw()
 	require.NotZero(t, createdID, "DM channel id must be non-zero")
 
 	ch, err := env.channels.GetByID(context.Background(), createdID)
@@ -42,5 +42,5 @@ func TestM4ChannelCreateDM(t *testing.T) {
 		WithHeader(middleware.MMCookieHeader, cookieA).
 		WithJSON(map[string]any{"peer_id": userB}).
 		Expect().Status(200))
-	repeat.Value("id").Number().IsEqual(float64(createdID))
+	repeat.Value("id").String().IsEqual(createdID)
 }

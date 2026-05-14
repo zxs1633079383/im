@@ -17,7 +17,7 @@ import (
 // without re-fetching. Keep the shape stable — the cses-client `ws-normalizer`
 // branches on it.
 type ChannelClosedPayload struct {
-	ChannelID int64     `json:"channel_id"`
+	ChannelID string    `json:"channel_id"`
 	ActorID   string    `json:"actor_id"`
 	DeletedAt time.Time `json:"deleted_at"`
 }

@@ -17,7 +17,6 @@
 package integration
 
 import (
-	"strconv"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -28,7 +27,9 @@ import (
 // seedAnnouncement creates a group owned by ownerCookie, then posts an
 // announcement to it via the HTTP layer. Returns (channelID, announcementID).
 // Used by the read/acks/delete/get tests so they share the same setup spine.
-func seedAnnouncement(env *m4env, ownerCookie, name string) (int64, int64) {
+//
+// C012 P-D: ids are TEXT (string) post-migration.
+func seedAnnouncement(env *m4env, ownerCookie, name string) (string, string) {
 	env.t.Helper()
 	channelID := env.seedGroup(ownerCookie, name)
 	body := successBody(env.expect.POST("/api/announcements").
@@ -39,7 +40,7 @@ func seedAnnouncement(env *m4env, ownerCookie, name string) (int64, int64) {
 			"content":    "ann-body",
 		}).
 		Expect().Status(201))
-	annID := int64(body.Value("id").Number().Raw())
+	annID := body.Value("id").String().Raw()
 	return channelID, annID
 }
 
@@ -68,10 +69,11 @@ func TestM4AnnouncementCreate_HappyPath(t *testing.T) {
 		}).
 		Expect().Status(201))
 
-	body.Value("id").Number().Gt(0)
+	// C012 P-D: id / channel_id are TEXT (string) post-migration.
+	body.Value("id").String().NotEmpty()
 	body.Value("title").String().IsEqual("hello")
 	body.Value("content").String().IsEqual("world")
-	body.Value("channel_id").Number().IsEqual(float64(channelID))
+	body.Value("channel_id").String().IsEqual(channelID)
 }
 
 // TestM4AnnouncementRead_HappyPath — a member acks the announcement.
@@ -82,7 +84,7 @@ func TestM4AnnouncementRead_HappyPath(t *testing.T) {
 	cookieOwner, _ := env.seedUser(502)
 	_, annID := seedAnnouncement(env, cookieOwner, "ann-read")
 
-	body := successBody(env.expect.POST("/api/announcements/"+strconv.FormatInt(annID, 10)+"/read").
+	body := successBody(env.expect.POST("/api/announcements/"+annID+"/read").
 		WithHeader(middleware.MMCookieHeader, cookieOwner).
 		Expect().Status(200))
 	body.Value("status").String().IsEqual("acked")
@@ -97,11 +99,11 @@ func TestM4AnnouncementAcksList_HappyPath(t *testing.T) {
 	_, annID := seedAnnouncement(env, cookieOwner, "ann-acks")
 
 	// Owner acks first so the list has at least one row.
-	env.expect.POST("/api/announcements/"+strconv.FormatInt(annID, 10)+"/read").
+	env.expect.POST("/api/announcements/"+annID+"/read").
 		WithHeader(middleware.MMCookieHeader, cookieOwner).
 		Expect().Status(200)
 
-	body := successBody(env.expect.GET("/api/announcements/"+strconv.FormatInt(annID, 10)+"/acks").
+	body := successBody(env.expect.GET("/api/announcements/"+annID+"/acks").
 		WithHeader(middleware.MMCookieHeader, cookieOwner).
 		Expect().Status(200))
 	acks := body.Value("acks").Array()
@@ -117,7 +119,7 @@ func TestM4AnnouncementDelete_HappyPath(t *testing.T) {
 	cookieOwner, _ := env.seedUser(506)
 	_, annID := seedAnnouncement(env, cookieOwner, "ann-delete")
 
-	body := successBody(env.expect.DELETE("/api/announcements/"+strconv.FormatInt(annID, 10)).
+	body := successBody(env.expect.DELETE("/api/announcements/"+annID).
 		WithHeader(middleware.MMCookieHeader, cookieOwner).
 		Expect().Status(200))
 	body.Value("status").String().IsEqual("deleted")
@@ -131,12 +133,12 @@ func TestM4AnnouncementListByChannel_HappyPath(t *testing.T) {
 	cookieOwner, _ := env.seedUser(508)
 	channelID, annID := seedAnnouncement(env, cookieOwner, "ann-list")
 
-	body := successBody(env.expect.GET("/api/channels/"+strconv.FormatInt(channelID, 10)+"/announcements").
+	body := successBody(env.expect.GET("/api/channels/"+channelID+"/announcements").
 		WithHeader(middleware.MMCookieHeader, cookieOwner).
 		Expect().Status(200))
 	arr := body.Value("announcements").Array()
 	arr.Length().Gt(0)
-	arr.Value(0).Object().Value("id").Number().IsEqual(float64(annID))
+	arr.Value(0).Object().Value("id").String().IsEqual(annID)
 }
 
 // TestM4AnnouncementGet_HappyPath — owner fetches the announcement they
@@ -147,10 +149,10 @@ func TestM4AnnouncementGet_HappyPath(t *testing.T) {
 	cookieOwner, _ := env.seedUser(510)
 	_, annID := seedAnnouncement(env, cookieOwner, "ann-get")
 
-	body := successBody(env.expect.GET("/api/announcements/"+strconv.FormatInt(annID, 10)).
+	body := successBody(env.expect.GET("/api/announcements/"+annID).
 		WithHeader(middleware.MMCookieHeader, cookieOwner).
 		Expect().Status(200))
-	body.Value("id").Number().IsEqual(float64(annID))
+	body.Value("id").String().IsEqual(annID)
 	body.Value("title").String().NotEmpty()
 }
 
@@ -169,7 +171,7 @@ func TestM4ReactionAdd_HappyPath(t *testing.T) {
 	channelID := env.seedDM(cookieA, idB)
 	msg := env.seedMessage(channelID, idA, "react-add")
 
-	body := successBody(env.expect.POST("/api/messages/"+strconv.FormatInt(msg.ID, 10)+"/reactions").
+	body := successBody(env.expect.POST("/api/messages/"+msg.ID+"/reactions").
 		WithHeader(middleware.MMCookieHeader, cookieA).
 		WithJSON(map[string]any{"emoji": ":thumbsup:"}).
 		Expect().Status(201))
@@ -186,12 +188,12 @@ func TestM4ReactionRemove_HappyPath(t *testing.T) {
 	channelID := env.seedDM(cookieA, idB)
 	msg := env.seedMessage(channelID, idA, "react-remove")
 
-	env.expect.POST("/api/messages/"+strconv.FormatInt(msg.ID, 10)+"/reactions").
+	env.expect.POST("/api/messages/"+msg.ID+"/reactions").
 		WithHeader(middleware.MMCookieHeader, cookieA).
 		WithJSON(map[string]any{"emoji": ":fire:"}).
 		Expect().Status(201)
 
-	body := successBody(env.expect.DELETE("/api/messages/"+strconv.FormatInt(msg.ID, 10)+"/reactions/:fire:").
+	body := successBody(env.expect.DELETE("/api/messages/"+msg.ID+"/reactions/:fire:").
 		WithHeader(middleware.MMCookieHeader, cookieA).
 		Expect().Status(200))
 	body.Value("status").String().IsEqual("ok")
@@ -208,12 +210,12 @@ func TestM4ReactionList_HappyPath(t *testing.T) {
 	channelID := env.seedDM(cookieA, idB)
 	msg := env.seedMessage(channelID, idA, "react-list")
 
-	env.expect.POST("/api/messages/"+strconv.FormatInt(msg.ID, 10)+"/reactions").
+	env.expect.POST("/api/messages/"+msg.ID+"/reactions").
 		WithHeader(middleware.MMCookieHeader, cookieA).
 		WithJSON(map[string]any{"emoji": ":heart:"}).
 		Expect().Status(201)
 
-	arr := successBodyArray(env.expect.GET("/api/messages/"+strconv.FormatInt(msg.ID, 10)+"/reactions").
+	arr := successBodyArray(env.expect.GET("/api/messages/"+msg.ID+"/reactions").
 		WithHeader(middleware.MMCookieHeader, cookieA).
 		Expect().Status(200))
 	arr.Length().IsEqual(1)

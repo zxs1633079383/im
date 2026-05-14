@@ -35,7 +35,7 @@ func (r *gormFileRepo) Create(ctx context.Context, f *File) error {
 
 func (r *gormFileRepo) GetByID(ctx context.Context, id string) (*File, error) {
 	var f File
-	if err := r.db.WithContext(ctx).First(&f, id).Error; err != nil {
+	if err := r.db.WithContext(ctx).First(&f, "id = ?", id).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrNotFound
 		}

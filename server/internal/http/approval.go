@@ -28,7 +28,7 @@ type UserEventPusher interface {
 
 // createApprovalReq is POST /api/approvals body.
 type createApprovalReq struct {
-	ChannelID  int64            `json:"channel_id"`
+	ChannelID  string           `json:"channel_id"`
 	ApproverID string           `json:"approver_id"`
 	Subject    string           `json:"subject"`
 	Content    string           `json:"content"`
@@ -42,7 +42,9 @@ type decisionReq struct {
 
 // approvalDeciderFn matches the svc.Approve / svc.Reject signatures. Used to
 // share the handler body between the two decision endpoints.
-type approvalDeciderFn func(ctx context.Context, id int64, callerID, note string) (*repo.Approval, error)
+//
+// C012 P-D: id is now TEXT (string) — service signature changed in P-C.
+type approvalDeciderFn func(ctx context.Context, id string, callerID, note string) (*repo.Approval, error)
 
 // RegisterApprovalRoutes wires the 7 approval endpoints. pusher may be nil
 // (tests / offline mode). When non-nil, state-changing endpoints fire an
@@ -63,7 +65,7 @@ func RegisterApprovalRoutes(
 			c.JSON(400, gin.H{"error": "invalid JSON"})
 			return
 		}
-		if in.ChannelID == 0 || in.ApproverID == "" {
+		if in.ChannelID == "" || in.ApproverID == "" {
 			c.JSON(422, gin.H{"error": "channel_id and approver_id are required"})
 			return
 		}
@@ -135,7 +137,8 @@ func RegisterApprovalRoutes(
 			return
 		}
 		limit := queryIntDefault(c, "limit", 50)
-		cursor := int64(queryIntDefault(c, "cursor", 0))
+		// C012 P-D: cursor is now a string ID (empty = page 0).
+		cursor := c.Query("cursor")
 		ls, err := svc.ListPending(c.Request.Context(), uid, limit, cursor)
 		if err != nil {
 			c.JSON(500, gin.H{"error": "internal error"})
@@ -154,7 +157,8 @@ func RegisterApprovalRoutes(
 			return
 		}
 		limit := queryIntDefault(c, "limit", 50)
-		cursor := int64(queryIntDefault(c, "cursor", 0))
+		// C012 P-D: cursor is now a string ID (empty = page 0).
+		cursor := c.Query("cursor")
 		ls, err := svc.ListMine(c.Request.Context(), uid, limit, cursor)
 		if err != nil {
 			c.JSON(500, gin.H{"error": "internal error"})

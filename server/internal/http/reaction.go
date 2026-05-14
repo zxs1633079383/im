@@ -14,7 +14,7 @@ import (
 // but kept distinct so the gateway hub adapter can route these to the
 // correct WS frame type without coupling the HTTP layer to gateway types.
 type ReactionEventPusher interface {
-	BroadcastReaction(channelID int64, eventType ReactionEventType, payload any)
+	BroadcastReaction(channelID string, eventType ReactionEventType, payload any)
 }
 
 // ReactionEventType is the wire-level event name. Defined here so the
@@ -33,8 +33,8 @@ type reactionAddReq struct {
 // reactionPayload is the WS body for both add / remove events. Matches the
 // repo.MessageReaction shape clients already know.
 type reactionPayload struct {
-	ChannelID int64  `json:"channel_id"`
-	MessageID int64  `json:"message_id"`
+	ChannelID string `json:"channel_id"`
+	MessageID string `json:"message_id"`
 	UserID    string `json:"user_id"`
 	Emoji     string `json:"emoji"`
 }

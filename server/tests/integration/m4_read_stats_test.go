@@ -4,7 +4,6 @@ package integration
 
 import (
 	"context"
-	"strconv"
 	"testing"
 	"time"
 
@@ -30,7 +29,7 @@ func TestM4ReadStatsBatch_HappyPath(t *testing.T) {
 		WithHeader(middleware.MMCookieHeader, cookieSender).
 		WithJSON(map[string]any{"peer_id": recvID}).
 		Expect().Status(201))
-	channelID := int64(dm.Value("id").Number().Raw())
+	channelID := dm.Value("id").String().Raw()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -44,17 +43,17 @@ func TestM4ReadStatsBatch_HappyPath(t *testing.T) {
 	// Receiver reads up to current seq (=2 since both are posted).
 	// Then we manually rewind their last_read_seq to 1 to exercise the
 	// "partially read" path on msg2.
-	env.expect.POST("/api/channels/"+strconv.FormatInt(channelID, 10)+"/read").
+	env.expect.POST("/api/channels/"+channelID+"/read").
 		WithHeader(middleware.MMCookieHeader, cookieRecv).
 		Expect().Status(200)
 	require.NoError(t, env.channels.MarkRead(ctx, channelID, recvID, 1))
 
 	// Both senders auto-read their own messages — sender's last_read_seq = 2.
-	env.expect.POST("/api/channels/"+strconv.FormatInt(channelID, 10)+"/read").
+	env.expect.POST("/api/channels/"+channelID+"/read").
 		WithHeader(middleware.MMCookieHeader, cookieSender).
 		Expect().Status(200)
 
-	idsParam := strconv.FormatInt(msg1.ID, 10) + "," + strconv.FormatInt(msg2.ID, 10)
+	idsParam := msg1.ID + "," + msg2.ID
 	resp := successBody(env.expect.GET("/api/messages/read-stats").
 		WithHeader(middleware.MMCookieHeader, cookieSender).
 		WithQuery("ids", idsParam).
@@ -63,10 +62,11 @@ func TestM4ReadStatsBatch_HappyPath(t *testing.T) {
 	stats := resp.Value("stats").Array()
 	stats.Length().IsEqual(2)
 
-	byID := map[int64]map[string]any{}
+	// C012 P-D: messageId is TEXT (string) post-migration.
+	byID := map[string]map[string]any{}
 	for i := 0; i < 2; i++ {
 		entry := stats.Value(i).Object().Raw()
-		byID[int64(entry["messageId"].(float64))] = entry
+		byID[entry["messageId"].(string)] = entry
 	}
 
 	m1 := byID[msg1.ID]
@@ -96,14 +96,14 @@ func TestM4ReadStatsBatch_NonMemberFiltered(t *testing.T) {
 		WithHeader(middleware.MMCookieHeader, cookieA).
 		WithJSON(map[string]any{"peer_id": idB}).
 		Expect().Status(201))
-	channelAB := int64(dmAB.Value("id").Number().Raw())
+	channelAB := dmAB.Value("id").String().Raw()
 
 	// A and C share another DM; B is not a member.
 	dmAC := successBody(env.expect.POST("/api/channels/dm").
 		WithHeader(middleware.MMCookieHeader, cookieA).
 		WithJSON(map[string]any{"peer_id": idC}).
 		Expect().Status(201))
-	channelAC := int64(dmAC.Value("id").Number().Raw())
+	channelAC := dmAC.Value("id").String().Raw()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -113,7 +113,7 @@ func TestM4ReadStatsBatch_NonMemberFiltered(t *testing.T) {
 	require.NoError(t, env.messages.Send(ctx, hidden))
 
 	// B asks for both — only the AB one comes back.
-	idsParam := strconv.FormatInt(visible.ID, 10) + "," + strconv.FormatInt(hidden.ID, 10)
+	idsParam := visible.ID + "," + hidden.ID
 	resp := successBody(env.expect.GET("/api/messages/read-stats").
 		WithHeader(middleware.MMCookieHeader, cookieB).
 		WithQuery("ids", idsParam).
@@ -121,7 +121,7 @@ func TestM4ReadStatsBatch_NonMemberFiltered(t *testing.T) {
 
 	stats := resp.Value("stats").Array()
 	stats.Length().IsEqual(1)
-	stats.Value(0).Object().Value("messageId").Number().IsEqual(float64(visible.ID))
+	stats.Value(0).Object().Value("messageId").String().IsEqual(visible.ID)
 }
 
 // TestM4ReadStatsBatch_BadInput — empty / malformed / oversized id lists are

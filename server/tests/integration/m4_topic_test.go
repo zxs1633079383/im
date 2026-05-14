@@ -4,7 +4,6 @@ package integration
 
 import (
 	"context"
-	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -29,18 +28,18 @@ func TestM4CreateTopic(t *testing.T) {
 			"member_ids": []string{member1},
 		}).
 		Expect().Status(201))
-	parentID := int64(parent.Value("id").Number().Raw())
+	parentID := parent.Value("id").String().Raw()
 
 	// Anchor a real message so the topic gets a stable root_message_id.
-	anchor := successBody(env.expect.POST("/api/channels/"+strconv.FormatInt(parentID, 10)+"/messages").
+	anchor := successBody(env.expect.POST("/api/channels/"+parentID+"/messages").
 		WithHeader(middleware.MMCookieHeader, cookieOwner).
 		WithJSON(map[string]any{"content": "anchor", "msg_type": 1}).
 		Expect().Status(201))
-	rootMessageID := int64(anchor.Value("id").Number().Raw())
+	rootMessageID := anchor.Value("id").String().Raw()
 
 	// POST /api/channels/:id/topics with member_user_ids subset of parent.
 	topic := successBody(env.expect.
-		POST("/api/channels/"+strconv.FormatInt(parentID, 10)+"/topics").
+		POST("/api/channels/"+parentID+"/topics").
 		WithHeader(middleware.MMCookieHeader, cookieOwner).
 		WithJSON(map[string]any{
 			"root_message_id": rootMessageID,
@@ -51,7 +50,7 @@ func TestM4CreateTopic(t *testing.T) {
 
 	topic.Value("name").IsEqual("m4-topic-child")
 	topic.Value("creator_id").IsEqual(ownerID)
-	topicID := int64(topic.Value("id").Number().Raw())
+	topicID := topic.Value("id").String().Raw()
 	require.NotZero(t, topicID)
 
 	// The topic must contain owner + member1 (user_id TEXT path).

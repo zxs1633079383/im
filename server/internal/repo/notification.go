@@ -19,7 +19,7 @@ const (
 // Notification maps the notifications table. ReadAt is nil until the receiver
 // explicitly marks it read.
 type Notification struct {
-	ID         string     `gorm:"primaryKey;type:text"                     json:"id"`
+	ID         string     `gorm:"primaryKey;type:text;default:gen_random_uuid()::text"                     json:"id"`
 	SenderID   string     `gorm:"column:sender_id;type:text;not null"      json:"sender_id"`
 	ReceiverID string     `gorm:"column:receiver_id;type:text;not null"    json:"receiver_id"`
 	Title      string     `gorm:"not null"                                 json:"title"`
@@ -73,7 +73,7 @@ func (r *gormNotificationRepo) Create(ctx context.Context, n *Notification) erro
 // GetByID returns the notification by primary key. ErrNotFound if missing.
 func (r *gormNotificationRepo) GetByID(ctx context.Context, id string) (*Notification, error) {
 	var n Notification
-	if err := r.db.WithContext(ctx).First(&n, id).Error; err != nil {
+	if err := r.db.WithContext(ctx).First(&n, "id = ?", id).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrNotFound
 		}

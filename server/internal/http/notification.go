@@ -79,7 +79,8 @@ func RegisterNotificationRoutes(
 		}
 		unreadOnly := c.Query("unread_only") == "true"
 		limit := queryIntDefault(c, "limit", 50)
-		cursor := int64(queryIntDefault(c, "cursor", 0))
+		// C012 P-D: cursor is now a string ID (empty = page 0).
+		cursor := c.Query("cursor")
 		ls, err := svc.ListReceived(c.Request.Context(), uid, unreadOnly, limit, cursor)
 		if err != nil {
 			c.JSON(500, gin.H{"error": "internal error"})
@@ -98,7 +99,8 @@ func RegisterNotificationRoutes(
 			return
 		}
 		limit := queryIntDefault(c, "limit", 50)
-		cursor := int64(queryIntDefault(c, "cursor", 0))
+		// C012 P-D: cursor is now a string ID (empty = page 0).
+		cursor := c.Query("cursor")
 		ls, err := svc.ListSent(c.Request.Context(), uid, limit, cursor)
 		if err != nil {
 			c.JSON(500, gin.H{"error": "internal error"})

@@ -61,13 +61,13 @@ func TestM4WSAnnouncementPosted_HappyPath(t *testing.T) {
 			"content":    "ws-ann-body",
 		}).
 		Expect().Status(201))
-	annID := int64(created.Value("id").Number().Raw())
+	annID := created.Value("id").String().Raw()
 
 	frame := wcA.expectFrame(gateway.TypeAnnouncementPosted, 5*time.Second)
 	var p map[string]any
 	decodePayload(t, frame, &p)
-	require.Equal(t, float64(annID), p["id"], "announcement_posted id")
-	require.Equal(t, float64(channelID), p["channel_id"], "announcement_posted channel_id")
+	require.Equal(t, annID, p["id"], "announcement_posted id")
+	require.Equal(t, channelID, p["channel_id"], "announcement_posted channel_id")
 	require.Equal(t, "ws-ann-title", p["title"], "announcement_posted title")
 	require.Equal(t, "ws-ann-body", p["content"], "announcement_posted content")
 }
@@ -92,13 +92,13 @@ func TestM4WSUrgentPosted_HappyPath(t *testing.T) {
 			"client_msg_id": "cli-urgent-ws-d3",
 		}).
 		Expect().Status(201))
-	msgID := int64(sent.Value("id").Number().Raw())
+	msgID := sent.Value("id").String().Raw()
 
 	frame := wcA.expectFrame(gateway.TypeUrgentPosted, 5*time.Second)
 	var p map[string]any
 	decodePayload(t, frame, &p)
-	require.Equal(t, float64(msgID), p["id"], "urgent_posted id")
-	require.Equal(t, float64(channelID), p["channel_id"], "urgent_posted channel_id")
+	require.Equal(t, msgID, p["id"], "urgent_posted id")
+	require.Equal(t, channelID, p["channel_id"], "urgent_posted channel_id")
 	require.Equal(t, "URGENT-via-WS", p["content"], "urgent_posted content")
 	require.Equal(t, true, p["is_urgent"], "urgent_posted is_urgent must be true")
 }
@@ -126,13 +126,13 @@ func TestM4WSApprovalUpdated_HappyPath(t *testing.T) {
 			"content":     "ws-approval-body",
 		}).
 		Expect().Status(201))
-	apprID := int64(created.Value("id").Number().Raw())
+	apprID := created.Value("id").String().Raw()
 
 	frame := wcApprover.expectFrame(gateway.TypeApprovalUpdated, 5*time.Second)
 	var p map[string]any
 	decodePayload(t, frame, &p)
-	require.Equal(t, float64(apprID), p["id"], "approval_updated id")
-	require.Equal(t, float64(channelID), p["channel_id"], "approval_updated channel_id")
+	require.Equal(t, apprID, p["id"], "approval_updated id")
+	require.Equal(t, channelID, p["channel_id"], "approval_updated channel_id")
 	require.Equal(t, idSubmitter, p["requester_id"], "approval_updated requester_id")
 	require.Equal(t, idApprover, p["approver_id"], "approval_updated approver_id")
 	require.Equal(t, float64(repo.ApprovalStatusPending), p["status"], "approval_updated status must be pending")
@@ -158,12 +158,12 @@ func TestM4WSNotificationReceived_HappyPath(t *testing.T) {
 			"type":        repo.NotificationTypeGeneric,
 		}).
 		Expect().Status(201))
-	notifID := int64(created.Value("id").Number().Raw())
+	notifID := created.Value("id").String().Raw()
 
 	frame := wcRecv.expectFrame(gateway.TypeNotificationReceived, 5*time.Second)
 	var p map[string]any
 	decodePayload(t, frame, &p)
-	require.Equal(t, float64(notifID), p["id"], "notification_received id")
+	require.Equal(t, notifID, p["id"], "notification_received id")
 	require.Equal(t, idRecv, p["receiver_id"], "notification_received receiver_id")
 	require.Equal(t, "ws-notif-title", p["title"], "notification_received title")
 	require.Equal(t, "ws-notif-body", p["body"], "notification_received body")

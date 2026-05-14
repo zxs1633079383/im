@@ -36,13 +36,14 @@ import (
 // approvalEnv bundles env with the two cookie/userID pairs the approval flow
 // needs (submitter posts approvals, approver decides on them) plus the group
 // channel they share. Reduces boilerplate across the 7 happy-path tests.
+// C012 P-D: channelID is TEXT (string) post-migration.
 type approvalEnv struct {
 	*m4env
 	submitterCookie string
 	submitterID     string
 	approverCookie  string
 	approverID      string
-	channelID       int64
+	channelID       string
 }
 
 // newApprovalEnv builds a fresh m4 env, seeds a (submitter, approver) pair on
@@ -69,7 +70,8 @@ func newApprovalEnv(t *testing.T, seedBase int) *approvalEnv {
 
 // submitApproval is the canonical "create one approval" helper used by the
 // decision / list / detail tests as a precondition. Returns the approval id.
-func (a *approvalEnv) submitApproval(t *testing.T, subject, content string) int64 {
+// C012 P-D: approval id is now TEXT (string).
+func (a *approvalEnv) submitApproval(t *testing.T, subject, content string) string {
 	t.Helper()
 	body := successBody(a.expect.POST("/api/approvals").
 		WithHeader(middleware.MMCookieHeader, a.submitterCookie).
@@ -80,7 +82,7 @@ func (a *approvalEnv) submitApproval(t *testing.T, subject, content string) int6
 			"content":     content,
 		}).
 		Expect().Status(201))
-	return int64(body.Value("id").Number().Raw())
+	return body.Value("id").String().Raw()
 }
 
 // ---- HappyPath tests --------------------------------------------------------
@@ -100,7 +102,8 @@ func TestM4ApprovalSubmit_HappyPath(t *testing.T) {
 			"content":     "out friday",
 		}).
 		Expect().Status(201))
-	body.Value("id").Number().Gt(0)
+	// C012 P-D: id is TEXT (string) post-migration.
+	body.Value("id").String().NotEmpty()
 	body.Value("status").Number().IsEqual(float64(repo.ApprovalStatusPending))
 	body.Value("requester_id").String().IsEqual(a.submitterID)
 	body.Value("approver_id").String().IsEqual(a.approverID)
@@ -112,11 +115,11 @@ func TestM4ApprovalApprove_HappyPath(t *testing.T) {
 	a := newApprovalEnv(t, 610)
 	id := a.submitApproval(t, "subj approve", "body approve")
 
-	body := successBody(a.expect.POST("/api/approvals/"+strconv.FormatInt(id, 10)+"/approve").
+	body := successBody(a.expect.POST("/api/approvals/"+id+"/approve").
 		WithHeader(middleware.MMCookieHeader, a.approverCookie).
 		WithJSON(map[string]any{"note": "ok"}).
 		Expect().Status(200))
-	body.Value("id").Number().IsEqual(float64(id))
+	body.Value("id").String().IsEqual(id)
 	body.Value("status").Number().IsEqual(float64(repo.ApprovalStatusApproved))
 }
 
@@ -126,11 +129,11 @@ func TestM4ApprovalReject_HappyPath(t *testing.T) {
 	a := newApprovalEnv(t, 620)
 	id := a.submitApproval(t, "subj reject", "body reject")
 
-	body := successBody(a.expect.POST("/api/approvals/"+strconv.FormatInt(id, 10)+"/reject").
+	body := successBody(a.expect.POST("/api/approvals/"+id+"/reject").
 		WithHeader(middleware.MMCookieHeader, a.approverCookie).
 		WithJSON(map[string]any{"note": "no"}).
 		Expect().Status(200))
-	body.Value("id").Number().IsEqual(float64(id))
+	body.Value("id").String().IsEqual(id)
 	body.Value("status").Number().IsEqual(float64(repo.ApprovalStatusRejected))
 }
 
@@ -140,10 +143,10 @@ func TestM4ApprovalCancel_HappyPath(t *testing.T) {
 	a := newApprovalEnv(t, 630)
 	id := a.submitApproval(t, "subj cancel", "body cancel")
 
-	body := successBody(a.expect.POST("/api/approvals/"+strconv.FormatInt(id, 10)+"/cancel").
+	body := successBody(a.expect.POST("/api/approvals/"+id+"/cancel").
 		WithHeader(middleware.MMCookieHeader, a.submitterCookie).
 		Expect().Status(200))
-	body.Value("id").Number().IsEqual(float64(id))
+	body.Value("id").String().IsEqual(id)
 	body.Value("status").Number().IsEqual(float64(repo.ApprovalStatusCancelled))
 }
 
@@ -159,7 +162,7 @@ func TestM4ApprovalListPending_HappyPath(t *testing.T) {
 		Expect().Status(200))
 	arr := body.Value("approvals").Array()
 	arr.Length().Gt(0)
-	arr.Value(0).Object().Value("id").Number().IsEqual(float64(id))
+	arr.Value(0).Object().Value("id").String().IsEqual(id)
 }
 
 // TestM4ApprovalListMine_HappyPath — requester lists everything they've
@@ -174,7 +177,7 @@ func TestM4ApprovalListMine_HappyPath(t *testing.T) {
 		Expect().Status(200))
 	arr := body.Value("approvals").Array()
 	arr.Length().Gt(0)
-	arr.Value(0).Object().Value("id").Number().IsEqual(float64(id))
+	arr.Value(0).Object().Value("id").String().IsEqual(id)
 }
 
 // TestM4ApprovalGet_HappyPath — either party (here the approver) can fetch
@@ -183,10 +186,10 @@ func TestM4ApprovalGet_HappyPath(t *testing.T) {
 	a := newApprovalEnv(t, 660)
 	id := a.submitApproval(t, "subj get", "body get")
 
-	body := successBody(a.expect.GET("/api/approvals/"+strconv.FormatInt(id, 10)).
+	body := successBody(a.expect.GET("/api/approvals/"+id).
 		WithHeader(middleware.MMCookieHeader, a.approverCookie).
 		Expect().Status(200))
-	body.Value("id").Number().IsEqual(float64(id))
+	body.Value("id").String().IsEqual(id)
 	body.Value("status").Number().IsEqual(float64(repo.ApprovalStatusPending))
 	body.Value("subject").String().IsEqual("subj get")
 }

@@ -28,8 +28,8 @@ const (
 // channel_id + is_top so the receiving device can update its sidebar
 // without a fresh GET /channels.
 type channelTopPayload struct {
-	ChannelID int64 `json:"channel_id"`
-	IsTop     bool  `json:"is_top"`
+	ChannelID string `json:"channel_id"`
+	IsTop     bool   `json:"is_top"`
 }
 
 // patchChannelReq is the body of PATCH /api/channels/:id. Every field is a
@@ -283,7 +283,7 @@ func RegisterChannelGovernanceRoutes(
 			c.JSON(500, gin.H{"error": "internal error"})
 		default:
 			if ids == nil {
-				ids = []int64{}
+				ids = []string{}
 			}
 			c.JSON(200, gin.H{"pins": ids})
 		}

@@ -3,7 +3,6 @@
 package integration
 
 import (
-	"strconv"
 	"testing"
 
 	"im-server/internal/middleware"
@@ -33,7 +32,7 @@ func TestM4MessageSend_C1_HappyPath(t *testing.T) {
 	_, recvID := env.seedUser(101)
 	channelID := env.seedDM(cookieSender, recvID)
 
-	resp := successBody(env.expect.POST("/api/channels/"+strconv.FormatInt(channelID, 10)+"/messages").
+	resp := successBody(env.expect.POST("/api/channels/"+channelID+"/messages").
 		WithHeader(middleware.MMCookieHeader, cookieSender).
 		WithJSON(map[string]any{
 			"content":  "g1-hello",
@@ -54,7 +53,7 @@ func TestM4MessageSend_C2_CookieMissing(t *testing.T) {
 	_, recvID := env.seedUser(103)
 	channelID := env.seedDM(cookieSender, recvID)
 
-	errorBody(env.expect.POST("/api/channels/"+strconv.FormatInt(channelID, 10)+"/messages").
+	errorBody(env.expect.POST("/api/channels/"+channelID+"/messages").
 		WithJSON(map[string]any{"content": "x", "msg_type": 1}).
 		Expect().Status(401)).
 		Value("error").String().NotEmpty()
@@ -68,7 +67,7 @@ func TestM4MessageSend_C3_CookieInvalid(t *testing.T) {
 	channelID := env.seedDM(cookieSender, recvID)
 
 	bogus := testutil.MakeCookieID(9999)
-	errorBody(env.expect.POST("/api/channels/"+strconv.FormatInt(channelID, 10)+"/messages").
+	errorBody(env.expect.POST("/api/channels/"+channelID+"/messages").
 		WithHeader(middleware.MMCookieHeader, bogus).
 		WithJSON(map[string]any{"content": "x", "msg_type": 1}).
 		Expect().Status(401)).
@@ -83,7 +82,7 @@ func TestM4MessageSend_C4_NotMember(t *testing.T) {
 	cookieOutsider, _ := env.seedUser(108)
 	channelID := env.seedDM(cookieOwner, peerID)
 
-	errorBody(env.expect.POST("/api/channels/"+strconv.FormatInt(channelID, 10)+"/messages").
+	errorBody(env.expect.POST("/api/channels/"+channelID+"/messages").
 		WithHeader(middleware.MMCookieHeader, cookieOutsider).
 		WithJSON(map[string]any{"content": "intrude", "msg_type": 1}).
 		Expect().Status(403)).
@@ -97,7 +96,7 @@ func TestM4MessageSend_C5_BadRequest(t *testing.T) {
 	_, recvID := env.seedUser(110)
 	channelID := env.seedDM(cookieSender, recvID)
 
-	errorBody(env.expect.POST("/api/channels/"+strconv.FormatInt(channelID, 10)+"/messages").
+	errorBody(env.expect.POST("/api/channels/"+channelID+"/messages").
 		WithHeader(middleware.MMCookieHeader, cookieSender).
 		WithJSON(map[string]any{"msg_type": 1}).
 		Expect().Status(422)).
@@ -114,12 +113,12 @@ func TestM4MessageEdit_C1_HappyPath(t *testing.T) {
 	channelID := env.seedDM(cookieSender, recvID)
 	msg := env.seedMessage(channelID, senderID, "before")
 
-	resp := successBody(env.expect.PATCH("/api/messages/"+strconv.FormatInt(msg.ID, 10)).
+	resp := successBody(env.expect.PATCH("/api/messages/"+msg.ID).
 		WithHeader(middleware.MMCookieHeader, cookieSender).
 		WithJSON(map[string]any{"content": "after"}).
 		Expect().Status(200))
 
-	resp.Value("id").Number().IsEqual(float64(msg.ID))
+	resp.Value("id").String().IsEqual(msg.ID)
 	resp.Value("content").IsEqual("after")
 }
 
@@ -131,7 +130,7 @@ func TestM4MessageEdit_C2_CookieMissing(t *testing.T) {
 	channelID := env.seedDM(cookieSender, recvID)
 	msg := env.seedMessage(channelID, senderID, "before")
 
-	errorBody(env.expect.PATCH("/api/messages/"+strconv.FormatInt(msg.ID, 10)).
+	errorBody(env.expect.PATCH("/api/messages/"+msg.ID).
 		WithJSON(map[string]any{"content": "after"}).
 		Expect().Status(401)).
 		Value("error").String().NotEmpty()
@@ -146,7 +145,7 @@ func TestM4MessageEdit_C3_CookieInvalid(t *testing.T) {
 	msg := env.seedMessage(channelID, senderID, "before")
 
 	bogus := testutil.MakeCookieID(9999)
-	errorBody(env.expect.PATCH("/api/messages/"+strconv.FormatInt(msg.ID, 10)).
+	errorBody(env.expect.PATCH("/api/messages/"+msg.ID).
 		WithHeader(middleware.MMCookieHeader, bogus).
 		WithJSON(map[string]any{"content": "after"}).
 		Expect().Status(401)).
@@ -162,7 +161,7 @@ func TestM4MessageEdit_C4_NotSender(t *testing.T) {
 	channelID := env.seedDM(cookieSender, recvID)
 	msg := env.seedMessage(channelID, senderID, "before")
 
-	errorBody(env.expect.PATCH("/api/messages/"+strconv.FormatInt(msg.ID, 10)).
+	errorBody(env.expect.PATCH("/api/messages/"+msg.ID).
 		WithHeader(middleware.MMCookieHeader, cookieOther).
 		WithJSON(map[string]any{"content": "hijack"}).
 		Expect().Status(403)).
@@ -191,7 +190,7 @@ func TestM4MessageDelete_C1_HappyPath(t *testing.T) {
 	channelID := env.seedDM(cookieSender, recvID)
 	msg := env.seedMessage(channelID, senderID, "to-revoke")
 
-	resp := successBody(env.expect.DELETE("/api/messages/"+strconv.FormatInt(msg.ID, 10)).
+	resp := successBody(env.expect.DELETE("/api/messages/"+msg.ID).
 		WithHeader(middleware.MMCookieHeader, cookieSender).
 		Expect().Status(200))
 	resp.Value("ok").Boolean().IsTrue()
@@ -205,7 +204,7 @@ func TestM4MessageDelete_C2_CookieMissing(t *testing.T) {
 	channelID := env.seedDM(cookieSender, recvID)
 	msg := env.seedMessage(channelID, senderID, "x")
 
-	errorBody(env.expect.DELETE("/api/messages/"+strconv.FormatInt(msg.ID, 10)).
+	errorBody(env.expect.DELETE("/api/messages/"+msg.ID).
 		Expect().Status(401)).
 		Value("error").String().NotEmpty()
 }
@@ -219,7 +218,7 @@ func TestM4MessageDelete_C3_CookieInvalid(t *testing.T) {
 	msg := env.seedMessage(channelID, senderID, "x")
 
 	bogus := testutil.MakeCookieID(9999)
-	errorBody(env.expect.DELETE("/api/messages/"+strconv.FormatInt(msg.ID, 10)).
+	errorBody(env.expect.DELETE("/api/messages/"+msg.ID).
 		WithHeader(middleware.MMCookieHeader, bogus).
 		Expect().Status(401)).
 		Value("error").String().NotEmpty()
@@ -234,7 +233,7 @@ func TestM4MessageDelete_C4_NotSender(t *testing.T) {
 	channelID := env.seedDM(cookieSender, recvID)
 	msg := env.seedMessage(channelID, senderID, "x")
 
-	errorBody(env.expect.DELETE("/api/messages/"+strconv.FormatInt(msg.ID, 10)).
+	errorBody(env.expect.DELETE("/api/messages/"+msg.ID).
 		WithHeader(middleware.MMCookieHeader, cookieOther).
 		Expect().Status(403)).
 		Value("error").String().NotEmpty()
@@ -268,14 +267,14 @@ func TestM4MessageForward_C1_HappyPath(t *testing.T) {
 		WithHeader(middleware.MMCookieHeader, cookieSender).
 		WithJSON(map[string]any{
 			"message_id":         src.ID,
-			"target_channel_ids": []int64{dstChannel},
+			"target_channel_ids": []string{dstChannel},
 		}).
 		Expect().Status(201))
 
 	msgs := resp.Value("messages").Array()
 	msgs.Length().IsEqual(1)
 	msgs.Value(0).Object().Value("content").IsEqual("to-forward")
-	msgs.Value(0).Object().Value("channel_id").Number().IsEqual(float64(dstChannel))
+	msgs.Value(0).Object().Value("channel_id").String().IsEqual(dstChannel)
 }
 
 // TestM4MessageForward_C2_CookieMissing — 缺 cookie → 401.
@@ -289,7 +288,7 @@ func TestM4MessageForward_C2_CookieMissing(t *testing.T) {
 	errorBody(env.expect.POST("/api/messages/forward").
 		WithJSON(map[string]any{
 			"message_id":         src.ID,
-			"target_channel_ids": []int64{srcChannel},
+			"target_channel_ids": []string{srcChannel},
 		}).
 		Expect().Status(401)).
 		Value("error").String().NotEmpty()
@@ -308,7 +307,7 @@ func TestM4MessageForward_C3_CookieInvalid(t *testing.T) {
 		WithHeader(middleware.MMCookieHeader, bogus).
 		WithJSON(map[string]any{
 			"message_id":         src.ID,
-			"target_channel_ids": []int64{srcChannel},
+			"target_channel_ids": []string{srcChannel},
 		}).
 		Expect().Status(401)).
 		Value("error").String().NotEmpty()
@@ -329,7 +328,7 @@ func TestM4MessageForward_C4_NotSourceMember(t *testing.T) {
 		WithHeader(middleware.MMCookieHeader, cookieOutsider).
 		WithJSON(map[string]any{
 			"message_id":         src.ID,
-			"target_channel_ids": []int64{dstChannel},
+			"target_channel_ids": []string{dstChannel},
 		}).
 		Expect().Status(403)).
 		Value("error").String().NotEmpty()
@@ -347,7 +346,7 @@ func TestM4MessageForward_C5_NoTargetChannels(t *testing.T) {
 		WithHeader(middleware.MMCookieHeader, cookieSender).
 		WithJSON(map[string]any{
 			"message_id":         src.ID,
-			"target_channel_ids": []int64{},
+			"target_channel_ids": []string{},
 		}).
 		Expect().Status(422)).
 		Value("error").String().NotEmpty()
@@ -367,7 +366,7 @@ func TestM4MessageBatch_C1_HappyPath(t *testing.T) {
 	resp := successBody(env.expect.POST("/api/messages/batch").
 		WithHeader(middleware.MMCookieHeader, cookieSender).
 		WithJSON(map[string]any{
-			"channel_ids": []int64{ch1, ch2},
+			"channel_ids": []string{ch1, ch2},
 			"content":     "fanout",
 			"msg_type":    1,
 		}).
@@ -388,7 +387,7 @@ func TestM4MessageBatch_C2_CookieMissing(t *testing.T) {
 
 	errorBody(env.expect.POST("/api/messages/batch").
 		WithJSON(map[string]any{
-			"channel_ids": []int64{ch1},
+			"channel_ids": []string{ch1},
 			"content":     "fanout",
 			"msg_type":    1,
 		}).
@@ -407,7 +406,7 @@ func TestM4MessageBatch_C3_CookieInvalid(t *testing.T) {
 	errorBody(env.expect.POST("/api/messages/batch").
 		WithHeader(middleware.MMCookieHeader, bogus).
 		WithJSON(map[string]any{
-			"channel_ids": []int64{ch1},
+			"channel_ids": []string{ch1},
 			"content":     "fanout",
 			"msg_type":    1,
 		}).
@@ -427,7 +426,7 @@ func TestM4MessageBatch_C4_NotMember(t *testing.T) {
 	resp := successBody(env.expect.POST("/api/messages/batch").
 		WithHeader(middleware.MMCookieHeader, cookieOutsider).
 		WithJSON(map[string]any{
-			"channel_ids": []int64{ch1},
+			"channel_ids": []string{ch1},
 			"content":     "fanout",
 			"msg_type":    1,
 		}).
@@ -444,7 +443,7 @@ func TestM4MessageBatch_C5_BadRequest(t *testing.T) {
 	errorBody(env.expect.POST("/api/messages/batch").
 		WithHeader(middleware.MMCookieHeader, cookieSender).
 		WithJSON(map[string]any{
-			"channel_ids": []int64{},
+			"channel_ids": []string{},
 			"content":     "fanout",
 			"msg_type":    1,
 		}).

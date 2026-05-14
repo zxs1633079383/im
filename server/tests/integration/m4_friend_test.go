@@ -34,7 +34,7 @@ func TestM4FriendRequestAccept(t *testing.T) {
 	row := pending.Value(0).Object()
 	row.Value("requester_id").IsEqual(requester)
 	row.Value("addressee_id").IsEqual(addressee)
-	friendshipID := int64(row.Value("id").Number().Raw())
+	friendshipID := row.Value("id").String().Raw()
 	require.NotZero(t, friendshipID)
 
 	// Addressee accepts → 200, status flips on the row.

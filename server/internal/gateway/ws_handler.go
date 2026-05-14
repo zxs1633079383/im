@@ -42,9 +42,11 @@ type WsSendStore interface {
 }
 
 // WsMemberLister lists channel members for push fan-out on WS send.
+//
+// C012 P-D: channelID is TEXT (string).
 type WsMemberLister interface {
-	ListMembers(ctx context.Context, channelID int64) ([]repo.ChannelMember, error)
-	GetMember(ctx context.Context, channelID int64, userID string) (*repo.ChannelMember, error)
+	ListMembers(ctx context.Context, channelID string) ([]repo.ChannelMember, error)
+	GetMember(ctx context.Context, channelID string, userID string) (*repo.ChannelMember, error)
 }
 
 // WsHandler handles WebSocket upgrade requests.
@@ -223,11 +225,12 @@ func (h *WsHandler) readPump(conn *Conn) {
 		switch frame.Type {
 		case TypePing:
 			// Update known_seq from client's ping payload.
+			//
+			// C012 P-D: ChannelSeqs key is already a TEXT (string) id — no
+			// fmt.Sscanf parse needed; pass through verbatim.
 			var ping PingPayload
 			if err := json.Unmarshal(frame.Payload, &ping); err == nil {
-				for chIDStr, seq := range ping.ChannelSeqs {
-					var chID int64
-					fmt.Sscanf(chIDStr, "%d", &chID) //nolint:errcheck
+				for chID, seq := range ping.ChannelSeqs {
 					conn.UpdateKnownSeq(chID, seq)
 				}
 			}
@@ -303,12 +306,13 @@ func (h *WsHandler) handleSend(conn *Conn, payload json.RawMessage) {
 		h.log.Debug("malformed send payload", "error", err)
 		return
 	}
-	if sp.ChannelID == 0 || sp.Content == "" {
+	if sp.ChannelID == "" || sp.Content == "" {
 		h.log.Debug("send payload missing channel_id or content")
 		return
 	}
 	span.SetAttributes(
-		attribute.Int64("channel_id", sp.ChannelID),
+		// C012 P-D: channel_id is TEXT (string); use attribute.String.
+		attribute.String("channel_id", sp.ChannelID),
 		attribute.String("client_msg_id", sp.ClientMsgID),
 	)
 
@@ -338,7 +342,8 @@ func (h *WsHandler) handleSend(conn *Conn, payload json.RawMessage) {
 		return
 	}
 	span.SetAttributes(
-		attribute.Int64("server_msg_id", msg.ID),
+		// C012 P-D: server_msg_id is TEXT (string) post-migration.
+		attribute.String("server_msg_id", msg.ID),
 		attribute.Int64("seq", msg.Seq),
 	)
 
@@ -371,7 +376,8 @@ func (h *WsHandler) handleSend(conn *Conn, payload json.RawMessage) {
 				}
 			}
 			pushPayload := PushMsgPayload{
-				PushID:    fmt.Sprintf("ws-%d-%d", msg.ChannelID, msg.Seq),
+				// C012 P-D: ChannelID is TEXT; use %s rather than %d.
+				PushID:    fmt.Sprintf("ws-%s-%d", msg.ChannelID, msg.Seq),
 				Type:      NoticeTypeForMsgType(pushMsg.MsgType),
 				ChannelID: pushMsg.ChannelID,
 				Seq:       pushMsg.Seq,

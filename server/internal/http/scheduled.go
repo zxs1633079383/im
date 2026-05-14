@@ -13,12 +13,12 @@ import (
 // createScheduledReq is POST /api/messages/scheduled body. scheduled_at is
 // carried as RFC3339 so clients don't need to pick a number format.
 type createScheduledReq struct {
-	ChannelID   int64     `json:"channel_id"`
+	ChannelID   string    `json:"channel_id"`
 	Content     string    `json:"content"`
 	MsgType     int16     `json:"msg_type"`
 	VisibleTo   []string  `json:"visible_to"`
-	ReplyTo     *int64    `json:"reply_to"`
-	FileIDs     []int64   `json:"file_ids"`
+	ReplyTo     *string   `json:"reply_to"`
+	FileIDs     []string  `json:"file_ids"`
 	ScheduledAt time.Time `json:"scheduled_at"`
 }
 
@@ -38,7 +38,7 @@ func RegisterScheduledRoutes(
 			c.JSON(400, gin.H{"error": "invalid JSON"})
 			return
 		}
-		if in.ChannelID == 0 {
+		if in.ChannelID == "" {
 			c.JSON(422, gin.H{"error": "channel_id is required"})
 			return
 		}
@@ -111,7 +111,8 @@ func RegisterScheduledRoutes(
 			statusFilter = repo.ScheduledStatusFailed
 		}
 		limit := queryIntDefault(c, "limit", 50)
-		cursor := int64(queryIntDefault(c, "cursor", 0))
+		// C012 P-D: cursor is a string ID post-migration.
+		cursor := c.Query("cursor")
 		ls, err := svc.List(c.Request.Context(), uid, statusFilter, limit, cursor)
 		if err != nil {
 			c.JSON(500, gin.H{"error": "internal error"})

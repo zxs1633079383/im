@@ -22,7 +22,7 @@ const (
 // Postgres TEXT[] (C012: BIGINT[] → TEXT[]) carried as pq.StringArray for
 // zero-alloc roundtripping.
 type ScheduledMessage struct {
-	ID                 string         `gorm:"primaryKey;type:text"                          json:"id"`
+	ID                 string         `gorm:"primaryKey;type:text;default:gen_random_uuid()::text"                          json:"id"`
 	ChannelID          string         `gorm:"column:channel_id;type:text;not null"          json:"channel_id"`
 	SenderID           string         `gorm:"column:sender_id;type:text;not null"           json:"sender_id"`
 	Content            string         `gorm:"not null"                                      json:"content"`
@@ -81,7 +81,7 @@ func (r *gormScheduledRepo) Create(ctx context.Context, s *ScheduledMessage) err
 // GetByID returns a scheduled message by PK. ErrNotFound if missing.
 func (r *gormScheduledRepo) GetByID(ctx context.Context, id string) (*ScheduledMessage, error) {
 	var s ScheduledMessage
-	if err := r.db.WithContext(ctx).First(&s, id).Error; err != nil {
+	if err := r.db.WithContext(ctx).First(&s, "id = ?", id).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrNotFound
 		}

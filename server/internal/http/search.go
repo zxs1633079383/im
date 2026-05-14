@@ -46,9 +46,10 @@ func RegisterSearchRoutes(authed *gin.RouterGroup, svc *service.SearchService, l
 			return
 		}
 
-		// Optional integer params — match the legacy parseIntParam behaviour:
-		// missing/blank/garbage values fall back to defaults rather than 400.
-		channelID := parseInt64Default(c.Query("channel_id"), 0)
+		// Optional params — match the legacy parseIntParam behaviour:
+		// missing/blank values fall back to defaults rather than 400.
+		// C012 P-D: channel_id is now TEXT (string), so just pass through.
+		channelID := c.Query("channel_id")
 		limit := parseIntDefault(c.Query("limit"), service.SearchDefaultLimit)
 
 		result, err := svc.Search(c.Request.Context(), uid, service.SearchParams{
@@ -83,21 +84,8 @@ func RegisterSearchRoutes(authed *gin.RouterGroup, svc *service.SearchService, l
 	})
 }
 
-// parseInt64Default parses s as int64; returns def on parse failure or empty
-// input. Mirrors the legacy handler.parseIntParam helper so query-string
-// behaviour is preserved verbatim across the cut-over.
-func parseInt64Default(s string, def int64) int64 {
-	if s == "" {
-		return def
-	}
-	v, err := strconv.ParseInt(s, 10, 64)
-	if err != nil {
-		return def
-	}
-	return v
-}
-
-// parseIntDefault is parseInt64Default for plain ints.
+// parseIntDefault parses s as int; returns def on parse failure or empty
+// input. Used for pagination limit query params.
 func parseIntDefault(s string, def int) int {
 	if s == "" {
 		return def

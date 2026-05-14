@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
-	"strconv"
 	"syscall"
 	"time"
 
@@ -27,22 +26,24 @@ func main() {
 
 // ---------- wire types ----------
 
+// C012 P-D: ChannelID / ReplyTo migrate to TEXT (string).
 type incomingMessage struct {
 	GatewayID   string   `json:"gateway_id"`
-	ChannelID   int64    `json:"channel_id"`
+	ChannelID   string   `json:"channel_id"`
 	SenderID    string   `json:"sender_id"`
 	TeamID      *string  `json:"team_id,omitempty"`
 	ClientMsgID string   `json:"client_msg_id"`
 	MsgType     int16    `json:"msg_type"`
 	Content     string   `json:"content"`
 	VisibleTo   []string `json:"visible_to,omitempty"`
-	ReplyTo     *int64   `json:"reply_to,omitempty"`
+	ReplyTo     *string  `json:"reply_to,omitempty"`
 }
 
+// C012 P-D: ServerMsgID / ChannelID migrate to TEXT (string); Seq stays int64.
 type deliveryEvent struct {
 	ClientMsgID string `json:"client_msg_id"`
-	ServerMsgID int64  `json:"server_msg_id"`
-	ChannelID   int64  `json:"channel_id"`
+	ServerMsgID string `json:"server_msg_id"`
+	ChannelID   string `json:"channel_id"`
 	Seq         int64  `json:"seq"`
 	SenderID    string `json:"sender_id"`
 }
@@ -171,7 +172,8 @@ func (svc *messageService) broadcastBucket(
 	}
 	buckets := bucketByGateway(gwMap)
 	msgType := gateway.TypePushMsg
-	partitionKey := strconv.FormatInt(msg.ChannelID, 10)
+	// C012 P-D: ChannelID is already TEXT (string); use verbatim as the key.
+	partitionKey := msg.ChannelID
 	for gwID, uids := range buckets {
 		topic := gateway.PushTopicFor(gwID, svc.env)
 		producer, err := svc.pushCache.GetOrCreate(ctx, topic)
@@ -234,7 +236,7 @@ func bucketByGateway(gwMap map[string][]string) map[string][]string {
 func buildPushPayload(msg *repo.Message, phantomVariant bool) gateway.PushMsgPayload {
 	if phantomVariant {
 		return gateway.PushMsgPayload{
-			PushID:    fmt.Sprintf("msg-%d-%d", msg.ChannelID, msg.Seq),
+			PushID:    fmt.Sprintf("msg-%s-%d", msg.ChannelID, msg.Seq),
 			ChannelID: msg.ChannelID,
 			Seq:       msg.Seq,
 			MsgType:   repo.MsgTypePhantom,
@@ -242,7 +244,7 @@ func buildPushPayload(msg *repo.Message, phantomVariant bool) gateway.PushMsgPay
 		}
 	}
 	return gateway.PushMsgPayload{
-		PushID:    fmt.Sprintf("msg-%d-%d", msg.ChannelID, msg.Seq),
+		PushID:    fmt.Sprintf("msg-%s-%d", msg.ChannelID, msg.Seq),
 		Type:      gateway.NoticeTypeForMsgType(msg.MsgType),
 		ChannelID: msg.ChannelID,
 		Seq:       msg.Seq,

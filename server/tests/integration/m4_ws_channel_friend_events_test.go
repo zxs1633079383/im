@@ -112,7 +112,7 @@ func TestM4WSChannelInfoUpdated_HappyPath(t *testing.T) {
 	frame := wcA.expectFrame(gateway.TypeChannelInfoUpdated, 5*time.Second)
 	var snap map[string]any
 	decodePayload(t, frame, &snap)
-	require.Equal(t, float64(chID), snap["id"], "channel_info_updated id must match")
+	require.Equal(t, chID, snap["id"], "channel_info_updated id must match")
 	require.Equal(t, "after-patch", snap["notice"], "channel_info_updated must carry new notice")
 }
 

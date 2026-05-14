@@ -24,7 +24,7 @@ import (
 // (topic / sub-channel). RootMessageID points at the message the topic was
 // branched from. Members & messages share the parent's tables + seq.
 type Channel struct {
-	ID            string    `gorm:"primaryKey;type:text"                                    json:"id"`
+	ID            string    `gorm:"primaryKey;type:text;default:gen_random_uuid()::text"                                    json:"id"`
 	Type          int16     `gorm:"not null"                                                json:"type"`
 	Name          string    `gorm:"size:100;not null;default:''"                            json:"name"`
 	AvatarURL     string    `gorm:"column:avatar_url;not null;default:''"                   json:"avatar_url"`
@@ -90,7 +90,7 @@ func (ChannelMember) TableName() string { return "channel_members" }
 // the sender's team or the channel's team changes later, the historical row
 // keeps the original value). VisibleTo holds mm UserIDs.
 type Message struct {
-	ID            string          `gorm:"primaryKey;type:text"                                    json:"id"`
+	ID            string          `gorm:"primaryKey;type:text;default:gen_random_uuid()::text"                                    json:"id"`
 	ChannelID     string          `gorm:"column:channel_id;type:text;not null"                    json:"channel_id"`
 	Seq           int64           `gorm:"not null"                                                json:"seq"`
 	ClientMsgID   string          `gorm:"column:client_msg_id;size:36"                            json:"client_msg_id,omitempty"`
@@ -145,7 +145,7 @@ const (
 //
 // M4: requester / addressee are mm UserIDs (24-hex string).
 type Friendship struct {
-	ID          string    `gorm:"primaryKey;type:text"                                                                                json:"id"`
+	ID          string    `gorm:"primaryKey;type:text;default:gen_random_uuid()::text"                                                                                json:"id"`
 	RequesterID string    `gorm:"column:requester_id;type:text;not null;uniqueIndex:uq_friendships_pair,priority:1"                   json:"requester_id"`
 	AddresseeID string    `gorm:"column:addressee_id;type:text;not null;uniqueIndex:uq_friendships_pair,priority:2"                   json:"addressee_id"`
 	Status      int16     `gorm:"not null;default:1"                                                                                  json:"status"`
@@ -160,7 +160,7 @@ func (Friendship) TableName() string { return "friendships" }
 //
 // M4: UploaderID is mm UserID (24-hex string).
 type File struct {
-	ID            string    `gorm:"primaryKey;type:text"                                    json:"id"`
+	ID            string    `gorm:"primaryKey;type:text;default:gen_random_uuid()::text"                                    json:"id"`
 	UploaderID    string    `gorm:"column:uploader_id;type:text;not null"                   json:"uploader_id"`
 	FileName      string    `gorm:"column:file_name;size:255;not null"                      json:"file_name"`
 	FileSize      int64     `gorm:"column:file_size;not null"                               json:"file_size"`

@@ -12,7 +12,7 @@ import (
 // createTopicReq mirrors the JSON body for POST /api/channels/:id/topics.
 // Field names are kept snake_case to match the rest of this handler family.
 type createTopicReq struct {
-	RootMessageID int64    `json:"root_message_id"`
+	RootMessageID string   `json:"root_message_id"`
 	Name          string   `json:"name"`
 	MemberUserIDs []string `json:"member_user_ids"`
 }

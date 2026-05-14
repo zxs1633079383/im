@@ -424,7 +424,7 @@ func (r *gormMessageRepo) GetReaders(ctx context.Context, channelID string, seq 
 
 func (r *gormMessageRepo) GetByID(ctx context.Context, id string) (*Message, error) {
 	var m Message
-	if err := r.db.WithContext(ctx).First(&m, id).Error; err != nil {
+	if err := r.db.WithContext(ctx).First(&m, "id = ?", id).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrNotFound
 		}

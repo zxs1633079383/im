@@ -111,7 +111,7 @@ func (r *gormChannelRepo) Create(ctx context.Context, ch *Channel) error {
 
 func (r *gormChannelRepo) GetByID(ctx context.Context, id string) (*Channel, error) {
 	var ch Channel
-	if err := r.db.WithContext(ctx).First(&ch, id).Error; err != nil {
+	if err := r.db.WithContext(ctx).First(&ch, "id = ?", id).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrNotFound
 		}

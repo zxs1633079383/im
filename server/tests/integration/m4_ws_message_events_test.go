@@ -3,7 +3,6 @@
 package integration
 
 import (
-	"strconv"
 	"testing"
 	"time"
 
@@ -47,7 +46,7 @@ func TestM4WSPushMsg_HappyPath(t *testing.T) {
 	wcA := wsDial(t, env, cookieA)
 	time.Sleep(settleDelay)
 
-	env.expect.POST("/api/channels/"+strconv.FormatInt(channelID, 10)+"/messages").
+	env.expect.POST("/api/channels/"+channelID+"/messages").
 		WithHeader(middleware.MMCookieHeader, cookieB).
 		WithJSON(map[string]any{"content": "hi-from-B", "msg_type": 1}).
 		Expect().Status(201)
@@ -74,7 +73,7 @@ func TestM4WSMsgUpdated_HappyPath(t *testing.T) {
 	wcA := wsDial(t, env, cookieA)
 	time.Sleep(settleDelay)
 
-	env.expect.PATCH("/api/messages/"+strconv.FormatInt(msg.ID, 10)).
+	env.expect.PATCH("/api/messages/"+msg.ID).
 		WithHeader(middleware.MMCookieHeader, cookieB).
 		WithJSON(map[string]any{"content": "after-edit"}).
 		Expect().Status(200)
@@ -84,8 +83,8 @@ func TestM4WSMsgUpdated_HappyPath(t *testing.T) {
 	// generic map so the test stays decoupled from struct field naming.
 	var snap map[string]any
 	decodePayload(t, frame, &snap)
-	require.Equal(t, float64(msg.ID), snap["id"], "msg_updated id")
-	require.Equal(t, float64(channelID), snap["channel_id"], "msg_updated channel_id")
+	require.Equal(t, msg.ID, snap["id"], "msg_updated id")
+	require.Equal(t, channelID, snap["channel_id"], "msg_updated channel_id")
 	require.Equal(t, "after-edit", snap["content"], "msg_updated content")
 	require.Equal(t, peerB, snap["sender_id"], "msg_updated sender_id")
 }
@@ -103,15 +102,15 @@ func TestM4WSMsgDeleted_HappyPath(t *testing.T) {
 	wcA := wsDial(t, env, cookieA)
 	time.Sleep(settleDelay)
 
-	env.expect.DELETE("/api/messages/"+strconv.FormatInt(msg.ID, 10)).
+	env.expect.DELETE("/api/messages/"+msg.ID).
 		WithHeader(middleware.MMCookieHeader, cookieB).
 		Expect().Status(200)
 
 	frame := wcA.expectFrame(gateway.TypeMsgDeleted, 5*time.Second)
 	var p map[string]any
 	decodePayload(t, frame, &p)
-	require.Equal(t, float64(msg.ID), p["msg_id"], "msg_deleted msg_id")
-	require.Equal(t, float64(channelID), p["channel_id"], "msg_deleted channel_id")
+	require.Equal(t, msg.ID, p["msg_id"], "msg_deleted msg_id")
+	require.Equal(t, channelID, p["channel_id"], "msg_deleted channel_id")
 	// deleted_at is a timestamp string emitted by the handler — assert
 	// presence rather than exact value (clock-dependent).
 	require.NotEmpty(t, p["deleted_at"], "msg_deleted deleted_at must be set")

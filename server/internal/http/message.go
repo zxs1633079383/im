@@ -22,13 +22,16 @@ import (
 // phantom stripping) invoke BroadcastMessage twice — once for visible users
 // with the real message, once for the phantom bucket with a stripped variant.
 type MessagePusher interface {
-	BroadcastMessage(channelID int64, userIDs []string, msg *repo.Message)
+	BroadcastMessage(channelID string, userIDs []string, msg *repo.Message)
 }
 
 // ReadSyncPusher pushes read-receipt sync events to other devices of the same
 // user. Mirrors handler.ReadSyncPusher.
+//
+// C012 P-D: channelID is now TEXT (string); readSeq remains int64 (business
+// monotonic counter, not an entity ID).
 type ReadSyncPusher interface {
-	PushReadSync(userID string, channelID, readSeq int64)
+	PushReadSync(userID string, channelID string, readSeq int64)
 }
 
 // MessageEventType is a typed alias for WS event name strings. The http
@@ -58,7 +61,7 @@ const (
 // channel. Used by edit/delete endpoints where we push a full snapshot of the
 // mutated message rather than a PushMsgPayload.
 type MessageEventBroadcaster interface {
-	BroadcastToMembers(channelID int64, eventType MessageEventType, payload any)
+	BroadcastToMembers(channelID string, eventType MessageEventType, payload any)
 }
 
 // MessageRouteOpts bundles the optional dependency hooks. All hooks are
@@ -83,13 +86,15 @@ type MessageRouteOpts struct {
 
 // sendMessageReq mirrors the legacy handler's body shape exactly so existing
 // clients continue to work after the cut-over.
+//
+// C012 P-D: ReplyTo / FileIDs migrate to TEXT (string) IDs.
 type sendMessageReq struct {
-	Content     string  `json:"content"`
-	ClientMsgID string  `json:"client_msg_id"`
-	MsgType     int16   `json:"msg_type"`
+	Content     string   `json:"content"`
+	ClientMsgID string   `json:"client_msg_id"`
+	MsgType     int16    `json:"msg_type"`
 	VisibleTo   []string `json:"visible_to"`
-	ReplyTo     *int64  `json:"reply_to"`
-	FileIDs     []int64 `json:"file_ids"`
+	ReplyTo     *string  `json:"reply_to"`
+	FileIDs     []string `json:"file_ids"`
 }
 
 // fetchMessagesResp wraps the slice in a {"messages": [...]} envelope to match
@@ -104,9 +109,11 @@ type editMessageReq struct {
 }
 
 // forwardMessageReq matches the legacy handler's body shape.
+//
+// C012 P-D: IDs migrated to TEXT (string).
 type forwardMessageReq struct {
-	MessageID        int64   `json:"message_id"`
-	TargetChannelIDs []int64 `json:"target_channel_ids"`
+	MessageID        string   `json:"message_id"`
+	TargetChannelIDs []string `json:"target_channel_ids"`
 }
 
 // RegisterMessageRoutes wires the four message endpoints onto authed. authed
@@ -473,7 +480,7 @@ func RegisterMessageRoutes(authed *gin.RouterGroup, svc *service.MessageService,
 			c.JSON(400, gin.H{"error": "invalid JSON"})
 			return
 		}
-		if in.MessageID == 0 {
+		if in.MessageID == "" {
 			c.JSON(422, gin.H{"error": "message_id is required"})
 			return
 		}
@@ -515,10 +522,10 @@ func RegisterMessageRoutes(authed *gin.RouterGroup, svc *service.MessageService,
 			return
 		}
 		var in struct {
-			ChannelIDs  []int64 `json:"channel_ids"`
-			Content     string  `json:"content"`
-			MsgType     int16   `json:"msg_type"`
-			ClientMsgID string  `json:"client_msg_id"`
+			ChannelIDs  []string `json:"channel_ids"`
+			Content     string   `json:"content"`
+			MsgType     int16    `json:"msg_type"`
+			ClientMsgID string   `json:"client_msg_id"`
 		}
 		if err := c.ShouldBindJSON(&in); err != nil {
 			c.JSON(400, gin.H{"error": "invalid JSON"})

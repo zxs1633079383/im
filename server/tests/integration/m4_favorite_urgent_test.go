@@ -25,7 +25,6 @@
 package integration
 
 import (
-	"strconv"
 	"testing"
 
 	"im-server/internal/middleware"
@@ -45,7 +44,7 @@ func TestM4FavoriteAdd_C1_HappyPath(t *testing.T) {
 	channelID := env.seedDM(cookieA, idB)
 	msg := env.seedMessage(channelID, idA, "fav-target")
 
-	successBody(env.expect.POST("/api/favorites/"+strconv.FormatInt(msg.ID, 10)).
+	successBody(env.expect.POST("/api/favorites/"+msg.ID).
 		WithHeader(middleware.MMCookieHeader, cookieA).
 		Expect().Status(201)).Value("status").IsEqual("ok")
 }
@@ -58,7 +57,7 @@ func TestM4FavoriteAdd_C2_CookieMissing(t *testing.T) {
 	channelID := env.seedDM(cookieA, idB)
 	msg := env.seedMessage(channelID, idA, "fav-no-auth")
 
-	env.expect.POST("/api/favorites/" + strconv.FormatInt(msg.ID, 10)).
+	env.expect.POST("/api/favorites/" + msg.ID).
 		Expect().Status(401)
 }
 
@@ -70,7 +69,7 @@ func TestM4FavoriteAdd_C3_CookieInvalid(t *testing.T) {
 	channelID := env.seedDM(cookieA, idB)
 	msg := env.seedMessage(channelID, idA, "fav-stale")
 
-	env.expect.POST("/api/favorites/"+strconv.FormatInt(msg.ID, 10)).
+	env.expect.POST("/api/favorites/"+msg.ID).
 		WithHeader(middleware.MMCookieHeader, "ffffffffffffffffffffffff").
 		Expect().Status(401)
 }
@@ -87,7 +86,7 @@ func TestM4FavoriteAdd_C4_CrossTenantNoCheck(t *testing.T) {
 	channelAB := env.seedDM(cookieA, idB)
 	msg := env.seedMessage(channelAB, idA, "cross-tenant")
 
-	env.expect.POST("/api/favorites/" + strconv.FormatInt(msg.ID, 10)).
+	env.expect.POST("/api/favorites/" + msg.ID).
 		WithHeader(middleware.MMCookieHeader, cookieX).
 		Expect().Status(201)
 }
@@ -114,11 +113,11 @@ func TestM4FavoriteRemove_C1_HappyPath(t *testing.T) {
 	channelID := env.seedDM(cookieA, idB)
 	msg := env.seedMessage(channelID, idA, "to-unfav")
 
-	env.expect.POST("/api/favorites/" + strconv.FormatInt(msg.ID, 10)).
+	env.expect.POST("/api/favorites/" + msg.ID).
 		WithHeader(middleware.MMCookieHeader, cookieA).
 		Expect().Status(201)
 
-	env.expect.DELETE("/api/favorites/" + strconv.FormatInt(msg.ID, 10)).
+	env.expect.DELETE("/api/favorites/" + msg.ID).
 		WithHeader(middleware.MMCookieHeader, cookieA).
 		Expect().Status(204)
 }
@@ -131,7 +130,7 @@ func TestM4FavoriteRemove_C2_CookieMissing(t *testing.T) {
 	channelID := env.seedDM(cookieA, idB)
 	msg := env.seedMessage(channelID, idA, "rm-no-auth")
 
-	env.expect.DELETE("/api/favorites/" + strconv.FormatInt(msg.ID, 10)).
+	env.expect.DELETE("/api/favorites/" + msg.ID).
 		Expect().Status(401)
 }
 
@@ -143,7 +142,7 @@ func TestM4FavoriteRemove_C3_CookieInvalid(t *testing.T) {
 	channelID := env.seedDM(cookieA, idB)
 	msg := env.seedMessage(channelID, idA, "rm-stale")
 
-	env.expect.DELETE("/api/favorites/"+strconv.FormatInt(msg.ID, 10)).
+	env.expect.DELETE("/api/favorites/"+msg.ID).
 		WithHeader(middleware.MMCookieHeader, "ffffffffffffffffffffffff").
 		Expect().Status(401)
 }
@@ -160,11 +159,11 @@ func TestM4FavoriteRemove_C4_OtherUserFavoriteIs404(t *testing.T) {
 	channelAB := env.seedDM(cookieA, idB)
 	msg := env.seedMessage(channelAB, idA, "x-cant-touch")
 
-	env.expect.POST("/api/favorites/" + strconv.FormatInt(msg.ID, 10)).
+	env.expect.POST("/api/favorites/" + msg.ID).
 		WithHeader(middleware.MMCookieHeader, cookieA).
 		Expect().Status(201)
 
-	env.expect.DELETE("/api/favorites/" + strconv.FormatInt(msg.ID, 10)).
+	env.expect.DELETE("/api/favorites/" + msg.ID).
 		WithHeader(middleware.MMCookieHeader, cookieX).
 		Expect().Status(404)
 }
@@ -192,7 +191,7 @@ func TestM4FavoriteList_C1_HappyPath(t *testing.T) {
 	channelID := env.seedDM(cookieA, idB)
 	msg := env.seedMessage(channelID, idA, "list-target")
 
-	env.expect.POST("/api/favorites/" + strconv.FormatInt(msg.ID, 10)).
+	env.expect.POST("/api/favorites/" + msg.ID).
 		WithHeader(middleware.MMCookieHeader, cookieA).
 		Expect().Status(201)
 
@@ -232,7 +231,7 @@ func TestM4FavoriteList_C4_OnlyOwnFavorites(t *testing.T) {
 	channelAB := env.seedDM(cookieA, idB)
 	msg := env.seedMessage(channelAB, idA, "a-only")
 
-	env.expect.POST("/api/favorites/" + strconv.FormatInt(msg.ID, 10)).
+	env.expect.POST("/api/favorites/" + msg.ID).
 		WithHeader(middleware.MMCookieHeader, cookieA).
 		Expect().Status(201)
 
@@ -343,9 +342,9 @@ func TestM4UrgentConfirm_C1_HappyPath(t *testing.T) {
 		WithHeader(middleware.MMCookieHeader, cookieOwner).
 		WithJSON(map[string]any{"channel_id": channelID, "content": "ack me"}).
 		Expect().Status(201))
-	msgID := int64(sent.Value("id").Number().Raw())
+	msgID := sent.Value("id").String().Raw()
 
-	successBody(env.expect.POST("/api/messages/"+strconv.FormatInt(msgID, 10)+"/urgent/confirm").
+	successBody(env.expect.POST("/api/messages/"+msgID+"/urgent/confirm").
 		WithHeader(middleware.MMCookieHeader, cookieMember).
 		Expect().Status(200)).Value("status").IsEqual("confirmed")
 }
@@ -361,9 +360,9 @@ func TestM4UrgentConfirm_C2_CookieMissing(t *testing.T) {
 		WithHeader(middleware.MMCookieHeader, cookieOwner).
 		WithJSON(map[string]any{"channel_id": channelID, "content": "u"}).
 		Expect().Status(201))
-	msgID := int64(sent.Value("id").Number().Raw())
+	msgID := sent.Value("id").String().Raw()
 
-	env.expect.POST("/api/messages/" + strconv.FormatInt(msgID, 10) + "/urgent/confirm").
+	env.expect.POST("/api/messages/" + msgID + "/urgent/confirm").
 		Expect().Status(401)
 }
 
@@ -378,9 +377,9 @@ func TestM4UrgentConfirm_C3_CookieInvalid(t *testing.T) {
 		WithHeader(middleware.MMCookieHeader, cookieOwner).
 		WithJSON(map[string]any{"channel_id": channelID, "content": "u"}).
 		Expect().Status(201))
-	msgID := int64(sent.Value("id").Number().Raw())
+	msgID := sent.Value("id").String().Raw()
 
-	env.expect.POST("/api/messages/"+strconv.FormatInt(msgID, 10)+"/urgent/confirm").
+	env.expect.POST("/api/messages/"+msgID+"/urgent/confirm").
 		WithHeader(middleware.MMCookieHeader, "ffffffffffffffffffffffff").
 		Expect().Status(401)
 }
@@ -397,9 +396,9 @@ func TestM4UrgentConfirm_C4_NotChannelMember(t *testing.T) {
 		WithHeader(middleware.MMCookieHeader, cookieOwner).
 		WithJSON(map[string]any{"channel_id": channelID, "content": "u"}).
 		Expect().Status(201))
-	msgID := int64(sent.Value("id").Number().Raw())
+	msgID := sent.Value("id").String().Raw()
 
-	env.expect.POST("/api/messages/"+strconv.FormatInt(msgID, 10)+"/urgent/confirm").
+	env.expect.POST("/api/messages/"+msgID+"/urgent/confirm").
 		WithHeader(middleware.MMCookieHeader, cookieX).
 		Expect().Status(403)
 }
@@ -429,9 +428,9 @@ func TestM4UrgentCancel_C1_HappyPath(t *testing.T) {
 		WithHeader(middleware.MMCookieHeader, cookieOwner).
 		WithJSON(map[string]any{"channel_id": channelID, "content": "drop me"}).
 		Expect().Status(201))
-	msgID := int64(sent.Value("id").Number().Raw())
+	msgID := sent.Value("id").String().Raw()
 
-	successBody(env.expect.POST("/api/messages/"+strconv.FormatInt(msgID, 10)+"/urgent/cancel").
+	successBody(env.expect.POST("/api/messages/"+msgID+"/urgent/cancel").
 		WithHeader(middleware.MMCookieHeader, cookieOwner).
 		Expect().Status(200)).Value("status").IsEqual("cancelled")
 }
@@ -447,9 +446,9 @@ func TestM4UrgentCancel_C2_CookieMissing(t *testing.T) {
 		WithHeader(middleware.MMCookieHeader, cookieOwner).
 		WithJSON(map[string]any{"channel_id": channelID, "content": "u"}).
 		Expect().Status(201))
-	msgID := int64(sent.Value("id").Number().Raw())
+	msgID := sent.Value("id").String().Raw()
 
-	env.expect.POST("/api/messages/" + strconv.FormatInt(msgID, 10) + "/urgent/cancel").
+	env.expect.POST("/api/messages/" + msgID + "/urgent/cancel").
 		Expect().Status(401)
 }
 
@@ -464,9 +463,9 @@ func TestM4UrgentCancel_C3_CookieInvalid(t *testing.T) {
 		WithHeader(middleware.MMCookieHeader, cookieOwner).
 		WithJSON(map[string]any{"channel_id": channelID, "content": "u"}).
 		Expect().Status(201))
-	msgID := int64(sent.Value("id").Number().Raw())
+	msgID := sent.Value("id").String().Raw()
 
-	env.expect.POST("/api/messages/"+strconv.FormatInt(msgID, 10)+"/urgent/cancel").
+	env.expect.POST("/api/messages/"+msgID+"/urgent/cancel").
 		WithHeader(middleware.MMCookieHeader, "ffffffffffffffffffffffff").
 		Expect().Status(401)
 }
@@ -483,9 +482,9 @@ func TestM4UrgentCancel_C4_NotSender(t *testing.T) {
 		WithHeader(middleware.MMCookieHeader, cookieOwner).
 		WithJSON(map[string]any{"channel_id": channelID, "content": "u"}).
 		Expect().Status(201))
-	msgID := int64(sent.Value("id").Number().Raw())
+	msgID := sent.Value("id").String().Raw()
 
-	env.expect.POST("/api/messages/"+strconv.FormatInt(msgID, 10)+"/urgent/cancel").
+	env.expect.POST("/api/messages/"+msgID+"/urgent/cancel").
 		WithHeader(middleware.MMCookieHeader, cookieMember).
 		Expect().Status(403)
 }
@@ -516,13 +515,13 @@ func TestM4UrgentConfirmations_C1_HappyPath(t *testing.T) {
 		WithHeader(middleware.MMCookieHeader, cookieOwner).
 		WithJSON(map[string]any{"channel_id": channelID, "content": "u"}).
 		Expect().Status(201))
-	msgID := int64(sent.Value("id").Number().Raw())
+	msgID := sent.Value("id").String().Raw()
 
-	env.expect.POST("/api/messages/" + strconv.FormatInt(msgID, 10) + "/urgent/confirm").
+	env.expect.POST("/api/messages/" + msgID + "/urgent/confirm").
 		WithHeader(middleware.MMCookieHeader, cookieMember).
 		Expect().Status(200)
 
-	resp := successBody(env.expect.GET("/api/messages/" + strconv.FormatInt(msgID, 10) + "/urgent/confirmations").
+	resp := successBody(env.expect.GET("/api/messages/" + msgID + "/urgent/confirmations").
 		WithHeader(middleware.MMCookieHeader, cookieOwner).
 		Expect().Status(200))
 	arr := resp.Value("confirmations").Array()
@@ -541,9 +540,9 @@ func TestM4UrgentConfirmations_C2_CookieMissing(t *testing.T) {
 		WithHeader(middleware.MMCookieHeader, cookieOwner).
 		WithJSON(map[string]any{"channel_id": channelID, "content": "u"}).
 		Expect().Status(201))
-	msgID := int64(sent.Value("id").Number().Raw())
+	msgID := sent.Value("id").String().Raw()
 
-	env.expect.GET("/api/messages/" + strconv.FormatInt(msgID, 10) + "/urgent/confirmations").
+	env.expect.GET("/api/messages/" + msgID + "/urgent/confirmations").
 		Expect().Status(401)
 }
 
@@ -558,9 +557,9 @@ func TestM4UrgentConfirmations_C3_CookieInvalid(t *testing.T) {
 		WithHeader(middleware.MMCookieHeader, cookieOwner).
 		WithJSON(map[string]any{"channel_id": channelID, "content": "u"}).
 		Expect().Status(201))
-	msgID := int64(sent.Value("id").Number().Raw())
+	msgID := sent.Value("id").String().Raw()
 
-	env.expect.GET("/api/messages/"+strconv.FormatInt(msgID, 10)+"/urgent/confirmations").
+	env.expect.GET("/api/messages/"+msgID+"/urgent/confirmations").
 		WithHeader(middleware.MMCookieHeader, "ffffffffffffffffffffffff").
 		Expect().Status(401)
 }
@@ -577,9 +576,9 @@ func TestM4UrgentConfirmations_C4_NotChannelMember(t *testing.T) {
 		WithHeader(middleware.MMCookieHeader, cookieOwner).
 		WithJSON(map[string]any{"channel_id": channelID, "content": "u"}).
 		Expect().Status(201))
-	msgID := int64(sent.Value("id").Number().Raw())
+	msgID := sent.Value("id").String().Raw()
 
-	env.expect.GET("/api/messages/"+strconv.FormatInt(msgID, 10)+"/urgent/confirmations").
+	env.expect.GET("/api/messages/"+msgID+"/urgent/confirmations").
 		WithHeader(middleware.MMCookieHeader, cookieX).
 		Expect().Status(403)
 }

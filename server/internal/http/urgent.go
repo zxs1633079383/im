@@ -17,7 +17,7 @@ const (
 
 // sendUrgentReq is POST /api/messages/urgent body.
 type sendUrgentReq struct {
-	ChannelID   int64  `json:"channel_id"`
+	ChannelID   string `json:"channel_id"`
 	Content     string `json:"content"`
 	ClientMsgID string `json:"client_msg_id"`
 }
@@ -41,7 +41,7 @@ func RegisterUrgentRoutes(
 			c.JSON(400, gin.H{"error": "invalid JSON"})
 			return
 		}
-		if in.ChannelID == 0 {
+		if in.ChannelID == "" {
 			c.JSON(422, gin.H{"error": "channel_id is required"})
 			return
 		}

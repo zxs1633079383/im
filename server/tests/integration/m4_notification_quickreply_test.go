@@ -14,7 +14,6 @@
 package integration
 
 import (
-	"strconv"
 	"testing"
 
 	"im-server/internal/middleware"
@@ -62,9 +61,9 @@ func TestM4NotificationRead_HappyPath(t *testing.T) {
 			"type":        repo.NotificationTypeGeneric,
 		}).
 		Expect().Status(201))
-	notifID := int64(created.Value("id").Number().Raw())
+	notifID := created.Value("id").String().Raw()
 
-	read := successBody(env.expect.POST("/api/notifications/"+strconv.FormatInt(notifID, 10)+"/read").
+	read := successBody(env.expect.POST("/api/notifications/"+notifID+"/read").
 		WithHeader(middleware.MMCookieHeader, cookieRecv).
 		Expect().Status(200))
 	read.Value("status").String().IsEqual("read")
@@ -165,14 +164,14 @@ func TestM4QuickReplyUpdate_HappyPath(t *testing.T) {
 		WithHeader(middleware.MMCookieHeader, cookie).
 		WithJSON(map[string]any{"label": "old", "content": "c"}).
 		Expect().Status(201))
-	id := int64(created.Value("id").Number().Raw())
+	id := created.Value("id").String().Raw()
 
-	data := successBody(env.expect.PATCH("/api/quick-replies/"+strconv.FormatInt(id, 10)).
+	data := successBody(env.expect.PATCH("/api/quick-replies/"+id).
 		WithHeader(middleware.MMCookieHeader, cookie).
 		WithJSON(map[string]any{"label": "new"}).
 		Expect().Status(200))
 	data.Value("label").String().IsEqual("new")
-	data.Value("id").Number().IsEqual(float64(id))
+	data.Value("id").String().IsEqual(id)
 }
 
 // TestM4QuickReplyDelete_HappyPath — 创建 → DELETE
@@ -185,9 +184,9 @@ func TestM4QuickReplyDelete_HappyPath(t *testing.T) {
 		WithHeader(middleware.MMCookieHeader, cookie).
 		WithJSON(map[string]any{"label": "del", "content": "c"}).
 		Expect().Status(201))
-	id := int64(created.Value("id").Number().Raw())
+	id := created.Value("id").String().Raw()
 
-	data := successBody(env.expect.DELETE("/api/quick-replies/"+strconv.FormatInt(id, 10)).
+	data := successBody(env.expect.DELETE("/api/quick-replies/"+id).
 		WithHeader(middleware.MMCookieHeader, cookie).
 		Expect().Status(200))
 	data.Value("status").String().IsEqual("deleted")

@@ -14,7 +14,7 @@ import (
 // as a string — callers decide the concrete schema. Deleted is a soft-delete
 // flag (the row stays in the DB so acks remain auditable).
 type Announcement struct {
-	ID        string    `gorm:"primaryKey;type:text"                                      json:"id"`
+	ID        string    `gorm:"primaryKey;type:text;default:gen_random_uuid()::text"                                      json:"id"`
 	ChannelID string    `gorm:"column:channel_id;type:text;not null"                      json:"channel_id"`
 	CreatorID string    `gorm:"column:creator_id;type:text;not null"                      json:"creator_id"`
 	Title     string    `gorm:"not null"                                                  json:"title"`
@@ -73,7 +73,7 @@ func (r *gormAnnouncementRepo) Create(ctx context.Context, a *Announcement) erro
 // filter as appropriate). ErrNotFound if missing.
 func (r *gormAnnouncementRepo) GetByID(ctx context.Context, id string) (*Announcement, error) {
 	var a Announcement
-	if err := r.db.WithContext(ctx).First(&a, id).Error; err != nil {
+	if err := r.db.WithContext(ctx).First(&a, "id = ?", id).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrNotFound
 		}

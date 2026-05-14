@@ -2,7 +2,6 @@ package gateway
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"time"
 )
@@ -43,10 +42,13 @@ func runHeartbeat(ctx context.Context, conn *Conn, channelSt ChannelSeqStore, lo
 		}
 
 		// Compute diff: channels where server_seq > client's known_seq.
+		//
+		// C012 P-D: chID is already a TEXT (string) id — no fmt.Sprintf
+		// conversion needed.
 		diff := make(map[string]int64, len(serverSeqs))
 		for chID, serverSeq := range serverSeqs {
 			if serverSeq > conn.KnownSeqFor(chID) {
-				diff[fmt.Sprintf("%d", chID)] = serverSeq
+				diff[chID] = serverSeq
 			}
 		}
 

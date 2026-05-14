@@ -10,10 +10,13 @@ import (
 
 // ChannelSeqStore is the minimal interface needed to look up server-side channel seqs.
 // Implemented by store.ChannelStore.
+//
+// C012 P-D: channel_id key is now TEXT (string). Seq remains int64 — it is a
+// monotonic counter per channel, not an entity ID.
 type ChannelSeqStore interface {
 	// GetMemberChannelSeqs returns the current seq for each channel the user belongs to.
 	// Returns map[channel_id]seq. M4: userID is the mm UserID (24-hex string).
-	GetMemberChannelSeqs(ctx context.Context, userID string) (map[int64]int64, error)
+	GetMemberChannelSeqs(ctx context.Context, userID string) (map[string]int64, error)
 }
 
 // ---- Inbound (client → server) ----
@@ -139,12 +142,15 @@ func DerefStringPtr(p *string) string {
 
 // PushMsgPayload is sent server→client when a new message is available.
 // M4: SenderID + VisibleTo are mm UserIDs (24-hex strings).
+//
+// C012 P-D: ChannelID + ServerID migrate to TEXT (string). Seq stays int64
+// (per-channel monotonic counter, not an entity ID).
 type PushMsgPayload struct {
 	PushID    string     `json:"push_id"` // idempotency key for ACK
 	Type      NoticeType `json:"type,omitempty"`
-	ChannelID int64      `json:"channel_id"`
+	ChannelID string     `json:"channel_id"`
 	Seq       int64      `json:"seq"`
-	ServerID  int64      `json:"server_msg_id"`
+	ServerID  string     `json:"server_msg_id"`
 	SenderID  string     `json:"sender_id"`
 	Content   string     `json:"content,omitempty"`
 	MsgType   int16      `json:"msg_type"` // 1=text/2=image/3=file/4=system/99=phantom
@@ -160,26 +166,32 @@ type PushACKPayload struct {
 
 // SendPayload is a client-initiated message send over WebSocket. M4:
 // VisibleTo carries mm UserIDs as 24-hex strings.
+//
+// C012 P-D: ChannelID is now TEXT (string).
 type SendPayload struct {
 	ClientMsgID string   `json:"client_msg_id"`
-	ChannelID   int64    `json:"channel_id"`
+	ChannelID   string   `json:"channel_id"`
 	Content     string   `json:"content"`
 	MsgType     int16    `json:"msg_type,omitempty"`
 	VisibleTo   []string `json:"visible_to,omitempty"`
 }
 
 // SendACKPayload is the server's acknowledgement of a client send.
+//
+// C012 P-D: ServerMsgID + ChannelID migrate to string; Seq stays int64.
 type SendACKPayload struct {
 	ClientMsgID string `json:"client_msg_id"`
-	ServerMsgID int64  `json:"server_msg_id"`
+	ServerMsgID string `json:"server_msg_id"`
 	Seq         int64  `json:"seq"`
-	ChannelID   int64  `json:"channel_id"`
+	ChannelID   string `json:"channel_id"`
 }
 
 // SyncChannelState is one entry in a sync request.
+//
+// C012 P-D: channel id is TEXT (string).
 type SyncChannelState struct {
-	ID  int64 `json:"id"`
-	Seq int64 `json:"seq"` // client's local max seq for this channel
+	ID  string `json:"id"`
+	Seq int64  `json:"seq"` // client's local max seq for this channel
 }
 
 // SyncPayload is sent on reconnect.
@@ -189,8 +201,8 @@ type SyncPayload struct {
 
 // ReadSyncPayload is pushed to the user's other devices when they mark a channel read.
 type ReadSyncPayload struct {
-	ChannelID int64 `json:"channel_id"`
-	ReadSeq   int64 `json:"read_seq"` // the seq that was just marked as read
+	ChannelID string `json:"channel_id"`
+	ReadSeq   int64  `json:"read_seq"` // the seq that was just marked as read
 }
 
 // FriendEventPayload is pushed to a user when a friend request/accept/reject occurs.
@@ -203,7 +215,7 @@ type FriendEventPayload struct {
 // ChannelEventPayload is pushed to a user when they are added to a channel.
 type ChannelEventPayload struct {
 	EventType string `json:"event_type"` // "added"
-	ChannelID int64  `json:"channel_id"`
+	ChannelID string `json:"channel_id"`
 	Name      string `json:"name"`
 }
 
@@ -212,7 +224,7 @@ type ChannelEventPayload struct {
 // cses-client uses it as the `dialog.deleteAt` source-of-truth marker (see
 // `channelConfigBase.service.ts` deleteAt > 0 branch).
 type ChannelClosedPayload struct {
-	ChannelID int64     `json:"channel_id"`
+	ChannelID string    `json:"channel_id"`
 	ActorID   string    `json:"actor_id"` // mm UserID of the owner who closed it
 	DeletedAt time.Time `json:"deleted_at"`
 }
@@ -238,7 +250,7 @@ const (
 // local dialog state with `payload.channel` and surfaces a UI notice based on
 // `change_type`. NickName is filled only when ChangeType==Nickname.
 type ChannelMemberUpdatedPayload struct {
-	ChannelID  int64            `json:"channel_id"`
+	ChannelID  string           `json:"channel_id"`
 	ChangeType MemberChangeType `json:"change_type"`
 	ActorID    string           `json:"actor_id"`            // mm UserID of the actor
 	TargetID   string           `json:"target_id"`           // mm UserID of the affected member
@@ -264,9 +276,9 @@ type ChannelMemberSummary struct {
 // the boolean to flip `dialog.hasSchedulePost` so the conversation badge stays
 // in sync across devices.
 type ChannelSchedulePayload struct {
-	ChannelID        int64 `json:"channel_id"`
-	ScheduledID      int64 `json:"scheduled_id"`
-	HasSchedulePost  bool  `json:"has_schedule_post"`
+	ChannelID       string `json:"channel_id"`
+	ScheduledID     string `json:"scheduled_id"`
+	HasSchedulePost bool   `json:"has_schedule_post"`
 }
 
 // PulsarPushEnvelope is the wire format for every cross-pod push event.

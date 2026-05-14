@@ -3,7 +3,6 @@ package http
 import (
 	"errors"
 	"log/slog"
-	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -44,11 +43,7 @@ func registerReadStatsRoute(
 			c.JSON(400, gin.H{"error": "ids is required"})
 			return
 		}
-		msgIDs, err := parseInt64CSV(idsParam)
-		if err != nil {
-			c.JSON(400, gin.H{"error": "ids must be a comma-separated list of integers"})
-			return
-		}
+		msgIDs := parseStringCSV(idsParam)
 		if len(msgIDs) == 0 {
 			c.JSON(400, gin.H{"error": "ids is required"})
 			return
@@ -72,23 +67,20 @@ func registerReadStatsRoute(
 	})
 }
 
-// parseInt64CSV parses "1,2,3" into a []int64. Empty entries produced by a
-// trailing comma are silently skipped; whitespace is tolerated. Returns an
-// error on the first non-integer token so the caller can reject the request
-// without partial-success ambiguity.
-func parseInt64CSV(s string) ([]int64, error) {
+// parseStringCSV parses "a,b,c" into a []string. Empty entries produced by a
+// trailing comma are silently skipped; whitespace is trimmed.
+//
+// C012 P-D: replaces parseInt64CSV; entity IDs are now TEXT, so no numeric
+// validation — the storage layer rejects unknown IDs with NotFound.
+func parseStringCSV(s string) []string {
 	parts := strings.Split(s, ",")
-	out := make([]int64, 0, len(parts))
+	out := make([]string, 0, len(parts))
 	for _, p := range parts {
 		p = strings.TrimSpace(p)
 		if p == "" {
 			continue
 		}
-		n, err := strconv.ParseInt(p, 10, 64)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, n)
+		out = append(out, p)
 	}
-	return out, nil
+	return out
 }

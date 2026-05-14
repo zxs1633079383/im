@@ -29,7 +29,6 @@ package integration
 
 import (
 	"log/slog"
-	"strconv"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -121,7 +120,7 @@ func TestM4Sync_HappyPath(t *testing.T) {
 	channels := body.Value("channels").Array()
 	channels.Length().IsEqual(1)
 	first := channels.Value(0).Object()
-	first.Value("id").Number().IsEqual(float64(channelID))
+	first.Value("id").String().IsEqual(channelID)
 	first.Value("server_seq").Number().Gt(0)
 }
 
@@ -144,7 +143,7 @@ func TestM4Presence_HappyPath(t *testing.T) {
 
 	body := successBody(env.expect.GET("/api/presence").
 		WithHeader(middleware.MMCookieHeader, cookieA).
-		WithQuery("channel_id", strconv.FormatInt(channelID, 10)).
+		WithQuery("channel_id", channelID).
 		Expect().Status(200))
 
 	// online_user_ids is always present (even if empty) in the production
@@ -166,12 +165,12 @@ func TestM4OnlineStatusBatch_HappyPath(t *testing.T) {
 
 	body := successBody(env.expect.GET("/api/channels/online-status").
 		WithHeader(middleware.MMCookieHeader, cookieA).
-		WithQuery("channel_ids", strconv.FormatInt(channelID, 10)).
+		WithQuery("channel_ids", channelID).
 		Expect().Status(200))
 
 	channels := body.Value("channels").Array()
 	channels.Length().IsEqual(1)
-	channels.Value(0).Object().Value("channel_id").Number().IsEqual(float64(channelID))
+	channels.Value(0).Object().Value("channel_id").String().IsEqual(channelID)
 	// online_count is a number (>= 0); just assert the field exists with
 	// a numeric type — no WS conn registered here so 0 is the expected
 	// value but we keep the assertion shape-only to stay robust.

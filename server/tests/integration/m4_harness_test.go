@@ -287,19 +287,23 @@ func (e *m4env) seedRealUser() string {
 
 // seedDM creates a DM between owner and peer (both already seedUser-ed) and
 // returns the channel id. Drills through the success envelope wrapper.
-func (e *m4env) seedDM(ownerCookie, peerID string) int64 {
+//
+// C012 P-D: id is now TEXT (string) — read as String() rather than Number().
+func (e *m4env) seedDM(ownerCookie, peerID string) string {
 	e.t.Helper()
 	dm := successBody(e.expect.POST("/api/channels/dm").
 		WithHeader(middleware.MMCookieHeader, ownerCookie).
 		WithJSON(map[string]any{"peer_id": peerID}).
 		Expect().Status(201))
-	return int64(dm.Value("id").Number().Raw())
+	return dm.Value("id").String().Raw()
 }
 
 // seedGroup creates a group channel owned by ownerCookie with the given member
 // IDs (owner is auto-added), returning the channel id. Drills through the
 // success envelope wrapper.
-func (e *m4env) seedGroup(ownerCookie string, name string, memberIDs ...string) int64 {
+//
+// C012 P-D: id is now TEXT (string).
+func (e *m4env) seedGroup(ownerCookie string, name string, memberIDs ...string) string {
 	e.t.Helper()
 	body := map[string]any{
 		"name":       name,
@@ -309,14 +313,16 @@ func (e *m4env) seedGroup(ownerCookie string, name string, memberIDs ...string) 
 		WithHeader(middleware.MMCookieHeader, ownerCookie).
 		WithJSON(body).
 		Expect().Status(201))
-	return int64(resp.Value("id").Number().Raw())
+	return resp.Value("id").String().Raw()
 }
 
 // seedMessage inserts a plain text message via the repo (bypassing HTTP) and
 // returns the persisted *repo.Message — Batch-B tests use this to set up
 // "this message exists" preconditions without paying the full
 // POST /messages cost when the message contents are not under test.
-func (e *m4env) seedMessage(channelID int64, senderID, content string) *repo.Message {
+//
+// C012 P-D: channelID is TEXT (string).
+func (e *m4env) seedMessage(channelID string, senderID, content string) *repo.Message {
 	e.t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -383,7 +389,8 @@ type localBroadcaster struct {
 	channels repo.ChannelRepo
 }
 
-func (b *localBroadcaster) BroadcastToMembers(channelID int64, eventType imhttp.MessageEventType, payload any) {
+// C012 P-D: channelID is TEXT (string).
+func (b *localBroadcaster) BroadcastToMembers(channelID string, eventType imhttp.MessageEventType, payload any) {
 	members, err := b.channels.ListMembers(context.Background(), channelID)
 	if err != nil {
 		return
@@ -409,7 +416,8 @@ type localChannelEventPusher struct {
 	hub *gateway.Hub
 }
 
-func (p *localChannelEventPusher) PushChannelEvent(targetUserID string, eventType string, channelID int64, name string) {
+// C012 P-D: channelID is TEXT (string).
+func (p *localChannelEventPusher) PushChannelEvent(targetUserID string, eventType string, channelID string, name string) {
 	p.hub.PushToUser(targetUserID, gateway.TypeChannelEvent, gateway.ChannelEventPayload{
 		EventType: eventType,
 		ChannelID: channelID,
@@ -436,7 +444,8 @@ type localReactionPusher struct {
 	channels repo.ChannelRepo
 }
 
-func (p *localReactionPusher) BroadcastReaction(channelID int64, eventType imhttp.ReactionEventType, payload any) {
+// C012 P-D: channelID is TEXT (string).
+func (p *localReactionPusher) BroadcastReaction(channelID string, eventType imhttp.ReactionEventType, payload any) {
 	members, err := p.channels.ListMembers(context.Background(), channelID)
 	if err != nil {
 		return
@@ -453,9 +462,10 @@ type localMessagePusher struct {
 	hub *gateway.Hub
 }
 
-func (p *localMessagePusher) BroadcastMessage(channelID int64, userIDs []string, msg *repo.Message) {
+// C012 P-D: channelID is TEXT (string); push-id format also string-based.
+func (p *localMessagePusher) BroadcastMessage(channelID string, userIDs []string, msg *repo.Message) {
 	payload := gateway.PushMsgPayload{
-		PushID:    fmt.Sprintf("test-%d-%d", msg.ChannelID, msg.ID),
+		PushID:    fmt.Sprintf("test-%s-%s", msg.ChannelID, msg.ID),
 		ChannelID: msg.ChannelID,
 		Seq:       msg.Seq,
 		ServerID:  msg.ID,
@@ -476,7 +486,8 @@ type localReadSyncPusher struct {
 	hub *gateway.Hub
 }
 
-func (p *localReadSyncPusher) PushReadSync(userID string, channelID, readSeq int64) {
+// C012 P-D: channelID is TEXT (string); readSeq stays int64 (counter).
+func (p *localReadSyncPusher) PushReadSync(userID string, channelID string, readSeq int64) {
 	p.hub.PushToUser(userID, gateway.TypeReadSync, gateway.ReadSyncPayload{
 		ChannelID: channelID,
 		ReadSeq:   readSeq,

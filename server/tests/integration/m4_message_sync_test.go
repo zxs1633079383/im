@@ -3,7 +3,6 @@
 package integration
 
 import (
-	"strconv"
 	"testing"
 
 	"im-server/internal/middleware"
@@ -26,11 +25,11 @@ func TestM4MessageSendThenSync(t *testing.T) {
 		WithHeader(middleware.MMCookieHeader, cookieSender).
 		WithJSON(map[string]any{"peer_id": recvID}).
 		Expect().Status(201))
-	channelID := int64(dm.Value("id").Number().Raw())
+	channelID := dm.Value("id").String().Raw()
 
 	// Send a message; the response is the persisted repo.Message — assert on
 	// the M4-shaped TEXT user-id fields directly.
-	sent := successBody(env.expect.POST("/api/channels/"+strconv.FormatInt(channelID, 10)+"/messages").
+	sent := successBody(env.expect.POST("/api/channels/"+channelID+"/messages").
 		WithHeader(middleware.MMCookieHeader, cookieSender).
 		WithJSON(map[string]any{
 			"content":     "hello from m4",
@@ -56,7 +55,7 @@ func TestM4MessageSendThenSync(t *testing.T) {
 	channels := sync.Value("channels").Array()
 	channels.Length().IsEqual(1)
 	first := channels.Value(0).Object()
-	first.Value("id").Number().IsEqual(float64(channelID))
+	first.Value("id").String().IsEqual(channelID)
 	first.Value("server_seq").Number().IsEqual(1)
 	msgs := first.Value("messages").Array()
 	msgs.Length().IsEqual(1)

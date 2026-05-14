@@ -25,7 +25,6 @@
 package integration
 
 import (
-	"strconv"
 	"testing"
 
 	"im-server/internal/middleware"
@@ -33,9 +32,13 @@ import (
 
 // ---- helpers ----------------------------------------------------------------
 
-// pathInt64s is sugar for the noisy strconv.FormatInt that shows up in every
-// path-parametrised assertion below. Keeps the test bodies readable.
-func pathInt64s(v int64) string { return strconv.FormatInt(v, 10) }
+// pathInt64s is a no-op identity for string path params, retained so the noisy
+// path-parametrised assertion call-sites below stay diff-minimal across the
+// C012 P-D int64→string migration.
+//
+// C012 P-D: keep the name as-is even though the body is now a passthrough;
+// renaming touches ~50 call-sites without behavioural gain.
+func pathInt64s(v string) string { return v }
 
 // ============================================================================
 // PATCH /api/channels/:id  — fine-grained channel patch (manager+ required)
@@ -353,7 +356,7 @@ func TestM4ChannelPinMessage_C1_HappyPath(t *testing.T) {
 	pins := successBody(env.expect.GET("/api/channels/" + pathInt64s(chID) + "/pins").
 		WithHeader(middleware.MMCookieHeader, cookieOwner).
 		Expect().Status(200))
-	pins.Value("pins").Array().ContainsAll(float64(msg.ID))
+	pins.Value("pins").Array().ContainsAll(msg.ID)
 }
 
 // TestM4ChannelPinMessage_C2_CookieMissing — 401 without header.

@@ -3,7 +3,6 @@ package http
 import (
 	"errors"
 	"net/http"
-	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -18,8 +17,9 @@ import (
 // service.PresenceService.OnlineUsersInChannel.
 func RegisterPresenceRoutes(authed *gin.RouterGroup, svc *service.PresenceService) {
 	authed.GET("/presence", func(c *gin.Context) {
-		channelID, err := strconv.ParseInt(c.Query("channel_id"), 10, 64)
-		if err != nil || channelID <= 0 {
+		// C012 P-D: channel_id is now TEXT (string).
+		channelID := c.Query("channel_id")
+		if channelID == "" {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid channel_id"})
 			return
 		}
@@ -47,7 +47,7 @@ func RegisterPresenceRoutes(authed *gin.RouterGroup, svc *service.PresenceServic
 		}
 		raw := c.Query("channel_ids")
 		if raw == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "channel_ids required (csv of int64)"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "channel_ids required (csv of TEXT id)"})
 			return
 		}
 		parts := strings.Split(raw, ",")
@@ -55,10 +55,11 @@ func RegisterPresenceRoutes(authed *gin.RouterGroup, svc *service.PresenceServic
 			c.JSON(http.StatusBadRequest, gin.H{"error": "at most 50 channel ids per call"})
 			return
 		}
-		channelIDs := make([]int64, 0, len(parts))
+		// C012 P-D: channel IDs are TEXT (string) post-migration.
+		channelIDs := make([]string, 0, len(parts))
 		for _, p := range parts {
-			id, err := strconv.ParseInt(strings.TrimSpace(p), 10, 64)
-			if err != nil || id <= 0 {
+			id := strings.TrimSpace(p)
+			if id == "" {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "invalid channel id: " + p})
 				return
 			}

@@ -16,16 +16,19 @@ type syncRequest struct {
 }
 
 // syncChannelEntry is one channel cursor from the client.
+//
+// C012 P-D: channel ID migrates to TEXT (string); Seq remains int64
+// (monotonic per-channel counter, not an entity ID).
 type syncChannelEntry struct {
-	ID  int64 `json:"id"`
-	Seq int64 `json:"seq"`
+	ID  string `json:"id"`
+	Seq int64  `json:"seq"`
 }
 
 // syncChannelResult mirrors the legacy handler.SyncChannelResult exactly. The
 // `omitempty` tags on Messages + HasMore preserve the legacy wire format
 // (no-change channels never appear; small/large/new gap shape unchanged).
 type syncChannelResult struct {
-	ID        int64          `json:"id"`
+	ID        string         `json:"id"`
 	ServerSeq int64          `json:"server_seq"`
 	Unread    int64          `json:"unread"`
 	Messages  []repo.Message `json:"messages,omitempty"`

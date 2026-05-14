@@ -20,7 +20,7 @@ type sendFriendRequestReq struct {
 }
 
 type friendshipIDReq struct {
-	FriendshipID int64 `json:"friendship_id"`
+	FriendshipID string `json:"friendship_id"`
 }
 
 type blockReq struct {
@@ -70,7 +70,7 @@ func RegisterFriendRoutes(authed *gin.RouterGroup, svc *service.FriendService, p
 			c.JSON(400, gin.H{"error": "invalid JSON"})
 			return
 		}
-		if in.FriendshipID == 0 {
+		if in.FriendshipID == "" {
 			c.JSON(422, gin.H{"error": "friendship_id is required"})
 			return
 		}
@@ -98,7 +98,7 @@ func RegisterFriendRoutes(authed *gin.RouterGroup, svc *service.FriendService, p
 			c.JSON(400, gin.H{"error": "invalid JSON"})
 			return
 		}
-		if in.FriendshipID == 0 {
+		if in.FriendshipID == "" {
 			c.JSON(422, gin.H{"error": "friendship_id is required"})
 			return
 		}

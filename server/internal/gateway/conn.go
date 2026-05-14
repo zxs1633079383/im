@@ -26,8 +26,10 @@ type Conn struct {
 
 	// knownSeq tracks the last seq successfully pushed to this connection
 	// per channel. Used to compute the pong diff.
+	//
+	// C012 P-D: channel_id key migrates to TEXT (string). Seq stays int64.
 	mu       sync.RWMutex
-	knownSeq map[int64]int64 // channel_id → seq
+	knownSeq map[string]int64 // channel_id → seq
 
 	lastPong time.Time // updated on every pong received
 
@@ -47,7 +49,7 @@ func NewConn(userID, deviceID string, ws *websocket.Conn, hub *Hub) *Conn {
 		ws:       ws,
 		send:     make(chan []byte, sendBufSize),
 		hub:      hub,
-		knownSeq: make(map[int64]int64),
+		knownSeq: make(map[string]int64),
 		lastPong: time.Now(),
 	}
 	go c.writePump()
@@ -55,7 +57,9 @@ func NewConn(userID, deviceID string, ws *websocket.Conn, hub *Hub) *Conn {
 }
 
 // UpdateKnownSeq records that this connection has received up to seq for channelID.
-func (c *Conn) UpdateKnownSeq(channelID, seq int64) {
+//
+// C012 P-D: channelID is now TEXT (string).
+func (c *Conn) UpdateKnownSeq(channelID string, seq int64) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if current, ok := c.knownSeq[channelID]; !ok || seq > current {
@@ -64,17 +68,17 @@ func (c *Conn) UpdateKnownSeq(channelID, seq int64) {
 }
 
 // KnownSeqFor returns the last known seq for channelID (0 if unknown).
-func (c *Conn) KnownSeqFor(channelID int64) int64 {
+func (c *Conn) KnownSeqFor(channelID string) int64 {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.knownSeq[channelID]
 }
 
 // KnownSeqs returns a snapshot of the full knownSeq map.
-func (c *Conn) KnownSeqs() map[int64]int64 {
+func (c *Conn) KnownSeqs() map[string]int64 {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	m := make(map[int64]int64, len(c.knownSeq))
+	m := make(map[string]int64, len(c.knownSeq))
 	for k, v := range c.knownSeq {
 		m[k] = v
 	}

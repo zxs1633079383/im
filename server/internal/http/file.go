@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"strconv"
 
 	"github.com/gin-gonic/gin"
 
@@ -124,16 +123,15 @@ func RegisterFileRoutes(authed *gin.RouterGroup, svc *service.FileService, log *
 	})
 }
 
-// parsePathID extracts a path parameter as int64, returning (0, false) for
-// missing or unparseable values. Mirrors handler.pathID for the legacy parity.
-func parsePathID(c *gin.Context, name string) (int64, bool) {
+// parsePathID extracts a path parameter, returning ("", false) when missing.
+//
+// C012 P-D: post-migration, entity IDs are TEXT (string) — just pass through
+// c.Param. The error path (missing) is preserved so callers keep their 400
+// behaviour.
+func parsePathID(c *gin.Context, name string) (string, bool) {
 	s := c.Param(name)
 	if s == "" {
-		return 0, false
+		return "", false
 	}
-	v, err := strconv.ParseInt(s, 10, 64)
-	if err != nil {
-		return 0, false
-	}
-	return v, true
+	return s, true
 }
