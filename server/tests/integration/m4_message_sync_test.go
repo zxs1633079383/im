@@ -21,8 +21,13 @@ func TestM4MessageSendThenSync(t *testing.T) {
 
 	// Two-sided DM creation: sender posts, then peer pulls. Both must end
 	// up as members of the same channel for /sync to return data.
+	//
+	// v0.7.4 contract: companyId is sourced from the `companyId` request
+	// header (TeamIDFromCtx). Stamp it on every authed write so the DM's
+	// team_id (and any messages denormalised onto it) is populated.
 	dm := successBody(env.expect.POST("/api/channels/dm").
 		WithHeader(middleware.MMCookieHeader, cookieSender).
+		WithHeader(middleware.MMTeamHeader, testutil.RealCompanyID).
 		WithJSON(map[string]any{"peer_id": recvID}).
 		Expect().Status(201))
 	channelID := dm.Value("id").String().Raw()
@@ -31,6 +36,7 @@ func TestM4MessageSendThenSync(t *testing.T) {
 	// the M4-shaped TEXT user-id fields directly.
 	sent := successBody(env.expect.POST("/api/channels/"+channelID+"/messages").
 		WithHeader(middleware.MMCookieHeader, cookieSender).
+		WithHeader(middleware.MMTeamHeader, testutil.RealCompanyID).
 		WithJSON(map[string]any{
 			"content":     "hello from m4",
 			"msg_type":    1,
