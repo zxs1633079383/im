@@ -243,6 +243,12 @@ const (
 	MemberChangeKick MemberChangeType = "kick"
 	// MemberChangeNickname: a member updated their per-channel nickname.
 	MemberChangeNickname MemberChangeType = "nickname"
+	// MemberChangeOwnerTransfer: the owner transferred ownership of the
+	// channel to another member (C013). actor_id = old owner; target_id = new
+	// owner. When the transfer is followed by the old owner leaving, a second
+	// frame with change_type=leave (and a third member_left system message)
+	// follows in the same transaction.
+	MemberChangeOwnerTransfer MemberChangeType = "owner_transfer"
 )
 
 // ChannelMemberUpdatedPayload carries the post-change channel snapshot plus

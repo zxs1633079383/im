@@ -86,6 +86,18 @@ type ChannelRepo interface {
 	// override → falls back to global display name). Returns ErrNotFound when
 	// the member row does not exist. (v0.7.3 gap #5)
 	UpdateMemberNickname(ctx context.Context, channelID string, userID, nickName string) error
+
+	// SetMemberRoleTx sets channel_members.role inside the caller's tx.
+	// Returns ErrNotFound when the (channel_id, user_id) row is missing. Used
+	// by TransferOwner to swap (old owner → member, new owner → owner) atomically
+	// alongside the channels.creator_id update + system messages. (C013)
+	SetMemberRoleTx(ctx context.Context, tx *gorm.DB, channelID string, userID string, role int16) error
+
+	// SetCreatorTx flips channels.creator_id inside the caller's tx. The owner
+	// concept is materialised as both channel_members.role=Owner AND
+	// channels.creator_id; TransferOwner keeps both in sync. ErrNotFound when
+	// channelID is missing. (C013)
+	SetCreatorTx(ctx context.Context, tx *gorm.DB, channelID string, newCreatorID string) error
 }
 
 type gormChannelRepo struct{ db *gorm.DB }
@@ -194,6 +206,41 @@ func (r *gormChannelRepo) RemoveMemberTx(ctx context.Context, tx *gorm.DB, chann
 // WithinTx runs fn inside a GORM transaction.
 func (r *gormChannelRepo) WithinTx(ctx context.Context, fn func(tx *gorm.DB) error) error {
 	return r.db.WithContext(ctx).Transaction(fn)
+}
+
+// SetMemberRoleTx implements ChannelRepo.SetMemberRoleTx — updates
+// channel_members.role inside the caller's transaction. ErrNotFound when the
+// (channel_id, user_id) row is missing. (C013)
+func (r *gormChannelRepo) SetMemberRoleTx(ctx context.Context, tx *gorm.DB, channelID string, userID string, role int16) error {
+	res := r.dbOr(ctx, tx).Model(&ChannelMember{}).
+		Where("channel_id = ? AND user_id = ?", channelID, userID).
+		Update("role", role)
+	if res.Error != nil {
+		return fmt.Errorf("set member role: %w", res.Error)
+	}
+	if res.RowsAffected == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// SetCreatorTx implements ChannelRepo.SetCreatorTx — flips channels.creator_id
+// inside the caller's transaction. updated_at gets bumped via the row trigger
+// installed in migration 001. ErrNotFound when channelID is missing. (C013)
+func (r *gormChannelRepo) SetCreatorTx(ctx context.Context, tx *gorm.DB, channelID string, newCreatorID string) error {
+	res := r.dbOr(ctx, tx).Model(&Channel{}).
+		Where("id = ?", channelID).
+		Updates(map[string]any{
+			"creator_id": newCreatorID,
+			"updated_at": gorm.Expr("now()"),
+		})
+	if res.Error != nil {
+		return fmt.Errorf("set creator: %w", res.Error)
+	}
+	if res.RowsAffected == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 func (r *gormChannelRepo) GetMember(ctx context.Context, channelID string, userID string) (*ChannelMember, error) {

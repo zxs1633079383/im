@@ -88,3 +88,15 @@ func memberNicknameProps(actorID, targetID, nickName string) map[string]any {
 		"nick_name":     nickName,
 	}
 }
+
+// ownerTransferredProps builds the props payload for owner-transferred system
+// messages (C013). actor_id = the OLD owner who initiated the transfer;
+// target_id = the NEW owner. When AlsoLeave=true, ChannelService.TransferOwner
+// appends a second system message via memberLeftProps in the same transaction.
+func ownerTransferredProps(actorID, targetID string) map[string]any {
+	return map[string]any{
+		repo.SysTypeKey: repo.SysTypeOwnerTransferred,
+		"actor_id":      actorID,
+		"target_id":     targetID,
+	}
+}

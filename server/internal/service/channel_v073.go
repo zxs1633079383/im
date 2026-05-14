@@ -25,10 +25,15 @@ type ChannelMemberBroadcaster interface {
 type MemberChangeType string
 
 const (
-	MemberChangeJoin     MemberChangeType = "join"
-	MemberChangeLeave    MemberChangeType = "leave"
-	MemberChangeKick     MemberChangeType = "kick"
-	MemberChangeNickname MemberChangeType = "nickname"
+	MemberChangeJoin          MemberChangeType = "join"
+	MemberChangeLeave         MemberChangeType = "leave"
+	MemberChangeKick          MemberChangeType = "kick"
+	MemberChangeNickname      MemberChangeType = "nickname"
+	// MemberChangeOwnerTransfer marks a channel_member_updated frame as the
+	// "group owner moved from A to B" event (C013). Carried alongside ActorID
+	// (old owner) + TargetID (new owner) in ChannelMemberUpdatedPayload so the
+	// client can branch on it without re-fetching the channel.
+	MemberChangeOwnerTransfer MemberChangeType = "owner_transfer"
 )
 
 // ChannelMemberSummary is the minimal per-member projection bundled in the

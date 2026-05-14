@@ -205,6 +205,11 @@ func buildEngine(d buildEngineDeps) *gin.Engine {
 
 	channelSvc := service.NewChannelService(d.channels, d.messages)
 	imhttp.RegisterChannelRoutes(authed, channelSvc, channelPusher)
+	// v0.7.3 gap #4 / C013: wire the channel_member_updated broadcaster so
+	// AddMember / RemoveMember / LeaveChannel / TransferOwner fan WS frames.
+	channelSvc.AttachMemberBroadcaster(msgBroadcaster)
+	// C013: owner-transfer endpoint. Service-side broadcaster is attached above.
+	imhttp.RegisterChannelTransferOwnerRoute(authed, channelSvc, log)
 
 	messageSvc := service.NewMessageService(d.messages, d.channels, d.files)
 	imhttp.RegisterMessageRoutes(authed, messageSvc, imhttp.MessageRouteOpts{
@@ -391,12 +396,27 @@ type localBroadcaster struct {
 
 // C012 P-D: channelID is TEXT (string).
 func (b *localBroadcaster) BroadcastToMembers(channelID string, eventType imhttp.MessageEventType, payload any) {
+	b.fanout(channelID, gateway.WSMessageType(eventType), payload)
+}
+
+// BroadcastMemberEvent satisfies service.ChannelMemberBroadcaster — the local
+// counterpart of cmd/gateway/main.go::hubEventBroadcaster.BroadcastMemberEvent.
+// Reuses the same per-channel fan-out as BroadcastToMembers so tests can
+// observe channel_member_updated frames from TransferOwner / AddMember /
+// RemoveMember / LeaveChannel without standing up a hub.
+func (b *localBroadcaster) BroadcastMemberEvent(channelID string, eventType string, payload any) {
+	b.fanout(channelID, gateway.WSMessageType(eventType), payload)
+}
+
+// fanout pushes one frame per channel member. Lifted from the original
+// BroadcastToMembers body so both broadcaster methods share the same wire.
+func (b *localBroadcaster) fanout(channelID string, msgType gateway.WSMessageType, payload any) {
 	members, err := b.channels.ListMembers(context.Background(), channelID)
 	if err != nil {
 		return
 	}
 	for _, m := range members {
-		b.hub.PushToUser(m.UserID, gateway.WSMessageType(eventType), payload)
+		b.hub.PushToUser(m.UserID, msgType, payload)
 	}
 }
 

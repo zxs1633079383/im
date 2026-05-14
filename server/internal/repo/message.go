@@ -22,13 +22,18 @@ const SysTypeKey = "sys_type"
 //   - 现有 member_joined / member_removed / member_left 已覆盖 gap #4
 //     之外，新增 ChannelMemberUpdatedPayload WS 把完整 channel snapshot 推全员。
 const (
-	SysTypeChannelCreated  = "channel_created"
-	SysTypeChannelUpdated  = "channel_updated"
-	SysTypeChannelClosed   = "channel_closed"
-	SysTypeMemberJoined    = "member_joined"
-	SysTypeMemberRemoved   = "member_removed"
-	SysTypeMemberLeft      = "member_left"
-	SysTypeMemberNickname  = "member_nickname"
+	SysTypeChannelCreated    = "channel_created"
+	SysTypeChannelUpdated    = "channel_updated"
+	SysTypeChannelClosed     = "channel_closed"
+	SysTypeMemberJoined      = "member_joined"
+	SysTypeMemberRemoved     = "member_removed"
+	SysTypeMemberLeft        = "member_left"
+	SysTypeMemberNickname    = "member_nickname"
+	// SysTypeOwnerTransferred is the sys_type emitted by ChannelService.TransferOwner
+	// (C013). props carries actor_id (old owner) + target_id (new owner). When
+	// the transfer is accompanied by AlsoLeave=true a second SysTypeMemberLeft
+	// row is written in the same transaction after the role swap.
+	SysTypeOwnerTransferred  = "owner_transferred"
 )
 
 // ErrInvalidSystemProps is returned by PostSystemMessage when the props map

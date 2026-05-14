@@ -955,6 +955,105 @@ func (_c *ChannelRepoMock_RemoveMemberTx_Call) RunAndReturn(run func(context.Con
 	return _c
 }
 
+// SetCreatorTx provides a mock function with given fields: ctx, tx, channelID, newCreatorID
+func (_m *ChannelRepoMock) SetCreatorTx(ctx context.Context, tx *gorm.DB, channelID string, newCreatorID string) error {
+	ret := _m.Called(ctx, tx, channelID, newCreatorID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SetCreatorTx")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, *gorm.DB, string, string) error); ok {
+		r0 = rf(ctx, tx, channelID, newCreatorID)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// ChannelRepoMock_SetCreatorTx_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SetCreatorTx'
+type ChannelRepoMock_SetCreatorTx_Call struct {
+	*mock.Call
+}
+
+// SetCreatorTx is a helper method to define mock.On call
+//   - ctx context.Context
+//   - tx *gorm.DB
+//   - channelID string
+//   - newCreatorID string
+func (_e *ChannelRepoMock_Expecter) SetCreatorTx(ctx interface{}, tx interface{}, channelID interface{}, newCreatorID interface{}) *ChannelRepoMock_SetCreatorTx_Call {
+	return &ChannelRepoMock_SetCreatorTx_Call{Call: _e.mock.On("SetCreatorTx", ctx, tx, channelID, newCreatorID)}
+}
+
+func (_c *ChannelRepoMock_SetCreatorTx_Call) Run(run func(ctx context.Context, tx *gorm.DB, channelID string, newCreatorID string)) *ChannelRepoMock_SetCreatorTx_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(*gorm.DB), args[2].(string), args[3].(string))
+	})
+	return _c
+}
+
+func (_c *ChannelRepoMock_SetCreatorTx_Call) Return(_a0 error) *ChannelRepoMock_SetCreatorTx_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *ChannelRepoMock_SetCreatorTx_Call) RunAndReturn(run func(context.Context, *gorm.DB, string, string) error) *ChannelRepoMock_SetCreatorTx_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// SetMemberRoleTx provides a mock function with given fields: ctx, tx, channelID, userID, role
+func (_m *ChannelRepoMock) SetMemberRoleTx(ctx context.Context, tx *gorm.DB, channelID string, userID string, role int16) error {
+	ret := _m.Called(ctx, tx, channelID, userID, role)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SetMemberRoleTx")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, *gorm.DB, string, string, int16) error); ok {
+		r0 = rf(ctx, tx, channelID, userID, role)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// ChannelRepoMock_SetMemberRoleTx_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SetMemberRoleTx'
+type ChannelRepoMock_SetMemberRoleTx_Call struct {
+	*mock.Call
+}
+
+// SetMemberRoleTx is a helper method to define mock.On call
+//   - ctx context.Context
+//   - tx *gorm.DB
+//   - channelID string
+//   - userID string
+//   - role int16
+func (_e *ChannelRepoMock_Expecter) SetMemberRoleTx(ctx interface{}, tx interface{}, channelID interface{}, userID interface{}, role interface{}) *ChannelRepoMock_SetMemberRoleTx_Call {
+	return &ChannelRepoMock_SetMemberRoleTx_Call{Call: _e.mock.On("SetMemberRoleTx", ctx, tx, channelID, userID, role)}
+}
+
+func (_c *ChannelRepoMock_SetMemberRoleTx_Call) Run(run func(ctx context.Context, tx *gorm.DB, channelID string, userID string, role int16)) *ChannelRepoMock_SetMemberRoleTx_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(*gorm.DB), args[2].(string), args[3].(string), args[4].(int16))
+	})
+	return _c
+}
+
+func (_c *ChannelRepoMock_SetMemberRoleTx_Call) Return(_a0 error) *ChannelRepoMock_SetMemberRoleTx_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *ChannelRepoMock_SetMemberRoleTx_Call) RunAndReturn(run func(context.Context, *gorm.DB, string, string, int16) error) *ChannelRepoMock_SetMemberRoleTx_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // SoftDelete provides a mock function with given fields: ctx, channelID
 func (_m *ChannelRepoMock) SoftDelete(ctx context.Context, channelID string) (*repo.Channel, error) {
 	ret := _m.Called(ctx, channelID)

@@ -254,6 +254,10 @@ func run() int {
 	channelSvc.AttachMemberBroadcaster(msgBroadcaster)
 	// v0.7.3 gap #5: PATCH /channels/:id/members/:user_id/nickname + WS push.
 	imhttp.RegisterMemberNicknameRoute(authedAPI, channelSvc, msgBroadcaster, log)
+	// C013: POST /channels/:id/transfer-owner. Service-side fan-out for
+	// channel_member_updated (change_type=owner_transfer) is wired via the
+	// AttachMemberBroadcaster call above; this route is broadcaster-arg-free.
+	imhttp.RegisterChannelTransferOwnerRoute(authedAPI, channelSvc, log)
 
 	// M2-B: channel announcements. Re-uses the message broadcaster so
 	// announcement_posted fans out to the same member set as msg_updated.
