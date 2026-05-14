@@ -17,6 +17,12 @@ import (
 //
 // Body is wrapped by ResponseEnvelope middleware as
 // {"status":"success","data":{...}} — see docs/harness/C007.
+//
+// v0.7.4 wire-shape: MattermostUser was slimmed down to {id, mobile, name,
+// userName}; companyId moved out of the payload and is now read from the
+// `companyId` request header (TeamIDFromCtx). The /me endpoint returns only
+// the identity fields — clients merge in the header-supplied team_id
+// themselves. See internal/middleware/mattermost_cookie.go MattermostUser.
 func TestM4AuthSmoke(t *testing.T) {
 	env := newM4Env(t)
 	cookie := env.seedRealUser()
@@ -25,9 +31,9 @@ func TestM4AuthSmoke(t *testing.T) {
 		WithHeader(middleware.MMCookieHeader, cookie).
 		Expect().Status(200))
 
-	data.Value("userId").IsEqual(testutil.RealUserID)
-	data.Value("companyId").IsEqual(testutil.RealCompanyID)
+	data.Value("id").IsEqual(testutil.RealUserID)
 	data.Value("name").IsEqual(testutil.RealUserName)
+	data.Value("userName").IsEqual(testutil.RealUserName)
 }
 
 // TestM4AuthSmoke_Missing — no cookieId header → 401 from CookieRequired.
