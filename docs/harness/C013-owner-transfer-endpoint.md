@@ -1,12 +1,13 @@
 ---
 id: C013
 title: 群主转移必须走独立端点 POST /api/channels/:id/transfer-owner（不复用 PATCH /members）
-status: drafting
+status: active
 created: 2026-05-13
-last_recurred: 2026-05-13
+last_recurred: 2026-05-14
 recurrence_count: 1
 source_logs:
   - 客户端 worktree feat/im-reactor-2 用户拍板（2026-05-13）
+  - C013 落地: commit a8a36e4（service + handler + repo tx + 5 集成测试 PASS）
 applies_to:
   - server/internal/http/channel.go
   - server/internal/http/channel_governance.go
