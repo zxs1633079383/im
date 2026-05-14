@@ -16,7 +16,7 @@ import (
 // the existing cross-pod dispatch path. nil-safe: AttachMemberBroadcaster
 // may be skipped (tests do this) and the service silently no-ops.
 type ChannelMemberBroadcaster interface {
-	BroadcastMemberEvent(channelID int64, eventType string, payload any)
+	BroadcastMemberEvent(channelID string, eventType string, payload any)
 }
 
 // MemberChangeType discriminates the WS frame body so cses-client routes the
@@ -46,7 +46,7 @@ type ChannelMemberSummary struct {
 // The full post-change roster lets cses-client replace local membership in
 // one pass without re-fetching by channelId.
 type ChannelMemberUpdatedPayload struct {
-	ChannelID  int64                  `json:"channel_id"`
+	ChannelID  string                 `json:"channel_id"`
 	ChangeType MemberChangeType       `json:"change_type"`
 	ActorID    string                 `json:"actor_id"`
 	TargetID   string                 `json:"target_id"`
@@ -88,7 +88,7 @@ const nicknameMaxLen = 64
 // The companion system message (sys_type=channel_closed) is appended in the
 // same transaction so /api/sync replays a coherent "channel was closed"
 // signal even for offline clients.
-func (s *ChannelService) CloseChannel(ctx context.Context, channelID int64, callerID string) (*repo.Channel, error) {
+func (s *ChannelService) CloseChannel(ctx context.Context, channelID string, callerID string) (*repo.Channel, error) {
 	ctx, span := tracer.Start(ctx, "ChannelService.CloseChannel")
 	defer span.End()
 
@@ -107,7 +107,7 @@ func (s *ChannelService) CloseChannel(ctx context.Context, channelID int64, call
 
 // closeChannelAtomic posts the system message + flips deleted_at inside a
 // single transaction so /api/sync sees a coherent ordering.
-func (s *ChannelService) closeChannelAtomic(ctx context.Context, channelID int64, callerID string) (*repo.Channel, error) {
+func (s *ChannelService) closeChannelAtomic(ctx context.Context, channelID string, callerID string) (*repo.Channel, error) {
 	ch, err := s.channels.GetByID(ctx, channelID)
 	if err != nil {
 		return nil, err
@@ -132,7 +132,7 @@ func (s *ChannelService) closeChannelAtomic(ctx context.Context, channelID int64
 // softDeleteWithinTx runs the UPDATE channels SET deleted_at = now() inside
 // the caller's transaction. Returns repo.ErrGone when the row was already
 // closed (RowsAffected == 0).
-func softDeleteWithinTx(ctx context.Context, tx *gorm.DB, channelID int64) error {
+func softDeleteWithinTx(ctx context.Context, tx *gorm.DB, channelID string) error {
 	res := tx.WithContext(ctx).Exec(
 		`UPDATE channels SET deleted_at = now(), updated_at = now()
 		 WHERE id = ? AND deleted_at IS NULL`, channelID,
@@ -149,7 +149,7 @@ func softDeleteWithinTx(ctx context.Context, tx *gorm.DB, channelID int64) error
 // SetMemberNickname overwrites the caller-or-target's per-channel nickname.
 // caller == target is always allowed (改自己的群名片). admin/owner may also
 // rename anyone else (微信 vs 钉钉 hybrid). gap #5.
-func (s *ChannelService) SetMemberNickname(ctx context.Context, channelID int64, callerID, targetID, nickName string) (*repo.ChannelMember, error) {
+func (s *ChannelService) SetMemberNickname(ctx context.Context, channelID string, callerID, targetID, nickName string) (*repo.ChannelMember, error) {
 	ctx, span := tracer.Start(ctx, "ChannelService.SetMemberNickname")
 	defer span.End()
 
@@ -180,7 +180,7 @@ func (s *ChannelService) SetMemberNickname(ctx context.Context, channelID int64,
 // requireOwner returns ErrOwnerOnly when callerID is not the channel owner.
 // Mirrors requireAdminOrOwner but with a strictly higher bar — admins cannot
 // 解散群聊 (gap #1).
-func (s *ChannelService) requireOwner(ctx context.Context, channelID int64, callerID string) error {
+func (s *ChannelService) requireOwner(ctx context.Context, channelID string, callerID string) error {
 	m, err := s.channels.GetMember(ctx, channelID, callerID)
 	if err != nil {
 		if errors.Is(err, repo.ErrNotFound) {
@@ -196,7 +196,7 @@ func (s *ChannelService) requireOwner(ctx context.Context, channelID int64, call
 
 // requireMember returns ErrNotMember when callerID is not in channelID.
 // Local copy to keep channel.go (already ~300 lines) lean.
-func (s *ChannelService) requireMember(ctx context.Context, channelID int64, callerID string) error {
+func (s *ChannelService) requireMember(ctx context.Context, channelID string, callerID string) error {
 	if _, err := s.channels.GetMember(ctx, channelID, callerID); err != nil {
 		if errors.Is(err, repo.ErrNotFound) {
 			return ErrNotMember
@@ -213,7 +213,7 @@ func (s *ChannelService) requireMember(ctx context.Context, channelID int64, cal
 // mutation already succeeded.
 func (s *ChannelService) fanMemberUpdate(
 	ctx context.Context,
-	channelID int64,
+	channelID string,
 	change MemberChangeType,
 	actorID, targetID, nickName string,
 ) {

@@ -19,7 +19,7 @@ import (
 // (matches NULL in PG).
 func (s *ChannelService) postSys(
 	ctx context.Context, tx *gorm.DB,
-	channelID int64, actorID string, teamID *string, props map[string]any,
+	channelID string, actorID string, teamID *string, props map[string]any,
 ) error {
 	if s.messages == nil {
 		return nil

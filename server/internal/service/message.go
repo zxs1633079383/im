@@ -20,15 +20,15 @@ var (
 // MsgChannelStore is the subset of repo.ChannelRepo needed by MessageService.
 // M4: user-id args are mm UserIDs (24-hex strings).
 type MsgChannelStore interface {
-	GetMember(ctx context.Context, channelID int64, userID string) (*repo.ChannelMember, error)
-	MarkRead(ctx context.Context, channelID int64, userID string, seq int64) error
-	GetByID(ctx context.Context, id int64) (*repo.Channel, error)
-	ListMembers(ctx context.Context, channelID int64) ([]repo.ChannelMember, error)
+	GetMember(ctx context.Context, channelID string, userID string) (*repo.ChannelMember, error)
+	MarkRead(ctx context.Context, channelID string, userID string, seq int64) error
+	GetByID(ctx context.Context, id string) (*repo.Channel, error)
+	ListMembers(ctx context.Context, channelID string) ([]repo.ChannelMember, error)
 }
 
 // MsgAttachStore is the subset of repo.FileRepo needed for attaching files.
 type MsgAttachStore interface {
-	AttachToMessage(ctx context.Context, messageID, fileID int64) error
+	AttachToMessage(ctx context.Context, messageID, fileID string) error
 }
 
 // SendParams is the input to MessageService.SendMessage.
@@ -36,21 +36,21 @@ type MsgAttachStore interface {
 // M4: SenderID is mm UserID; VisibleTo is []string of mm UserIDs; TeamID is
 // the team scope frozen at send time (denormalised from channels.team_id).
 type SendParams struct {
-	ChannelID   int64
+	ChannelID   string
 	SenderID    string
 	TeamID      *string
 	Content     string
 	MsgType     int16
 	ClientMsgID string
 	VisibleTo   []string
-	ReplyTo     *int64
-	FileIDs     []int64
+	ReplyTo     *string
+	FileIDs     []string
 }
 
 // ForwardParams is the input to MessageService.ForwardMessages.
 type ForwardParams struct {
-	MessageID        int64
-	TargetChannelIDs []int64
+	MessageID        string
+	TargetChannelIDs []string
 }
 
 // ForwardResult bundles the forwarded messages.
@@ -124,7 +124,7 @@ func (s *MessageService) SendMessage(ctx context.Context, p SendParams) (*repo.M
 }
 
 // FetchMessages returns up to limit messages with seq < beforeSeq.
-func (s *MessageService) FetchMessages(ctx context.Context, channelID int64, callerID string, beforeSeq int64, limit int) ([]repo.Message, error) {
+func (s *MessageService) FetchMessages(ctx context.Context, channelID string, callerID string, beforeSeq int64, limit int) ([]repo.Message, error) {
 	ctx, span := tracer.Start(ctx, "MessageService.FetchMessages")
 	defer span.End()
 
@@ -135,7 +135,7 @@ func (s *MessageService) FetchMessages(ctx context.Context, channelID int64, cal
 }
 
 // FetchAfter returns up to limit messages with seq > afterSeq.
-func (s *MessageService) FetchAfter(ctx context.Context, channelID int64, callerID string, afterSeq int64, limit int) ([]repo.Message, error) {
+func (s *MessageService) FetchAfter(ctx context.Context, channelID string, callerID string, afterSeq int64, limit int) ([]repo.Message, error) {
 	ctx, span := tracer.Start(ctx, "MessageService.FetchAfter")
 	defer span.End()
 
@@ -146,7 +146,7 @@ func (s *MessageService) FetchAfter(ctx context.Context, channelID int64, caller
 }
 
 // FetchAround returns up to limit messages centered on aroundSeq.
-func (s *MessageService) FetchAround(ctx context.Context, channelID int64, callerID string, aroundSeq int64, limit int) ([]repo.Message, error) {
+func (s *MessageService) FetchAround(ctx context.Context, channelID string, callerID string, aroundSeq int64, limit int) ([]repo.Message, error) {
 	ctx, span := tracer.Start(ctx, "MessageService.FetchAround")
 	defer span.End()
 
@@ -157,7 +157,7 @@ func (s *MessageService) FetchAround(ctx context.Context, channelID int64, calle
 }
 
 // MarkRead updates the caller's last_read_seq to the channel's current seq.
-func (s *MessageService) MarkRead(ctx context.Context, channelID int64, callerID string) (int64, error) {
+func (s *MessageService) MarkRead(ctx context.Context, channelID string, callerID string) (int64, error) {
 	ctx, span := tracer.Start(ctx, "MessageService.MarkRead")
 	defer span.End()
 
@@ -179,7 +179,7 @@ func (s *MessageService) MarkRead(ctx context.Context, channelID int64, callerID
 // (Posts + ChannelIds) but with simpler body shape (the same Content +
 // MsgType across all channels).
 type BatchSendParams struct {
-	ChannelIDs  []int64
+	ChannelIDs  []string
 	SenderID    string
 	TeamID      *string
 	Content     string
@@ -238,7 +238,7 @@ func (s *MessageService) BatchSendMessages(ctx context.Context, p BatchSendParam
 // repo.ErrNotFound to ErrSourceNotFound; non-member to ErrSourceNotMember
 // so the HTTP layer can surface 404 / 403 cleanly. Replaces the mattermost
 // csesapi /posts/getPostsAfterFromSegment wire shape.
-func (s *MessageService) MessagesAfter(ctx context.Context, messageID int64, callerID string, limit int) ([]repo.Message, error) {
+func (s *MessageService) MessagesAfter(ctx context.Context, messageID string, callerID string, limit int) ([]repo.Message, error) {
 	ctx, span := tracer.Start(ctx, "MessageService.MessagesAfter")
 	defer span.End()
 
@@ -308,14 +308,14 @@ func (s *MessageService) ForwardMessages(ctx context.Context, callerID string, p
 }
 
 // ListMembers returns every member of channelID.
-func (s *MessageService) ListMembers(ctx context.Context, channelID int64) ([]repo.ChannelMember, error) {
+func (s *MessageService) ListMembers(ctx context.Context, channelID string) ([]repo.ChannelMember, error) {
 	return s.channels.ListMembers(ctx, channelID)
 }
 
 // FetchAroundTimestamp returns a window of messages centered on ts.
 func (s *MessageService) FetchAroundTimestamp(
 	ctx context.Context,
-	channelID int64, callerID string,
+	channelID string, callerID string,
 	ts time.Time,
 	limit int,
 ) ([]repo.Message, bool, bool, error) {
@@ -344,7 +344,7 @@ func (s *MessageService) FetchAroundTimestamp(
 }
 
 // GetReaders returns mm UserIDs of channel members read up to msgID's seq.
-func (s *MessageService) GetReaders(ctx context.Context, msgID int64, callerID string, limit int, cursor string) ([]string, string, error) {
+func (s *MessageService) GetReaders(ctx context.Context, msgID string, callerID string, limit int, cursor string) ([]string, string, error) {
 	ctx, span := tracer.Start(ctx, "MessageService.GetReaders")
 	defer span.End()
 
@@ -359,7 +359,7 @@ func (s *MessageService) GetReaders(ctx context.Context, msgID int64, callerID s
 }
 
 // GetReplies returns every non-deleted reply to rootMsgID.
-func (s *MessageService) GetReplies(ctx context.Context, rootMsgID int64, callerID string) ([]repo.Message, error) {
+func (s *MessageService) GetReplies(ctx context.Context, rootMsgID string, callerID string) ([]repo.Message, error) {
 	ctx, span := tracer.Start(ctx, "MessageService.GetReplies")
 	defer span.End()
 
@@ -374,7 +374,7 @@ func (s *MessageService) GetReplies(ctx context.Context, rootMsgID int64, caller
 }
 
 // EditMessage updates the content of msgID. Caller must be the sender.
-func (s *MessageService) EditMessage(ctx context.Context, msgID int64, callerID, content string) (*repo.Message, error) {
+func (s *MessageService) EditMessage(ctx context.Context, msgID string, callerID, content string) (*repo.Message, error) {
 	ctx, span := tracer.Start(ctx, "MessageService.EditMessage")
 	defer span.End()
 
@@ -386,7 +386,7 @@ func (s *MessageService) EditMessage(ctx context.Context, msgID int64, callerID,
 }
 
 // DeleteMessage soft-deletes msgID. Caller must be the sender.
-func (s *MessageService) DeleteMessage(ctx context.Context, msgID int64, callerID string) (*repo.Message, error) {
+func (s *MessageService) DeleteMessage(ctx context.Context, msgID string, callerID string) (*repo.Message, error) {
 	ctx, span := tracer.Start(ctx, "MessageService.DeleteMessage")
 	defer span.End()
 
@@ -397,7 +397,7 @@ func (s *MessageService) DeleteMessage(ctx context.Context, msgID int64, callerI
 	return msg, nil
 }
 
-func (s *MessageService) requireMember(ctx context.Context, channelID int64, callerID string) error {
+func (s *MessageService) requireMember(ctx context.Context, channelID string, callerID string) error {
 	if _, err := s.channels.GetMember(ctx, channelID, callerID); err != nil {
 		if errors.Is(err, repo.ErrNotFound) {
 			return ErrNotMember

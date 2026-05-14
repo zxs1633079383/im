@@ -18,14 +18,14 @@ var (
 // channelMemberStore is the minimal ChannelRepo subset the announcement
 // service needs — consumer-side small interface per coding-style.
 type channelMemberStore interface {
-	GetMember(ctx context.Context, channelID int64, userID string) (*repo.ChannelMember, error)
+	GetMember(ctx context.Context, channelID string, userID string) (*repo.ChannelMember, error)
 }
 
 // managerCheck is a tiny interface the announcement service needs to verify
 // manager-or-owner rights. Defined here so the announcement service only
 // depends on what it actually uses.
 type managerCheck interface {
-	IsManagerOrOwner(ctx context.Context, channelID int64, callerID string) (bool, error)
+	IsManagerOrOwner(ctx context.Context, channelID string, callerID string) (bool, error)
 }
 
 // AnnouncementService orchestrates channel announcements: create (manager+),
@@ -53,7 +53,7 @@ func NewAnnouncementService(
 
 // CreateParams is the input to Create.
 type CreateAnnouncementParams struct {
-	ChannelID int64
+	ChannelID string
 	CreatorID string
 	Title     string
 	Content   string
@@ -102,7 +102,7 @@ func (s *AnnouncementService) Create(ctx context.Context, p CreateAnnouncementPa
 
 // Ack records an acknowledgement from userID on announcementID. Any member
 // of the announcement's channel may ack.
-func (s *AnnouncementService) Ack(ctx context.Context, announcementID int64, userID string) error {
+func (s *AnnouncementService) Ack(ctx context.Context, announcementID string, userID string) error {
 	ctx, span := tracer.Start(ctx, "AnnouncementService.Ack")
 	defer span.End()
 
@@ -120,7 +120,7 @@ func (s *AnnouncementService) Ack(ctx context.Context, announcementID int64, use
 }
 
 // ListAcks returns the ack rows for announcementID. Manager+ only.
-func (s *AnnouncementService) ListAcks(ctx context.Context, announcementID int64, callerID string) ([]repo.AnnouncementAck, error) {
+func (s *AnnouncementService) ListAcks(ctx context.Context, announcementID string, callerID string) ([]repo.AnnouncementAck, error) {
 	ctx, span := tracer.Start(ctx, "AnnouncementService.ListAcks")
 	defer span.End()
 
@@ -143,7 +143,7 @@ func (s *AnnouncementService) ListAcks(ctx context.Context, announcementID int64
 
 // ListByChannel returns recent non-deleted announcements for channelID.
 // Members only.
-func (s *AnnouncementService) ListByChannel(ctx context.Context, channelID int64, callerID string, limit, offset int) ([]repo.Announcement, error) {
+func (s *AnnouncementService) ListByChannel(ctx context.Context, channelID string, callerID string, limit, offset int) ([]repo.Announcement, error) {
 	ctx, span := tracer.Start(ctx, "AnnouncementService.ListByChannel")
 	defer span.End()
 
@@ -154,7 +154,7 @@ func (s *AnnouncementService) ListByChannel(ctx context.Context, channelID int64
 }
 
 // Get returns a single announcement. Members only.
-func (s *AnnouncementService) Get(ctx context.Context, announcementID int64, callerID string) (*repo.Announcement, error) {
+func (s *AnnouncementService) Get(ctx context.Context, announcementID string, callerID string) (*repo.Announcement, error) {
 	ctx, span := tracer.Start(ctx, "AnnouncementService.Get")
 	defer span.End()
 
@@ -170,7 +170,7 @@ func (s *AnnouncementService) Get(ctx context.Context, announcementID int64, cal
 
 // Delete soft-deletes announcementID. Allowed if caller is the creator, OR
 // caller is manager/owner of the channel.
-func (s *AnnouncementService) Delete(ctx context.Context, announcementID int64, callerID string) error {
+func (s *AnnouncementService) Delete(ctx context.Context, announcementID string, callerID string) error {
 	ctx, span := tracer.Start(ctx, "AnnouncementService.Delete")
 	defer span.End()
 
@@ -198,7 +198,7 @@ func (s *AnnouncementService) Delete(ctx context.Context, announcementID int64, 
 
 // requireMember is a local copy of ChannelGovernanceService.requireMember so
 // the announcement service doesn't pull in the full governance struct.
-func (s *AnnouncementService) requireMember(ctx context.Context, channelID int64, callerID string) error {
+func (s *AnnouncementService) requireMember(ctx context.Context, channelID string, callerID string) error {
 	if _, err := s.channels.GetMember(ctx, channelID, callerID); err != nil {
 		if errors.Is(err, repo.ErrNotFound) {
 			return ErrNotMember

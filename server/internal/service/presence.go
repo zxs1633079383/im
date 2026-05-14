@@ -32,7 +32,7 @@ func NewPresenceService(channels repo.ChannelRepo, routing RoutingPresence) *Pre
 
 // OnlineUsersInChannel returns the mm UserIDs of channelID's members who have
 // at least one registered gateway connection. Caller must be a channel member.
-func (s *PresenceService) OnlineUsersInChannel(ctx context.Context, channelID int64, callerID string) ([]string, error) {
+func (s *PresenceService) OnlineUsersInChannel(ctx context.Context, channelID string, callerID string) ([]string, error) {
 	ctx, span := tracer.Start(ctx, "PresenceService.OnlineUsersInChannel")
 	defer span.End()
 
@@ -70,7 +70,7 @@ func (s *PresenceService) isOnline(ctx context.Context, userID string) bool {
 // mattermost csesapi /channel/onlineStatus shape closely enough that the
 // front-end's existing renderer can consume it without translation.
 type ChannelOnlineStatus struct {
-	ChannelID     int64    `json:"channel_id"`
+	ChannelID     string   `json:"channel_id"`
 	OnlineCount   int      `json:"online_count"`
 	OnlineUserIDs []string `json:"online_user_ids,omitempty"`
 }
@@ -85,7 +85,7 @@ type ChannelOnlineStatus struct {
 // len(channelIDs) vs len(returned) to decide whether to surface a 403 to
 // the user, but typically the silent-skip behaviour is what the UI wants
 // (a channel disappeared while the request was in flight is graceful).
-func (s *PresenceService) BatchOnlineStatus(ctx context.Context, channelIDs []int64, callerID string, includeUsers bool) ([]ChannelOnlineStatus, error) {
+func (s *PresenceService) BatchOnlineStatus(ctx context.Context, channelIDs []string, callerID string, includeUsers bool) ([]ChannelOnlineStatus, error) {
 	ctx, span := tracer.Start(ctx, "PresenceService.BatchOnlineStatus")
 	defer span.End()
 
@@ -97,7 +97,7 @@ func (s *PresenceService) BatchOnlineStatus(ctx context.Context, channelIDs []in
 	type chanInfo struct {
 		uids []string
 	}
-	channelInfo := make(map[int64]chanInfo, len(channelIDs))
+	channelInfo := make(map[string]chanInfo, len(channelIDs))
 	uidSet := make(map[string]struct{})
 	for _, channelID := range channelIDs {
 		// Authorize: skip channels where caller isn't a member.
@@ -105,11 +105,11 @@ func (s *PresenceService) BatchOnlineStatus(ctx context.Context, channelIDs []in
 			if errors.Is(err, repo.ErrNotFound) {
 				continue
 			}
-			return nil, fmt.Errorf("presence auth %d: %w", channelID, err)
+			return nil, fmt.Errorf("presence auth %s: %w", channelID, err)
 		}
 		members, err := s.channels.ListMembers(ctx, channelID)
 		if err != nil {
-			return nil, fmt.Errorf("presence list members %d: %w", channelID, err)
+			return nil, fmt.Errorf("presence list members %s: %w", channelID, err)
 		}
 		uids := make([]string, 0, len(members))
 		for _, m := range members {

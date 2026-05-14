@@ -25,7 +25,7 @@ var ErrTooManyReadStats = errors.New("too many message ids; max 100")
 func (s *MessageService) GetReadStatsBatch(
 	ctx context.Context,
 	callerID string,
-	msgIDs []int64,
+	msgIDs []string,
 ) ([]repo.ReadStat, error) {
 	ctx, span := tracer.Start(ctx, "MessageService.GetReadStatsBatch")
 	defer span.End()

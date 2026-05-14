@@ -62,7 +62,7 @@ func (s *NotificationService) Send(ctx context.Context, p NotificationSendParams
 }
 
 // ListReceived returns the caller's inbox.
-func (s *NotificationService) ListReceived(ctx context.Context, receiverID string, unreadOnly bool, limit int, cursor int64) ([]repo.Notification, error) {
+func (s *NotificationService) ListReceived(ctx context.Context, receiverID string, unreadOnly bool, limit int, cursor string) ([]repo.Notification, error) {
 	ctx, span := tracer.Start(ctx, "NotificationService.ListReceived")
 	defer span.End()
 
@@ -70,7 +70,7 @@ func (s *NotificationService) ListReceived(ctx context.Context, receiverID strin
 }
 
 // ListSent returns the caller's outbox.
-func (s *NotificationService) ListSent(ctx context.Context, senderID string, limit int, cursor int64) ([]repo.Notification, error) {
+func (s *NotificationService) ListSent(ctx context.Context, senderID string, limit int, cursor string) ([]repo.Notification, error) {
 	ctx, span := tracer.Start(ctx, "NotificationService.ListSent")
 	defer span.End()
 
@@ -78,7 +78,7 @@ func (s *NotificationService) ListSent(ctx context.Context, senderID string, lim
 }
 
 // MarkRead marks a notification read. Only the receiver may mark.
-func (s *NotificationService) MarkRead(ctx context.Context, id int64, callerID string) error {
+func (s *NotificationService) MarkRead(ctx context.Context, id string, callerID string) error {
 	ctx, span := tracer.Start(ctx, "NotificationService.MarkRead")
 	defer span.End()
 

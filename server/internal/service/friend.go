@@ -38,7 +38,7 @@ func (s *FriendService) SendRequest(ctx context.Context, requesterID, addresseeI
 
 // AcceptRequest marks the pending friendship accepted, returning the
 // requester's mm UserID for downstream push fan-out.
-func (s *FriendService) AcceptRequest(ctx context.Context, friendshipID int64, userID string) (string, error) {
+func (s *FriendService) AcceptRequest(ctx context.Context, friendshipID string, userID string) (string, error) {
 	ctx, span := tracer.Start(ctx, "FriendService.AcceptRequest")
 	defer span.End()
 
@@ -46,7 +46,7 @@ func (s *FriendService) AcceptRequest(ctx context.Context, friendshipID int64, u
 }
 
 // RejectRequest mirrors AcceptRequest but flips the row to rejected.
-func (s *FriendService) RejectRequest(ctx context.Context, friendshipID int64, userID string) (string, error) {
+func (s *FriendService) RejectRequest(ctx context.Context, friendshipID string, userID string) (string, error) {
 	ctx, span := tracer.Start(ctx, "FriendService.RejectRequest")
 	defer span.End()
 

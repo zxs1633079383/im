@@ -148,7 +148,7 @@ func (s *ChannelService) ListByUser(ctx context.Context, userID string) ([]repo.
 }
 
 // GetByID returns the channel only if callerID is a member.
-func (s *ChannelService) GetByID(ctx context.Context, channelID int64, callerID string) (*repo.Channel, error) {
+func (s *ChannelService) GetByID(ctx context.Context, channelID string, callerID string) (*repo.Channel, error) {
 	if _, err := s.channels.GetMember(ctx, channelID, callerID); err != nil {
 		if errors.Is(err, repo.ErrNotFound) {
 			return nil, ErrNotMember
@@ -159,7 +159,7 @@ func (s *ChannelService) GetByID(ctx context.Context, channelID int64, callerID 
 }
 
 // Update applies name/avatar to channelID. Requires admin or owner role.
-func (s *ChannelService) Update(ctx context.Context, channelID int64, callerID, name, avatarURL string) (*repo.Channel, error) {
+func (s *ChannelService) Update(ctx context.Context, channelID string, callerID, name, avatarURL string) (*repo.Channel, error) {
 	if err := s.requireAdminOrOwner(ctx, channelID, callerID); err != nil {
 		return nil, err
 	}
@@ -175,7 +175,7 @@ func (s *ChannelService) Update(ctx context.Context, channelID int64, callerID, 
 }
 
 // AddMember inserts newUserID into channelID. Requires caller admin/owner.
-func (s *ChannelService) AddMember(ctx context.Context, channelID int64, callerID, newUserID string) (string, error) {
+func (s *ChannelService) AddMember(ctx context.Context, channelID string, callerID, newUserID string) (string, error) {
 	ctx, span := tracer.Start(ctx, "ChannelService.AddMember")
 	defer span.End()
 
@@ -201,7 +201,7 @@ func (s *ChannelService) AddMember(ctx context.Context, channelID int64, callerI
 }
 
 // RemoveMember deletes targetUserID from channelID. Requires admin or owner.
-func (s *ChannelService) RemoveMember(ctx context.Context, channelID int64, callerID, targetUserID string) error {
+func (s *ChannelService) RemoveMember(ctx context.Context, channelID string, callerID, targetUserID string) error {
 	ctx, span := tracer.Start(ctx, "ChannelService.RemoveMember")
 	defer span.End()
 
@@ -218,7 +218,7 @@ func (s *ChannelService) RemoveMember(ctx context.Context, channelID int64, call
 	return s.removeMemberAtomic(ctx, channelID, callerID, targetUserID)
 }
 
-func (s *ChannelService) removeMemberAtomic(ctx context.Context, channelID int64, actorID, targetID string) error {
+func (s *ChannelService) removeMemberAtomic(ctx context.Context, channelID string, actorID, targetID string) error {
 	if s.messages == nil {
 		if err := s.channels.RemoveMember(ctx, channelID, targetID); err != nil {
 			return err
@@ -247,7 +247,7 @@ func (s *ChannelService) removeMemberAtomic(ctx context.Context, channelID int64
 // ListMembers returns all members of channelID. Caller must be a member.
 // M4: profile data is no longer joined; clients resolve user_id → profile
 // via the cses Redis "User" hash.
-func (s *ChannelService) ListMembers(ctx context.Context, channelID int64, callerID string) ([]MemberWithUser, error) {
+func (s *ChannelService) ListMembers(ctx context.Context, channelID string, callerID string) ([]MemberWithUser, error) {
 	if _, err := s.channels.GetMember(ctx, channelID, callerID); err != nil {
 		if errors.Is(err, repo.ErrNotFound) {
 			return nil, ErrNotMember
@@ -266,7 +266,7 @@ func (s *ChannelService) ListMembers(ctx context.Context, channelID int64, calle
 }
 
 // LeaveChannel removes callerID from channelID. Owners cannot leave.
-func (s *ChannelService) LeaveChannel(ctx context.Context, channelID int64, callerID string) error {
+func (s *ChannelService) LeaveChannel(ctx context.Context, channelID string, callerID string) error {
 	m, err := s.channels.GetMember(ctx, channelID, callerID)
 	if err != nil {
 		if errors.Is(err, repo.ErrNotFound) {
@@ -280,7 +280,7 @@ func (s *ChannelService) LeaveChannel(ctx context.Context, channelID int64, call
 	return s.leaveChannelAtomic(ctx, channelID, callerID)
 }
 
-func (s *ChannelService) leaveChannelAtomic(ctx context.Context, channelID int64, callerID string) error {
+func (s *ChannelService) leaveChannelAtomic(ctx context.Context, channelID string, callerID string) error {
 	if s.messages == nil {
 		if err := s.channels.RemoveMember(ctx, channelID, callerID); err != nil {
 			return err
@@ -306,7 +306,7 @@ func (s *ChannelService) leaveChannelAtomic(ctx context.Context, channelID int64
 	return nil
 }
 
-func (s *ChannelService) requireAdminOrOwner(ctx context.Context, channelID int64, callerID string) error {
+func (s *ChannelService) requireAdminOrOwner(ctx context.Context, channelID string, callerID string) error {
 	m, err := s.channels.GetMember(ctx, channelID, callerID)
 	if err != nil {
 		if errors.Is(err, repo.ErrNotFound) {

@@ -65,7 +65,7 @@ func (s *QuickReplyService) List(ctx context.Context, callerID string) ([]repo.Q
 }
 
 // Update patches fields on a quick reply. Caller must be the owner.
-func (s *QuickReplyService) Update(ctx context.Context, id int64, callerID string, patch repo.QuickReplyPatch) (*repo.QuickReply, error) {
+func (s *QuickReplyService) Update(ctx context.Context, id string, callerID string, patch repo.QuickReplyPatch) (*repo.QuickReply, error) {
 	ctx, span := tracer.Start(ctx, "QuickReplyService.Update")
 	defer span.End()
 
@@ -83,7 +83,7 @@ func (s *QuickReplyService) Update(ctx context.Context, id int64, callerID strin
 }
 
 // Delete removes a quick reply. Caller must be the owner.
-func (s *QuickReplyService) Delete(ctx context.Context, id int64, callerID string) error {
+func (s *QuickReplyService) Delete(ctx context.Context, id string, callerID string) error {
 	ctx, span := tracer.Start(ctx, "QuickReplyService.Delete")
 	defer span.End()
 

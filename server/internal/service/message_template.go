@@ -32,7 +32,7 @@ import (
 //     message — the props.template payload is missing).
 func (s *MessageService) MarkTemplateReceived(
 	ctx context.Context,
-	msgID int64,
+	msgID string,
 	callerID string,
 ) (*repo.Message, bool, error) {
 	ctx, span := tracer.Start(ctx, "MessageService.MarkTemplateReceived")

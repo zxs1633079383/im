@@ -51,13 +51,13 @@ func NewScheduledService(
 
 // ScheduledCreateParams is the input to Create.
 type ScheduledCreateParams struct {
-	ChannelID   int64
+	ChannelID   string
 	SenderID    string
 	Content     string
 	MsgType     int16
 	VisibleTo   []string
-	ReplyTo     *int64
-	FileIDs     []int64
+	ReplyTo     *string
+	FileIDs     []string
 	ScheduledAt time.Time
 }
 
@@ -102,7 +102,7 @@ func (s *ScheduledService) Create(ctx context.Context, p ScheduledCreateParams) 
 
 // Cancel transitions a pending scheduled message to cancelled. Only the
 // sender may cancel.
-func (s *ScheduledService) Cancel(ctx context.Context, id int64, callerID string) error {
+func (s *ScheduledService) Cancel(ctx context.Context, id string, callerID string) error {
 	ctx, span := tracer.Start(ctx, "ScheduledService.Cancel")
 	defer span.End()
 
@@ -131,7 +131,7 @@ func (s *ScheduledService) Cancel(ctx context.Context, id int64, callerID string
 }
 
 // List returns the caller's queue. statusFilter -1 = all.
-func (s *ScheduledService) List(ctx context.Context, callerID string, statusFilter int16, limit int, cursor int64) ([]repo.ScheduledMessage, error) {
+func (s *ScheduledService) List(ctx context.Context, callerID string, statusFilter int16, limit int, cursor string) ([]repo.ScheduledMessage, error) {
 	ctx, span := tracer.Start(ctx, "ScheduledService.List")
 	defer span.End()
 
@@ -168,10 +168,10 @@ func (s *ScheduledService) Deliver(ctx context.Context, sm *repo.ScheduledMessag
 		MsgType:   sm.MsgType,
 		VisibleTo: []string(sm.VisibleTo),
 		ReplyTo:   sm.ReplyTo,
-		FileIDs:   []int64(sm.FileIDs),
+		FileIDs:   []string(sm.FileIDs),
 		// Synthesise a client_msg_id so the idempotency guard doesn't collide
 		// across retries of the same scheduled row.
-		ClientMsgID: fmt.Sprintf("sched-%d-%d", sm.ID, time.Now().UnixNano()),
+		ClientMsgID: fmt.Sprintf("sched-%s-%d", sm.ID, time.Now().UnixNano()),
 	})
 	if err != nil {
 		_ = s.scheduled.MarkFailed(ctx, sm.ID, err.Error())
@@ -187,7 +187,7 @@ func (s *ScheduledService) Deliver(ctx context.Context, sm *repo.ScheduledMessag
 }
 
 // requireMember is a local copy — same semantics as the other services.
-func (s *ScheduledService) requireMember(ctx context.Context, channelID int64, callerID string) error {
+func (s *ScheduledService) requireMember(ctx context.Context, channelID string, callerID string) error {
 	if _, err := s.channels.GetMember(ctx, channelID, callerID); err != nil {
 		if errors.Is(err, repo.ErrNotFound) {
 			return ErrNotMember

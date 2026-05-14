@@ -21,7 +21,7 @@ const replyBranchMaxLimit = 200
 // layer; here we only guard the upper bound.
 func (s *MessageService) GetRepliesBranch(
 	ctx context.Context,
-	rootMsgID int64,
+	rootMsgID string,
 	callerID string,
 	offset, limit int,
 ) ([]repo.Message, bool, error) {
@@ -59,7 +59,7 @@ func (s *MessageService) GetRepliesBranch(
 // fetchReplyPage delegates to the repo helper. Lives in service to keep the
 // requireMember check + memberRoot resolution inside the service boundary.
 func (s *MessageService) fetchReplyPage(
-	ctx context.Context, rootID int64, userID string, offset, limit int,
+	ctx context.Context, rootID string, userID string, offset, limit int,
 ) ([]repo.Message, error) {
 	rows, err := s.messages.FetchRepliesPage(ctx, rootID, userID, offset, limit)
 	if err != nil {

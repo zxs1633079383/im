@@ -25,7 +25,7 @@ type ReactionService struct {
 // the parent message — only used to read its ChannelID for the membership
 // gate. Stays small so unit tests can stub it.
 type ReactionMessageStore interface {
-	GetByID(ctx context.Context, id int64) (*repo.Message, error)
+	GetByID(ctx context.Context, id string) (*repo.Message, error)
 }
 
 // NewReactionService wires the deps.
@@ -42,14 +42,14 @@ const maxEmojiBytes = 64
 // upserts the (message, user, emoji) triple. Returns the parent channel id
 // so the handler can stamp it onto the WS broadcast payload without a
 // second DB round-trip.
-func (s *ReactionService) Add(ctx context.Context, messageID int64, userID, emoji string) (channelID int64, err error) {
+func (s *ReactionService) Add(ctx context.Context, messageID string, userID, emoji string) (channelID string, err error) {
 	emoji = strings.TrimSpace(emoji)
 	if emoji == "" || len(emoji) > maxEmojiBytes || !utf8.ValidString(emoji) {
-		return 0, fmt.Errorf("invalid emoji")
+		return "", fmt.Errorf("invalid emoji")
 	}
 	channelID, err = s.requireChannelMember(ctx, messageID, userID)
 	if err != nil {
-		return 0, err
+		return "", err
 	}
 	react := &repo.MessageReaction{
 		MessageID: messageID,
@@ -58,7 +58,7 @@ func (s *ReactionService) Add(ctx context.Context, messageID int64, userID, emoj
 		CreatedAt: time.Now(),
 	}
 	if err := s.reactions.Add(ctx, react); err != nil {
-		return 0, err
+		return "", err
 	}
 	return channelID, nil
 }
@@ -66,24 +66,24 @@ func (s *ReactionService) Add(ctx context.Context, messageID int64, userID, emoj
 // Remove deletes a reaction. ErrNotFound bubbles when the row didn't exist
 // — handler maps that to 404 so the client can re-sync. Channel id is
 // returned for the broadcast hook.
-func (s *ReactionService) Remove(ctx context.Context, messageID int64, userID, emoji string) (channelID int64, err error) {
+func (s *ReactionService) Remove(ctx context.Context, messageID string, userID, emoji string) (channelID string, err error) {
 	emoji = strings.TrimSpace(emoji)
 	if emoji == "" {
-		return 0, fmt.Errorf("invalid emoji")
+		return "", fmt.Errorf("invalid emoji")
 	}
 	channelID, err = s.requireChannelMember(ctx, messageID, userID)
 	if err != nil {
-		return 0, err
+		return "", err
 	}
 	if err := s.reactions.Remove(ctx, messageID, userID, emoji); err != nil {
-		return 0, err
+		return "", err
 	}
 	return channelID, nil
 }
 
 // List returns reactions for a single message after enforcing caller
 // membership. Reads only — safe to cache aggressively in front of the DB.
-func (s *ReactionService) List(ctx context.Context, messageID int64, callerID string) ([]repo.MessageReaction, error) {
+func (s *ReactionService) List(ctx context.Context, messageID string, callerID string) ([]repo.MessageReaction, error) {
 	if _, err := s.requireChannelMember(ctx, messageID, callerID); err != nil {
 		return nil, err
 	}
@@ -94,19 +94,19 @@ func (s *ReactionService) List(ctx context.Context, messageID int64, callerID st
 // then asserts the caller is a member. Returns the channel id on success.
 // Maps repo.ErrNotFound on either lookup to ErrSourceNotFound /
 // ErrSourceNotMember so the HTTP layer can map 404 / 403 cleanly.
-func (s *ReactionService) requireChannelMember(ctx context.Context, messageID int64, userID string) (int64, error) {
+func (s *ReactionService) requireChannelMember(ctx context.Context, messageID string, userID string) (string, error) {
 	msg, err := s.messages.GetByID(ctx, messageID)
 	switch {
 	case errors.Is(err, repo.ErrNotFound):
-		return 0, ErrSourceNotFound
+		return "", ErrSourceNotFound
 	case err != nil:
-		return 0, fmt.Errorf("reaction get message: %w", err)
+		return "", fmt.Errorf("reaction get message: %w", err)
 	}
 	if _, err := s.channels.GetMember(ctx, msg.ChannelID, userID); err != nil {
 		if errors.Is(err, repo.ErrNotFound) {
-			return 0, ErrSourceNotMember
+			return "", ErrSourceNotMember
 		}
-		return 0, fmt.Errorf("reaction get member: %w", err)
+		return "", fmt.Errorf("reaction get member: %w", err)
 	}
 	return msg.ChannelID, nil
 }

@@ -21,7 +21,7 @@ const (
 // "search type=users now returns an empty list; query the cses /search/user
 // endpoint instead".
 type SearchStore interface {
-	SearchMessages(ctx context.Context, q string, userID string, channelID int64, limit int) ([]repo.MessageSearchResult, error)
+	SearchMessages(ctx context.Context, q string, userID string, channelID string, limit int) ([]repo.MessageSearchResult, error)
 	SearchChannels(ctx context.Context, q string, callerID string, limit int) ([]repo.Channel, error)
 }
 
@@ -37,7 +37,7 @@ const (
 type SearchParams struct {
 	Query     string
 	Type      string
-	ChannelID int64
+	ChannelID string
 	Limit     int
 }
 

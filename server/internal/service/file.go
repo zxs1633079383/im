@@ -29,8 +29,8 @@ var ErrFileTooLarge = errors.New("file exceeds maximum upload size")
 // interface narrow per the "accept interfaces, return structs" Go idiom.
 type FileStore interface {
 	Create(ctx context.Context, f *repo.File) error
-	GetByID(ctx context.Context, id int64) (*repo.File, error)
-	ListByMessage(ctx context.Context, messageID int64) ([]repo.File, error)
+	GetByID(ctx context.Context, id string) (*repo.File, error)
+	ListByMessage(ctx context.Context, messageID string) ([]repo.File, error)
 }
 
 // FileService persists multipart uploads to a directory on disk and records
@@ -127,7 +127,7 @@ func (s *FileService) Upload(ctx context.Context, in UploadInput) (*repo.File, e
 // body. The caller MUST close the returned io.ReadCloser. Returns
 // repo.ErrNotFound when the metadata row is missing; wrapped fs errors when
 // the on-disk file is missing or unreadable.
-func (s *FileService) Download(ctx context.Context, fileID int64) (*repo.File, io.ReadCloser, error) {
+func (s *FileService) Download(ctx context.Context, fileID string) (*repo.File, io.ReadCloser, error) {
 	ctx, span := tracer.Start(ctx, "FileService.Download")
 	defer span.End()
 
@@ -145,7 +145,7 @@ func (s *FileService) Download(ctx context.Context, fileID int64) (*repo.File, i
 // ListAttachments returns all files attached to messageID in the order
 // returned by the repo. A message with no attachments yields an empty slice
 // (never nil) so transport layers can safely range without checking.
-func (s *FileService) ListAttachments(ctx context.Context, messageID int64) ([]repo.File, error) {
+func (s *FileService) ListAttachments(ctx context.Context, messageID string) ([]repo.File, error) {
 	ctx, span := tracer.Start(ctx, "FileService.ListAttachments")
 	defer span.End()
 

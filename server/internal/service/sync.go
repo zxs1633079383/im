@@ -30,20 +30,20 @@ const (
 // Defined consumer-side (Go's "accept small interfaces" idiom) so the service
 // surface is documented at the call site.
 type SyncChannelStore interface {
-	GetMemberChannelSeqs(ctx context.Context, userID string) (map[int64]int64, error)
-	GetMember(ctx context.Context, channelID int64, userID string) (*repo.ChannelMember, error)
+	GetMemberChannelSeqs(ctx context.Context, userID string) (map[string]int64, error)
+	GetMember(ctx context.Context, channelID string, userID string) (*repo.ChannelMember, error)
 }
 
 // SyncMsgStore is the subset of repo.MessageRepo SyncService needs.
 type SyncMsgStore interface {
-	FetchForUser(ctx context.Context, channelID int64, userID string, afterSeq int64, limit int) ([]repo.Message, error)
+	FetchForUser(ctx context.Context, channelID string, userID string, afterSeq int64, limit int) ([]repo.Message, error)
 }
 
 // SyncCursor is one channel cursor from the client.
 //
 // contract locked, 对齐 docs/BACKEND.md §3.3; 改动前先改文档并通知前端.
 type SyncCursor struct {
-	ID  int64
+	ID  string
 	Seq int64 // client's local max seq for this channel
 }
 
@@ -61,7 +61,7 @@ type SyncParams struct {
 //
 // contract locked, 对齐 docs/BACKEND.md §3.3; 改动前先改文档并通知前端.
 type SyncChannelDelta struct {
-	ID        int64
+	ID        string
 	ServerSeq int64
 	Unread    int64
 	Messages  []repo.Message
@@ -117,7 +117,7 @@ func (s *SyncService) Sync(ctx context.Context, callerID string, p SyncParams) (
 		return SyncResult{}, fmt.Errorf("get member channel seqs: %w", err)
 	}
 
-	clientSeqs := make(map[int64]int64, len(p.Cursors))
+	clientSeqs := make(map[string]int64, len(p.Cursors))
 	for _, c := range p.Cursors {
 		clientSeqs[c.ID] = c.Seq
 	}
@@ -209,7 +209,7 @@ func recordSyncMetrics(ctx context.Context, results []SyncChannelDelta) {
 // fetchLatest returns up to limit messages with seq <= serverSeq for
 // (chID, userID), ordered ascending. Implemented in terms of FetchForUser
 // (which returns seq > afterSeq) by computing afterSeq = serverSeq - limit.
-func (s *SyncService) fetchLatest(ctx context.Context, chID int64, userID string, serverSeq int64, limit int) ([]repo.Message, error) {
+func (s *SyncService) fetchLatest(ctx context.Context, chID string, userID string, serverSeq int64, limit int) ([]repo.Message, error) {
 	afterSeq := serverSeq - int64(limit)
 	if afterSeq < 0 {
 		afterSeq = 0

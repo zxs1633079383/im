@@ -15,8 +15,8 @@ import (
 type CreateTopicRequest struct {
 	CallerID      string
 	TeamID        *string
-	ParentID      int64
-	RootMessageID int64
+	ParentID      string
+	RootMessageID string
 	Name          string
 	MemberIDs     []string
 }
@@ -50,7 +50,7 @@ func (s *ChannelService) CreateTopic(ctx context.Context, req CreateTopicRequest
 
 // ensureMembersSubset rejects with a clear error if any memberID is not a
 // parent-channel member.
-func (s *ChannelService) ensureMembersSubset(ctx context.Context, parentID int64, memberIDs []string) error {
+func (s *ChannelService) ensureMembersSubset(ctx context.Context, parentID string, memberIDs []string) error {
 	if len(memberIDs) == 0 {
 		return nil
 	}
@@ -64,14 +64,14 @@ func (s *ChannelService) ensureMembersSubset(ctx context.Context, parentID int64
 	}
 	for _, uid := range memberIDs {
 		if _, ok := inParent[uid]; !ok {
-			return fmt.Errorf("user %s not a member of parent channel %d", uid, parentID)
+			return fmt.Errorf("user %s not a member of parent channel %s", uid, parentID)
 		}
 	}
 	return nil
 }
 
 // ListTopics returns all topic channels under parentID for the caller.
-func (s *ChannelService) ListTopics(ctx context.Context, callerID string, parentID int64) ([]repo.Channel, error) {
+func (s *ChannelService) ListTopics(ctx context.Context, callerID string, parentID string) ([]repo.Channel, error) {
 	ctx, span := tracer.Start(ctx, "ChannelService.ListTopics")
 	defer span.End()
 

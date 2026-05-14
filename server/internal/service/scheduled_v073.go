@@ -30,9 +30,9 @@ const (
 // schedule_canceled. cses-client uses `has_schedule_post` to flip
 // `dialog.hasSchedulePost` across the sender's devices.
 type ScheduledEventPayload struct {
-	ChannelID       int64 `json:"channel_id"`
-	ScheduledID     int64 `json:"scheduled_id"`
-	HasSchedulePost bool  `json:"has_schedule_post"`
+	ChannelID       string `json:"channel_id"`
+	ScheduledID     string `json:"scheduled_id"`
+	HasSchedulePost bool   `json:"has_schedule_post"`
 }
 
 // AttachUserPusher wires the multi-device fan-out hook. Call once at startup.
@@ -63,9 +63,9 @@ func (s *ScheduledService) fanScheduleEvent(
 // `has_schedule_post` so the badge converges to false when the last pending
 // row is cleared.
 func (s *ScheduledService) hasPendingForChannel(
-	ctx context.Context, senderID string, channelID int64,
+	ctx context.Context, senderID string, channelID string,
 ) bool {
-	list, err := s.scheduled.ListBySender(ctx, senderID, repo.ScheduledStatusPending, 1, 0)
+	list, err := s.scheduled.ListBySender(ctx, senderID, repo.ScheduledStatusPending, 1, "")
 	if err != nil {
 		return true // fail-open: assume still pending so badge does not vanish on a transient DB error
 	}

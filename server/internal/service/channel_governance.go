@@ -34,7 +34,7 @@ func NewChannelGovernanceService(
 
 // PatchChannel applies p to channelID. Owner+manager required.
 func (s *ChannelGovernanceService) PatchChannel(
-	ctx context.Context, channelID int64, callerID string, p PatchChannelFields,
+	ctx context.Context, channelID string, callerID string, p PatchChannelFields,
 ) (*repo.Channel, error) {
 	ctx, span := tracer.Start(ctx, "ChannelGovernanceService.PatchChannel")
 	defer span.End()
@@ -50,7 +50,7 @@ func (s *ChannelGovernanceService) PatchChannel(
 
 // AddManager inserts targetID as a manager of channelID. Owner-only.
 func (s *ChannelGovernanceService) AddManager(
-	ctx context.Context, channelID int64, callerID, targetID string,
+	ctx context.Context, channelID string, callerID, targetID string,
 ) error {
 	ctx, span := tracer.Start(ctx, "ChannelGovernanceService.AddManager")
 	defer span.End()
@@ -69,7 +69,7 @@ func (s *ChannelGovernanceService) AddManager(
 
 // RemoveManager removes targetID from channel_managers. Owner-only.
 func (s *ChannelGovernanceService) RemoveManager(
-	ctx context.Context, channelID int64, callerID, targetID string,
+	ctx context.Context, channelID string, callerID, targetID string,
 ) error {
 	if err := s.requireOwner(ctx, channelID, callerID); err != nil {
 		return err
@@ -79,7 +79,7 @@ func (s *ChannelGovernanceService) RemoveManager(
 
 // ListManagers returns mm UserIDs of managers in channelID. Members only.
 func (s *ChannelGovernanceService) ListManagers(
-	ctx context.Context, channelID int64, callerID string,
+	ctx context.Context, channelID string, callerID string,
 ) ([]string, error) {
 	if err := s.requireMember(ctx, channelID, callerID); err != nil {
 		return nil, err
@@ -89,7 +89,7 @@ func (s *ChannelGovernanceService) ListManagers(
 
 // PinMessage pins msgID in channelID. Manager+ only.
 func (s *ChannelGovernanceService) PinMessage(
-	ctx context.Context, channelID int64, callerID string, msgID int64,
+	ctx context.Context, channelID string, callerID string, msgID string,
 ) error {
 	ctx, span := tracer.Start(ctx, "ChannelGovernanceService.PinMessage")
 	defer span.End()
@@ -102,7 +102,7 @@ func (s *ChannelGovernanceService) PinMessage(
 
 // UnpinMessage removes the pin for msgID. Manager+ only.
 func (s *ChannelGovernanceService) UnpinMessage(
-	ctx context.Context, channelID int64, callerID string, msgID int64,
+	ctx context.Context, channelID string, callerID string, msgID string,
 ) error {
 	if err := s.requireManagerOrOwner(ctx, channelID, callerID); err != nil {
 		return err
@@ -112,8 +112,8 @@ func (s *ChannelGovernanceService) UnpinMessage(
 
 // ListPins returns pinned message IDs for channelID. Members may view.
 func (s *ChannelGovernanceService) ListPins(
-	ctx context.Context, channelID int64, callerID string,
-) ([]int64, error) {
+	ctx context.Context, channelID string, callerID string,
+) ([]string, error) {
 	if err := s.requireMember(ctx, channelID, callerID); err != nil {
 		return nil, err
 	}
@@ -122,7 +122,7 @@ func (s *ChannelGovernanceService) ListPins(
 
 // UpdateMemberRole updates a member's role. Owner-only.
 func (s *ChannelGovernanceService) UpdateMemberRole(
-	ctx context.Context, channelID int64, callerID, targetID string, role int16,
+	ctx context.Context, channelID string, callerID, targetID string, role int16,
 ) error {
 	if err := s.requireOwner(ctx, channelID, callerID); err != nil {
 		return err
@@ -132,7 +132,7 @@ func (s *ChannelGovernanceService) UpdateMemberRole(
 
 // UpdateMemberNotifyPref lets the caller update their OWN notify_pref only.
 func (s *ChannelGovernanceService) UpdateMemberNotifyPref(
-	ctx context.Context, channelID int64, callerID string, pref int16,
+	ctx context.Context, channelID string, callerID string, pref int16,
 ) error {
 	if err := s.requireMember(ctx, channelID, callerID); err != nil {
 		return err
@@ -148,7 +148,7 @@ func (s *ChannelGovernanceService) UpdateMemberNotifyPref(
 // is_top, so the API is implicitly self-only and only requires "is a
 // member of this channel" as the authorization gate.
 func (s *ChannelGovernanceService) UpdateMemberIsTop(
-	ctx context.Context, channelID int64, callerID string, isTop bool,
+	ctx context.Context, channelID string, callerID string, isTop bool,
 ) error {
 	if err := s.requireMember(ctx, channelID, callerID); err != nil {
 		return err
@@ -158,7 +158,7 @@ func (s *ChannelGovernanceService) UpdateMemberIsTop(
 
 // IsManagerOrOwner is exported so other services can share the admin check.
 func (s *ChannelGovernanceService) IsManagerOrOwner(
-	ctx context.Context, channelID int64, callerID string,
+	ctx context.Context, channelID string, callerID string,
 ) (bool, error) {
 	m, err := s.channels.GetMember(ctx, channelID, callerID)
 	if err != nil {
@@ -173,7 +173,7 @@ func (s *ChannelGovernanceService) IsManagerOrOwner(
 	return s.governance.IsManager(ctx, channelID, callerID)
 }
 
-func (s *ChannelGovernanceService) requireMember(ctx context.Context, channelID int64, callerID string) error {
+func (s *ChannelGovernanceService) requireMember(ctx context.Context, channelID string, callerID string) error {
 	if _, err := s.channels.GetMember(ctx, channelID, callerID); err != nil {
 		if errors.Is(err, repo.ErrNotFound) {
 			return ErrNotMember
@@ -183,7 +183,7 @@ func (s *ChannelGovernanceService) requireMember(ctx context.Context, channelID 
 	return nil
 }
 
-func (s *ChannelGovernanceService) requireOwner(ctx context.Context, channelID int64, callerID string) error {
+func (s *ChannelGovernanceService) requireOwner(ctx context.Context, channelID string, callerID string) error {
 	m, err := s.channels.GetMember(ctx, channelID, callerID)
 	if err != nil {
 		if errors.Is(err, repo.ErrNotFound) {
@@ -197,7 +197,7 @@ func (s *ChannelGovernanceService) requireOwner(ctx context.Context, channelID i
 	return nil
 }
 
-func (s *ChannelGovernanceService) requireManagerOrOwner(ctx context.Context, channelID int64, callerID string) error {
+func (s *ChannelGovernanceService) requireManagerOrOwner(ctx context.Context, channelID string, callerID string) error {
 	m, err := s.channels.GetMember(ctx, channelID, callerID)
 	if err != nil {
 		if errors.Is(err, repo.ErrNotFound) {
