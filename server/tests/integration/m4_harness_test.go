@@ -294,10 +294,18 @@ func (e *m4env) seedRealUser() string {
 // returns the channel id. Drills through the success envelope wrapper.
 //
 // C012 P-D: id is now TEXT (string) — read as String() rather than Number().
+//
+// v0.7.4: companyId moved from the Redis MattermostUser payload to the
+// `companyId` request header (see middleware.MMTeamHeader). Without this
+// header the DM row's team_id stays nil and downstream message inserts skip
+// team_id denormalisation — breaking any caller that asserts on team_id.
+// All Batch-B+ fixtures use RealCompanyID so we hard-code it here; tests
+// that need a non-default team build their own POST.
 func (e *m4env) seedDM(ownerCookie, peerID string) string {
 	e.t.Helper()
 	dm := successBody(e.expect.POST("/api/channels/dm").
 		WithHeader(middleware.MMCookieHeader, ownerCookie).
+		WithHeader(middleware.MMTeamHeader, testutil.RealCompanyID).
 		WithJSON(map[string]any{"peer_id": peerID}).
 		Expect().Status(201))
 	return dm.Value("id").String().Raw()

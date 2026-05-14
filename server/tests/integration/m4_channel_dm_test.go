@@ -22,8 +22,14 @@ func TestM4ChannelCreateDM(t *testing.T) {
 	_, userB := env.seedUser(11)
 
 	// First call → 201 + persisted DM with team_id == caller.companyId.
+	//
+	// v0.7.4 contract change: companyId is sourced from the `companyId`
+	// request header (TeamIDFromCtx), no longer from the Redis MattermostUser
+	// payload. Tests must stamp it explicitly — see middleware/mattermost_cookie.go
+	// MattermostUser comment and internal/testutil/cookie_fixture.go example.
 	created := successBody(env.expect.POST("/api/channels/dm").
 		WithHeader(middleware.MMCookieHeader, cookieA).
+		WithHeader(middleware.MMTeamHeader, testutil.RealCompanyID).
 		WithJSON(map[string]any{"peer_id": userB}).
 		Expect().Status(201))
 
@@ -40,6 +46,7 @@ func TestM4ChannelCreateDM(t *testing.T) {
 	// Second call with same peer → 200 + same channel id (idempotent).
 	repeat := successBody(env.expect.POST("/api/channels/dm").
 		WithHeader(middleware.MMCookieHeader, cookieA).
+		WithHeader(middleware.MMTeamHeader, testutil.RealCompanyID).
 		WithJSON(map[string]any{"peer_id": userB}).
 		Expect().Status(200))
 	repeat.Value("id").String().IsEqual(createdID)
