@@ -26,6 +26,7 @@
 | [C012](C012-id-type-string-migration.md) | postId / channelId 等所有自增数字 ID 全链改 string（BIGINT → TEXT / int64 → string） | active | feat/im-reactor-2 用户拍板 2026-05-13；P-E 完成 2026-05-14 | 1 |
 | [C013](C013-owner-transfer-endpoint.md) | 群主转移走独立端点 POST /api/channels/:id/transfer-owner（不复用 PATCH /members） | active | feat/im-reactor-2 featdoc 08 用户拍板 2026-05-13；落地 2026-05-14 commit a8a36e4 | 1 |
 | [C014](C014-test-coverage-100-percent.md) | 每路由 + 每 WSMessageType 必须 1 单测 + 1 集成测试（100% 入口覆盖） | active | feat/im-reactor-2 用户拍板 2026-05-13；T4 落地 2026-05-14 commit `7d5ed46`/`80787c4`/`de091f4` | 2 |
+| [C015](C015-testcontainers-redis-port-race.md) | testcontainers-go v0.35.0 redis module port-mapping race 必须 retry 兜底（FX1 沉淀） | active | FX1 复盘 2026-05-14：误诊 5+ 小时；merge `70a27b0` + retry helper `52246d9` | 1 |
 
 ### 1.1 跨仓镜像 / autonomous 串行依赖（feat/im-reactor-2）
 
