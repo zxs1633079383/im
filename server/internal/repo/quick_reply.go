@@ -108,7 +108,7 @@ func (r *gormQuickReplyRepo) Update(ctx context.Context, id string, fields Quick
 
 // Delete removes the quick reply by PK.
 func (r *gormQuickReplyRepo) Delete(ctx context.Context, id string) error {
-	res := r.db.WithContext(ctx).Delete(&QuickReply{}, id)
+	res := r.db.WithContext(ctx).Where("id = ?", id).Delete(&QuickReply{})
 	if res.Error != nil {
 		return fmt.Errorf("delete quick reply: %w", res.Error)
 	}

@@ -259,15 +259,15 @@ func TestM4ChannelRemoveManager_C4_NotOwner(t *testing.T) {
 		Expect().Status(403)
 }
 
-// TestM4ChannelRemoveManager_C5_BadRequest — non-numeric channel id in path
-// → 400 (pathInt64 fails before role check).
-func TestM4ChannelRemoveManager_C5_BadRequest(t *testing.T) {
+// TestM4ChannelRemoveManager_C5_NonMember — C012 后 channel id 是 string，handler
+// 接受任意字符串；caller 不是该 channel 成员（channel 不存在但 id 合法）→ 403。
+func TestM4ChannelRemoveManager_C5_NonMember(t *testing.T) {
 	env := newM4Env(t)
 	cookieOwner, _ := env.seedUser(329)
 
 	env.expect.DELETE("/api/channels/not-a-number/managers/abc").
 		WithHeader(middleware.MMCookieHeader, cookieOwner).
-		Expect().Status(400)
+		Expect().Status(403)
 }
 
 // ============================================================================
@@ -325,14 +325,15 @@ func TestM4ChannelListManagers_C4_NotMember(t *testing.T) {
 		Expect().Status(403)
 }
 
-// TestM4ChannelListManagers_C5_BadRequest — non-numeric channel id → 400.
-func TestM4ChannelListManagers_C5_BadRequest(t *testing.T) {
+// TestM4ChannelListManagers_C5_NonMember — C012 后 channel id 是 string；caller
+// 不是该 channel 成员（channel 不存在）→ 403。
+func TestM4ChannelListManagers_C5_NonMember(t *testing.T) {
 	env := newM4Env(t)
 	cookieOwner, _ := env.seedUser(339)
 
 	env.expect.GET("/api/channels/not-a-number/managers").
 		WithHeader(middleware.MMCookieHeader, cookieOwner).
-		Expect().Status(400)
+		Expect().Status(403)
 }
 
 // ============================================================================
@@ -398,8 +399,11 @@ func TestM4ChannelPinMessage_C4_Forbidden(t *testing.T) {
 		Expect().Status(403)
 }
 
-// TestM4ChannelPinMessage_C5_BadRequest — non-numeric message id → 400.
-func TestM4ChannelPinMessage_C5_BadRequest(t *testing.T) {
+// TestM4ChannelPinMessage_C5_FKViolation — C012 后 message id 是 string，handler
+// 不再校验数字格式；channel_pinned_messages 表对 messages.id 有 FK，写入不存在 message
+// 时 PostgreSQL 抛 FK 违约 → handler 报 500。原 "non-numeric path → 400" case
+// 在 spec §3.2 下不再适用。
+func TestM4ChannelPinMessage_C5_FKViolation(t *testing.T) {
 	env := newM4Env(t)
 	cookieOwner, _ := env.seedUser(348)
 	_, m1 := env.seedUser(349)
@@ -407,7 +411,7 @@ func TestM4ChannelPinMessage_C5_BadRequest(t *testing.T) {
 
 	env.expect.POST("/api/channels/" + pathInt64s(chID) + "/pins/not-numeric").
 		WithHeader(middleware.MMCookieHeader, cookieOwner).
-		Expect().Status(400)
+		Expect().Status(500)
 }
 
 // ============================================================================
@@ -481,14 +485,15 @@ func TestM4ChannelUnpinMessage_C4_Forbidden(t *testing.T) {
 		Expect().Status(403)
 }
 
-// TestM4ChannelUnpinMessage_C5_BadRequest — non-numeric channel id → 400.
-func TestM4ChannelUnpinMessage_C5_BadRequest(t *testing.T) {
+// TestM4ChannelUnpinMessage_C5_NonMember — C012 后 channel id 是 string；caller
+// 不是该 channel 成员（channel 不存在）→ 403。
+func TestM4ChannelUnpinMessage_C5_NonMember(t *testing.T) {
 	env := newM4Env(t)
 	cookieOwner, _ := env.seedUser(358)
 
 	env.expect.DELETE("/api/channels/abc/pins/123").
 		WithHeader(middleware.MMCookieHeader, cookieOwner).
-		Expect().Status(400)
+		Expect().Status(403)
 }
 
 // ============================================================================
@@ -544,14 +549,15 @@ func TestM4ChannelListPins_C4_NotMember(t *testing.T) {
 		Expect().Status(403)
 }
 
-// TestM4ChannelListPins_C5_BadRequest — non-numeric channel id → 400.
-func TestM4ChannelListPins_C5_BadRequest(t *testing.T) {
+// TestM4ChannelListPins_C5_NonMember — C012 后 channel id 是 string；caller
+// 不是该 channel 成员（channel 不存在）→ 403。
+func TestM4ChannelListPins_C5_NonMember(t *testing.T) {
 	env := newM4Env(t)
 	cookieOwner, _ := env.seedUser(359) // 359 unused above; safe in 300-379 range.
 
 	env.expect.GET("/api/channels/oops/pins").
 		WithHeader(middleware.MMCookieHeader, cookieOwner).
-		Expect().Status(400)
+		Expect().Status(403)
 }
 
 // ============================================================================

@@ -207,7 +207,7 @@ func TestM4WS_SendACK_HappyPath(t *testing.T) {
 	var p gateway.SendACKPayload
 	decodePayload(t, ack, &p)
 	require.Equal(t, "ws-ref-001", p.ClientMsgID, "send_ack must echo client_msg_id")
-	require.Greater(t, p.ServerMsgID, int64(0), "send_ack must carry server_msg_id")
+	require.NotEmpty(t, p.ServerMsgID, "send_ack must carry server_msg_id")
 	require.Greater(t, p.Seq, int64(0), "send_ack must carry seq")
 	require.Equal(t, channelID, p.ChannelID, "send_ack channel_id must match send")
 	_ = fmt.Sprintf("%v", p) // race detector exercise

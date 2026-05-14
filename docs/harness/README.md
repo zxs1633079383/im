@@ -23,7 +23,7 @@
 | [C009](C009-test-helper-tracks-middleware-shape.md) | 加 / 改 middleware 必须 sweep 所有 test helper（Run #1 ~120 fail 教训） | active | logs/2026-05-07.json#L1（envelope 注入事故） | 1 |
 | [C010](C010-userdata-resolve.md) | v0.7.4 鉴权：Redis `UserData:<userId>` STRING + companyId header（替代 HGet User） | active | logs/2026-05-12.json | 1 |
 | [C011](C011-channels-team-id-nullable-no-main-flow-block.md) | channels.team_id 必须 TEXT NULL，companyId 缺省时不阻塞主流程 | active | logs/2026-05-12.json | 1（apifox sync 烟测被卡） |
-| [C012](C012-id-type-string-migration.md) | postId / channelId 等所有自增数字 ID 全链改 string（BIGINT → TEXT / int64 → string） | drafting | feat/im-reactor-2 用户拍板 2026-05-13 | 1 |
+| [C012](C012-id-type-string-migration.md) | postId / channelId 等所有自增数字 ID 全链改 string（BIGINT → TEXT / int64 → string） | active | feat/im-reactor-2 用户拍板 2026-05-13；P-E 完成 2026-05-14 | 1 |
 | [C013](C013-owner-transfer-endpoint.md) | 群主转移走独立端点 POST /api/channels/:id/transfer-owner（不复用 PATCH /members） | drafting | feat/im-reactor-2 featdoc 08 用户拍板 2026-05-13 | 1 |
 | [C014](C014-test-coverage-100-percent.md) | 每路由 + 每 WSMessageType 必须 1 单测 + 1 集成测试（100% 入口覆盖） | drafting | feat/im-reactor-2 用户拍板 2026-05-13 | 1 |
 

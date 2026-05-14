@@ -168,7 +168,8 @@ func TestM4MessageEdit_C4_NotSender(t *testing.T) {
 		Value("error").String().NotEmpty()
 }
 
-// TestM4MessageEdit_C5_BadRequestPathID — :id 非数字 → 400.
+// TestM4MessageEdit_C5_BadRequestPathID — :id 不存在 → 404.
+// C012 后 path param 接受任意 string，"非数字 → 400" 校验已移除（spec §3.2）。
 func TestM4MessageEdit_C5_BadRequestPathID(t *testing.T) {
 	env := newM4Env(t)
 	cookieSender, _ := env.seedUser(120)
@@ -176,7 +177,7 @@ func TestM4MessageEdit_C5_BadRequestPathID(t *testing.T) {
 	errorBody(env.expect.PATCH("/api/messages/abc").
 		WithHeader(middleware.MMCookieHeader, cookieSender).
 		WithJSON(map[string]any{"content": "x"}).
-		Expect().Status(400)).
+		Expect().Status(404)).
 		Value("error").String().NotEmpty()
 }
 
@@ -239,14 +240,15 @@ func TestM4MessageDelete_C4_NotSender(t *testing.T) {
 		Value("error").String().NotEmpty()
 }
 
-// TestM4MessageDelete_C5_BadRequestPathID — :id 非数字 → 400.
+// TestM4MessageDelete_C5_BadRequestPathID — :id 不存在 → 404.
+// C012 后 path param 接受任意 string，"非数字 → 400" 校验已移除（spec §3.2）。
 func TestM4MessageDelete_C5_BadRequestPathID(t *testing.T) {
 	env := newM4Env(t)
 	cookieSender, _ := env.seedUser(130)
 
 	errorBody(env.expect.DELETE("/api/messages/abc").
 		WithHeader(middleware.MMCookieHeader, cookieSender).
-		Expect().Status(400)).
+		Expect().Status(404)).
 		Value("error").String().NotEmpty()
 }
 

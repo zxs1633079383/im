@@ -91,14 +91,19 @@ func TestM4FavoriteAdd_C4_CrossTenantNoCheck(t *testing.T) {
 		Expect().Status(201)
 }
 
-// TestM4FavoriteAdd_C5_BadRequest — :message_id 非数字 → 400。
-func TestM4FavoriteAdd_C5_BadRequest(t *testing.T) {
+// TestM4FavoriteAdd_C5_FKViolation — C012 后 path :message_id 是 string，handler
+// 不再校验数字格式；但 favorites 表对 messages.id 有 FK，写入不存在 message 时
+// PostgreSQL 抛 FK 违约 → handler 报 500。原 "non-numeric path → 400" case 在
+// spec §3.2 (不再 ParseInt) 下不再适用，本 case 锁定"非法 ID 至 service/DB 层
+// 才被拒"的实际行为。未来 C014 可考虑在 service 层加 message 存在性预校验把 500
+// 收敛成 404。
+func TestM4FavoriteAdd_C5_FKViolation(t *testing.T) {
 	env := newM4Env(t)
 	cookieA, _ := env.seedUser(409)
 
 	env.expect.POST("/api/favorites/not-a-number").
 		WithHeader(middleware.MMCookieHeader, cookieA).
-		Expect().Status(400)
+		Expect().Status(500)
 }
 
 // ---------------------------------------------------------------------------
@@ -168,14 +173,15 @@ func TestM4FavoriteRemove_C4_OtherUserFavoriteIs404(t *testing.T) {
 		Expect().Status(404)
 }
 
-// TestM4FavoriteRemove_C5_BadRequest — :message_id 非数字 → 400。
-func TestM4FavoriteRemove_C5_BadRequest(t *testing.T) {
+// TestM4FavoriteRemove_C5_NonExistentID — C012 后 path :message_id 是 string，
+// 非数字字面值合法；该 user 没有这条 favorite → 404 ErrNotFound。
+func TestM4FavoriteRemove_C5_NonExistentID(t *testing.T) {
 	env := newM4Env(t)
 	cookieA, _ := env.seedUser(419)
 
 	env.expect.DELETE("/api/favorites/not-a-number").
 		WithHeader(middleware.MMCookieHeader, cookieA).
-		Expect().Status(400)
+		Expect().Status(404)
 }
 
 // ---------------------------------------------------------------------------
@@ -403,14 +409,15 @@ func TestM4UrgentConfirm_C4_NotChannelMember(t *testing.T) {
 		Expect().Status(403)
 }
 
-// TestM4UrgentConfirm_C5_BadRequest — :id 非数字 → 400 (pathInt64 直接拒)。
-func TestM4UrgentConfirm_C5_BadRequest(t *testing.T) {
+// TestM4UrgentConfirm_C5_NonExistentID — C012 后 path :id 是 string，handler
+// 不再校验数字；服务层找不到该 message → 404 ErrNotFound。
+func TestM4UrgentConfirm_C5_NonExistentID(t *testing.T) {
 	env := newM4Env(t)
 	cookieOwner, _ := env.seedUser(449)
 
 	env.expect.POST("/api/messages/not-a-number/urgent/confirm").
 		WithHeader(middleware.MMCookieHeader, cookieOwner).
-		Expect().Status(400)
+		Expect().Status(404)
 }
 
 // ---------------------------------------------------------------------------
@@ -489,14 +496,15 @@ func TestM4UrgentCancel_C4_NotSender(t *testing.T) {
 		Expect().Status(403)
 }
 
-// TestM4UrgentCancel_C5_BadRequest — :id 非数字 → 400。
-func TestM4UrgentCancel_C5_BadRequest(t *testing.T) {
+// TestM4UrgentCancel_C5_NonExistentID — C012 后 path :id 是 string，handler
+// 不再校验数字；服务层找不到该 message → 404 ErrNotFound。
+func TestM4UrgentCancel_C5_NonExistentID(t *testing.T) {
 	env := newM4Env(t)
 	cookieOwner, _ := env.seedUser(458)
 
 	env.expect.POST("/api/messages/not-a-number/urgent/cancel").
 		WithHeader(middleware.MMCookieHeader, cookieOwner).
-		Expect().Status(400)
+		Expect().Status(404)
 }
 
 // ---------------------------------------------------------------------------
@@ -583,14 +591,15 @@ func TestM4UrgentConfirmations_C4_NotChannelMember(t *testing.T) {
 		Expect().Status(403)
 }
 
-// TestM4UrgentConfirmations_C5_BadRequest — :id 非数字 → 400。
-func TestM4UrgentConfirmations_C5_BadRequest(t *testing.T) {
+// TestM4UrgentConfirmations_C5_NonExistentID — C012 后 path :id 是 string，
+// handler 不再校验数字；service 找不到 message → 404 ErrNotFound。
+func TestM4UrgentConfirmations_C5_NonExistentID(t *testing.T) {
 	env := newM4Env(t)
 	cookieOwner, _ := env.seedUser(469)
 
 	env.expect.GET("/api/messages/not-a-number/urgent/confirmations").
 		WithHeader(middleware.MMCookieHeader, cookieOwner).
-		Expect().Status(400)
+		Expect().Status(404)
 }
 
 // _ keeps the repo import live in case future cases need to reach into

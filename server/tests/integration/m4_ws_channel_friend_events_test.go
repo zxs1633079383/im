@@ -143,8 +143,8 @@ func TestM4WSChannelTopUpdated_HappyPath(t *testing.T) {
 
 	frame := wcA2.expectFrame(gateway.TypeChannelTopUpdated, 5*time.Second)
 	var p struct {
-		ChannelID int64 `json:"channel_id"`
-		IsTop     bool  `json:"is_top"`
+		ChannelID string `json:"channel_id"`
+		IsTop     bool   `json:"is_top"`
 	}
 	decodePayload(t, frame, &p)
 	require.Equal(t, chID, p.ChannelID, "channel_top_updated channel_id")

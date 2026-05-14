@@ -41,7 +41,7 @@ func TestM4NotificationPost_HappyPath(t *testing.T) {
 		}).
 		Expect().Status(201))
 
-	data.Value("id").Number().Gt(0)
+	data.Value("id").String().NotEmpty()
 	data.Value("receiver_id").String().IsEqual(recvID)
 	data.Value("title").String().IsEqual("hello")
 }
@@ -132,7 +132,7 @@ func TestM4QuickReplyCreate_HappyPath(t *testing.T) {
 		}).
 		Expect().Status(201))
 
-	data.Value("id").Number().Gt(0)
+	data.Value("id").String().NotEmpty()
 	data.Value("label").String().IsEqual("hi")
 	data.Value("content").String().IsEqual("hello!")
 }

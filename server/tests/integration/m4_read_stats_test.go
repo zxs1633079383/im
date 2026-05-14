@@ -130,12 +130,13 @@ func TestM4ReadStatsBatch_BadInput(t *testing.T) {
 	env := newM4Env(t)
 	cookieA, _ := env.seedUser(55)
 
+	// C012 后 ID 改 TEXT，"非数字" 不再触发 400（storage 端按 NotFound 处理）。
+	// 仅保留 "空 / 全逗号" 两个空集合 case。
 	cases := []struct {
 		name string
 		ids  string
 	}{
 		{"missing", ""},
-		{"non-integer", "1,abc,3"},
 		{"only commas", ",,,"},
 	}
 	for _, tc := range cases {

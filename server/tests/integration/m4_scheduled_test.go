@@ -34,7 +34,7 @@ func TestM4ScheduledCreate_HappyPath(t *testing.T) {
 			"scheduled_at": scheduledAt,
 		}).
 		Expect().Status(201))
-	data.Value("id").Number().Gt(0)
+	data.Value("id").String().NotEmpty()
 	data.Value("channel_id").String().IsEqual(channelID)
 }
 

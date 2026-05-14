@@ -58,7 +58,7 @@ func TestM4WSPushMsg_HappyPath(t *testing.T) {
 	require.Equal(t, "hi-from-B", p.Content, "push_msg content")
 	require.Equal(t, peerB, p.SenderID, "push_msg sender_id must be B")
 	require.Greater(t, p.Seq, int64(0), "push_msg seq")
-	require.Greater(t, p.ServerID, int64(0), "push_msg server_msg_id")
+	require.NotEmpty(t, p.ServerID, "push_msg server_msg_id")
 }
 
 // TestM4WSMsgUpdated_HappyPath — B PATCH 自己发的消息, A 收到 msg_updated

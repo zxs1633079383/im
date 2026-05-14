@@ -1,12 +1,13 @@
 ---
 id: C012
 title: postId / channelId 等所有自增数字 ID 全链改 string（BIGINT → TEXT / int64 → string）
-status: drafting
+status: active
 created: 2026-05-13
-last_recurred: 2026-05-13
+last_recurred: 2026-05-14
 recurrence_count: 1
 source_logs:
   - 客户端 worktree feat/im-reactor-2 用户拍板（2026-05-13）
+  - C012 P-E 整体完成: 2026-05-14（P-A/B/C/D/E 五阶段累计 5 commits + 1 docs commit）
 applies_to:
   - server/migrations/*.sql
   - server/internal/repo/**/*.go

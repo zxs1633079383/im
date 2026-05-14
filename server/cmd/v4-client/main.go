@@ -44,21 +44,21 @@ type wsFrame struct {
 
 type pushMsgPayload struct {
 	PushID    string `json:"push_id"`
-	ChannelID int64  `json:"channel_id"`
+	ChannelID string `json:"channel_id"`
 	Seq       int64  `json:"seq"`
-	SenderID  int64  `json:"sender_id"`
+	SenderID  string `json:"sender_id"`
 	Content   string `json:"content,omitempty"`
 }
 
 type authResp struct {
 	Token string `json:"token"`
 	User  struct {
-		ID int64 `json:"id"`
+		ID string `json:"id"`
 	} `json:"user"`
 }
 
 type dmChannel struct {
-	ID int64 `json:"id"`
+	ID string `json:"id"`
 }
 
 // ---- HTTP helpers ----
@@ -109,15 +109,15 @@ func loginOrRegister(ctx context.Context, api, username, password string) (authR
 	return ar, nil
 }
 
-func createDM(ctx context.Context, api, token string, peerID int64) (dmChannel, error) {
+func createDM(ctx context.Context, api, token string, peerID string) (dmChannel, error) {
 	var ch dmChannel
 	err := postJSON(ctx, api, "/api/channels/dm", token,
-		map[string]int64{"peer_id": peerID}, &ch)
+		map[string]string{"peer_id": peerID}, &ch)
 	return ch, err
 }
 
-func sendMessage(ctx context.Context, api, token string, channelID int64, content string) error {
-	path := fmt.Sprintf("/api/channels/%d/messages", channelID)
+func sendMessage(ctx context.Context, api, token string, channelID string, content string) error {
+	path := fmt.Sprintf("/api/channels/%s/messages", channelID)
 	return postJSON(ctx, api, path, token,
 		map[string]any{"content": content, "msg_type": 1, "client_msg_id": fmt.Sprintf("v4-%d", time.Now().UnixNano())}, nil)
 }

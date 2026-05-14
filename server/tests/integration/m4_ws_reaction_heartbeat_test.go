@@ -207,6 +207,6 @@ func TestM4WSPushACK_HappyPath(t *testing.T) {
 	decodePayload(t, ack, &p)
 	require.Equal(t, "after-ack", p.ClientMsgID, "send_ack client_msg_id must echo")
 	require.Equal(t, channelID, p.ChannelID, "send_ack channel_id must match")
-	require.Greater(t, p.ServerMsgID, int64(0), "send_ack server_msg_id")
+	require.NotEmpty(t, p.ServerMsgID, "send_ack server_msg_id")
 	require.Greater(t, p.Seq, int64(0), "send_ack seq")
 }

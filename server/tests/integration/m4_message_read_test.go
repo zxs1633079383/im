@@ -88,14 +88,15 @@ func TestM4MessageList_C4_NotChannelMember(t *testing.T) {
 		Expect().Status(403)
 }
 
-// TestM4MessageList_C5_InvalidPath: 路径 ID 非法（非数字）→ 400。
-func TestM4MessageList_C5_InvalidPath(t *testing.T) {
+// TestM4MessageList_C5_NonMember: C012 后 path :id 是 string；caller 不是该
+// channel 成员（channel 不存在）→ 403。
+func TestM4MessageList_C5_NonMember(t *testing.T) {
 	env := newM4Env(t)
 	cookieA, _ := env.seedUser(209)
 
 	env.expect.GET("/api/channels/abc/messages").
 		WithHeader(middleware.MMCookieHeader, cookieA).
-		Expect().Status(400)
+		Expect().Status(403)
 }
 
 // ---------- GET /api/channels/:id/messages/around ----------------------------
@@ -230,14 +231,14 @@ func TestM4MessageReaders_C4_NotChannelMember(t *testing.T) {
 		Expect().Status(403)
 }
 
-// TestM4MessageReaders_C5_InvalidPath: 路径 ID 非法 → 400。
-func TestM4MessageReaders_C5_InvalidPath(t *testing.T) {
+// TestM4MessageReaders_C5_NonExistent: C012 后 path :id 是 string；找不到 message → 404。
+func TestM4MessageReaders_C5_NonExistent(t *testing.T) {
 	env := newM4Env(t)
 	cookieA, _ := env.seedUser(230)
 
 	env.expect.GET("/api/messages/not-a-number/readers").
 		WithHeader(middleware.MMCookieHeader, cookieA).
-		Expect().Status(400)
+		Expect().Status(404)
 }
 
 // ---------- GET /api/messages/:id/replies ------------------------------------
@@ -306,14 +307,15 @@ func TestM4MessageReplies_C4_NotChannelMember(t *testing.T) {
 		Expect().Status(403)
 }
 
-// TestM4MessageReplies_C5_InvalidPath: 路径 ID 非法 → 400。
+// TestM4MessageReplies_C5_InvalidPath: 路径 ID 不存在 → 404。
+// C012 后 path param 接受任意 string，"非数字 → 400" 校验已移除（spec §3.2）。
 func TestM4MessageReplies_C5_InvalidPath(t *testing.T) {
 	env := newM4Env(t)
 	cookieA, _ := env.seedUser(240)
 
 	env.expect.GET("/api/messages/oops/replies").
 		WithHeader(middleware.MMCookieHeader, cookieA).
-		Expect().Status(400)
+		Expect().Status(404)
 }
 
 // ---------- GET /api/messages/:id/after --------------------------------------
@@ -374,7 +376,8 @@ func TestM4MessageAfter_C4_NotChannelMember(t *testing.T) {
 		Expect().Status(403)
 }
 
-// TestM4MessageAfter_C5_InvalidPath: 路径 ID 非法 → 400。
+// TestM4MessageAfter_C5_InvalidPath: 路径 ID 不存在 → 404。
+// C012 后 path param 接受任意 string，"非数字 → 400" 校验已移除（spec §3.2）。
 func TestM4MessageAfter_C5_InvalidPath(t *testing.T) {
 	env := newM4Env(t)
 	cookieA, _ := env.seedUser(250)
@@ -382,7 +385,7 @@ func TestM4MessageAfter_C5_InvalidPath(t *testing.T) {
 	env.expect.GET("/api/messages/xyz/after").
 		WithHeader(middleware.MMCookieHeader, cookieA).
 		WithQuery("limit", 50).
-		Expect().Status(400)
+		Expect().Status(404)
 }
 
 // ---------- POST /api/channels/:id/read --------------------------------------
@@ -437,12 +440,14 @@ func TestM4ChannelRead_C4_NotChannelMember(t *testing.T) {
 		Expect().Status(403)
 }
 
-// TestM4ChannelRead_C5_InvalidPath: 路径 ID 非法 → 400。
+// TestM4ChannelRead_C5_InvalidPath: 路径 ID 不存在（非成员） → 403。
+// C012 后 path param 接受任意 string，"非数字 → 400" 校验已移除（spec §3.2）；
+// 非成员鉴权由 channel-member middleware 处理 → 403。
 func TestM4ChannelRead_C5_InvalidPath(t *testing.T) {
 	env := newM4Env(t)
 	cookieA, _ := env.seedUser(260)
 
 	env.expect.POST("/api/channels/abc/read").
 		WithHeader(middleware.MMCookieHeader, cookieA).
-		Expect().Status(400)
+		Expect().Status(403)
 }
