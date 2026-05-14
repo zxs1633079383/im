@@ -1,10 +1,10 @@
 ---
 id: C014
 title: 每个 HTTP 路由 + 每个 WSMessageType 必须有 1 单测 + 1 集成测试（100% 入口覆盖）
-status: drafting
+status: active
 created: 2026-05-13
-last_recurred: 2026-05-13
-recurrence_count: 1
+last_recurred: 2026-05-14
+recurrence_count: 2
 source_logs:
   - 客户端 worktree feat/im-reactor-2 用户拍板（2026-05-13）
 applies_to:
@@ -249,6 +249,7 @@ make mockery-check        # mocks 同步
 | # | 日期 | 触发场景 | 引用日志 | 处置 |
 |---|------|---------|---------|------|
 | 1 | 2026-05-13 | 用户拍板 "100% 覆盖" + cutover all-case 后 198 集成测试已绿但单测覆盖率 unknown | 客户端 SESSION.md §0 | **本 harness 创建**；首批 gap 由 autonomous 测试覆盖 agent 跑 |
+| 2 | 2026-05-14 | T4 autonomous 落地：4 个 CI gate 脚本 + ChannelService 7 method 多 case + ChannelGovernanceService 11 method 1-happy | feat/im-reactor-2 commit `7d5ed46` / `80787c4` / `de091f4` | **drafting → active**；阈值起步 60% warn-only，service 包 0%→5.2% / 总覆盖率 4.9%→9.9%；后续 PR 推 85% |
 
 ## 6. 反例与边界（Don't Over-Apply）
 
@@ -267,5 +268,33 @@ make mockery-check        # mocks 同步
 ---
 
 **Owner**：im 后端
-**最后更新**：2026-05-13（drafting，等 autonomous 执行批准）
-**下次更新触发**：CI gate 接管 / 单测包覆盖率落地 / 用户决策变更
+**最后更新**：2026-05-14（active；4 件 gate 落地 + ChannelService 单测起步）
+**下次更新触发**：service 覆盖率 ≥ 85% / 阈值 60→85 切硬模式 / 集成测试 100% / 用户决策变更
+
+## 8. T4 实施状态（2026-05-14）
+
+### 已落地
+
+| 件 | 路径 | 状态 |
+|---|---|---|
+| check-id-types.sh | server/scripts/ | green（C012 三件套通过）|
+| check-route-coverage.sh | server/scripts/ | green（93 tests / 88 routes）|
+| check-svc-coverage.sh | server/scripts/ | informational（95 method / 30 test）|
+| check-test-cover.sh | server/scripts/ | warn-only（9.9% < 60%）|
+| c014.mk | server/ | `make -f c014.mk check-c014-all` 调用入口 |
+| ChannelService 7 单测 | internal/service/ | 26 sub-test PASS（TransferOwner 多 case + 6 method）|
+| ChannelGovernanceService 11 单测 | internal/service/ | 11 happy PASS |
+
+### 未做（留给后续 PR）
+
+- AnnouncementService / ApprovalService / MessageService / NotificationService 等
+- handler 集成测试 sweep（C008 已确认 88/93，本期无新 endpoint）
+- 阈值上调 60 → 85（等单测推到 ≥85% 后切 THRESHOLD_HARD=1）
+- 41 个 pre-existing 集成测试 fail（testcontainers redis race / team_id 漂移 / C5 spec 行为）不在 C014 范围
+
+### 不污染 user WIP 设计
+
+- **不修改主 `server/Makefile`**（保留用户 IM_REDIS_CLUSTER WIP）
+- 改为独立 `server/c014.mk`：`make -f c014.mk check-c014-all`
+- 仅 `.mockery.yaml` 加一行 `ChannelGovernanceRepo:` + 新增 mock 文件
+

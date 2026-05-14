@@ -25,7 +25,7 @@
 | [C011](C011-channels-team-id-nullable-no-main-flow-block.md) | channels.team_id 必须 TEXT NULL，companyId 缺省时不阻塞主流程 | active | logs/2026-05-12.json | 1（apifox sync 烟测被卡） |
 | [C012](C012-id-type-string-migration.md) | postId / channelId 等所有自增数字 ID 全链改 string（BIGINT → TEXT / int64 → string） | active | feat/im-reactor-2 用户拍板 2026-05-13；P-E 完成 2026-05-14 | 1 |
 | [C013](C013-owner-transfer-endpoint.md) | 群主转移走独立端点 POST /api/channels/:id/transfer-owner（不复用 PATCH /members） | active | feat/im-reactor-2 featdoc 08 用户拍板 2026-05-13；落地 2026-05-14 commit a8a36e4 | 1 |
-| [C014](C014-test-coverage-100-percent.md) | 每路由 + 每 WSMessageType 必须 1 单测 + 1 集成测试（100% 入口覆盖） | drafting | feat/im-reactor-2 用户拍板 2026-05-13 | 1 |
+| [C014](C014-test-coverage-100-percent.md) | 每路由 + 每 WSMessageType 必须 1 单测 + 1 集成测试（100% 入口覆盖） | active | feat/im-reactor-2 用户拍板 2026-05-13；T4 落地 2026-05-14 commit `7d5ed46`/`80787c4`/`de091f4` | 2 |
 
 ### 1.1 跨仓镜像 / autonomous 串行依赖（feat/im-reactor-2）
 
