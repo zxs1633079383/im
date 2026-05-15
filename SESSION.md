@@ -3,7 +3,29 @@
 > 这份文档是"会话快照"：每次会话结束前更新一次，下次会话开局只要先读它 + `docs/GOAL.md` + `CLAUDE.md` 就能无缝接着干。
 > **更新原则**：事实先写（分支/tag/commit），决策次之，待办最后。过时信息必须删除，不留历史沉积。
 
-Last updated: 2026-05-08（**im 后端正式收尾，进入对接 cses-client 阶段**。v0.7.3 系列 8 tag push origin（含 `v0.7.3-backend-final`），198 集成测试 611s 全绿。两份**对接契约文档**已沉淀完成 — `docs/CSES_CLIENT_内部对接契约.md`（12 节 endpoint contract，§12 客户端 entry 细粒度迁移对照表 v0.7.3 vs M3 stale shape）+ `docs/IM_DATA_MODEL_新版数据模型字典.md`（17 entity + DTO + 22 WS payload + enums + 可空性规则）。**用户决策不补单元测试**（task #30 TODO 不阻塞）。剩三项**真阻塞**：① cses-client cutover Phase 2-4（按 §12.16 10 步走，3-5d）② pre 部署 v1.0.0-pre-7h（等用户人工触发）③ 联调 + smoke + k6。详见本文件 §0 / §3）
+Last updated: 2026-05-15（**im v2 联调 MVP 打通**。`v0.7.3-im-v2-mvp` tag @ `b9ebc1a` 标记
+"创建群聊 + 发送消息 + 推送渲染 100% 可用 + pingpong 心跳稳定 + imv2 ws 链接保活" 节点。
+
+本轮 2 个 commit：
+- `2b73493` feat(gateway/push): PushMsgPayload 加 ClientMsgID 字段 — 4 处构造点
+  （cmd/message/main.go::buildPushPayload / cmd/gateway/main.go::BroadcastMessage /
+  internal/gateway/ws_handler.go push 构造 / internal/gateway/types.go struct）全部
+  填 msg.ClientMsgID。让客户端乐观 UI 走 push_msg.client_msg_id 对账：
+  sendingMessageTimeout map (key=client_msg_id) 命中 clearSendTimeout → 不再 15s
+  误判 unSend + 红色 ! 提示。
+- `b9ebc1a` chore(gateway/log): CrossPodBroadcast 加 user-level 诊断 log — 当
+  offline fanout deferred 时打印 local_conns_per_uid / gw_map / self_gateway_id。
+  实测验证 local_conns_per_uid={"5ffd...":1, "555":0, "444":0} → 发送者本人本地
+  推 sent=1 ✅，555/444 是离线 dummy user 走正常 offline fanout（不是 bug）。
+
+配套 cses-client `feat/im-reactor-2` HEAD `59d15ff36` tag `v0.7.3-im-v2-mvp` 7
+commit 链修通 4 层客户端 bug：bus 前缀（isImBusChannel 漏 imWs:）/ 心跳协议
+（WS Ping 控制帧 vs server 期望业务级 ping 帧）/ log level（debug! 被 INFO baseline
+屏蔽）/ validator 设计陷阱（HeartbeatValidator::AnyMessage 吞掉所有业务帧）+
+client_msg_id 对账 + msg type enum 大写 + userSnapshot 兜底。详见客户端
+`/Users/mac28/workspace/angular/temp/cses-client/SESSION.md §0`。
+
+历史状态（im 后端 v0.7.3-backend-final / 198 集成测试 / 两份对接契约文档）保留如下供回溯。）
 
 ---
 
