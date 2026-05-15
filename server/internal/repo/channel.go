@@ -24,8 +24,25 @@ const (
 	MemberRoleOwner  int16 = 3
 )
 
-// ChannelWithPreview is a Channel enriched with last-message info and unread
-// count for the calling user. Used to render channel lists in the UI.
+// ChannelWithPreview is a Channel enriched with the caller's view (last-msg
+// preview, unread count, read cursor, mute/top prefs, nickname, phantom
+// counters) plus per-channel FIFO slices for urgent + mention queues.
+//
+// Designed to be the *single* request that powers connection bootstrap +
+// reconnect bootstrap on the desktop client (analogous to Telegram's
+// `messages.dialogs` payload — see cses-client harness C007).
+//
+// Shape:
+//
+//	┌─ Channel meta (id/name/avatar/seq/...)
+//	├─ Peer (DM only)
+//	├─ Last message preview (content + created_at + top_message_id)
+//	├─ Member view (last_read_seq, phantom_count, phantom_at_read,
+//	│   notify_pref, is_top, nick_name) — from channel_members where uid=caller
+//	├─ Channel-max-seq (= channels.seq aliased for client clarity)
+//	└─ FIFO slices:
+//	    UrgentInChannel  — unconfirmed urgent msgs (ASC by created_at, ≤50/channel)
+//	    MentionInChannel — @-caller / @all msgs (DESC by created_at, ≤50/channel)
 //
 // M4: PeerUserID replaces the joined display_name; for DM channels it carries
 // the mm UserID of the OTHER party so the front-end can fetch the profile
@@ -37,6 +54,48 @@ type ChannelWithPreview struct {
 	LastMsgContent string    `json:"last_msg_content"`
 	LastMsgAt      time.Time `json:"last_msg_at"`
 	UnreadCount    int64     `json:"unread_count"`
+
+	// ── member view (channel_members where user_id = caller) ──
+	LastReadSeq   int64  `gorm:"column:last_read_seq"   json:"last_read_seq"`
+	PhantomCount  int64  `gorm:"column:phantom_count"   json:"phantom_count"`
+	PhantomAtRead int64  `gorm:"column:phantom_at_read" json:"phantom_at_read"`
+	NotifyPref    int16  `gorm:"column:notify_pref"     json:"notify_pref"`
+	IsTop         bool   `gorm:"column:is_top"          json:"is_top"`
+	NickName      string `gorm:"column:nick_name"       json:"nick_name"`
+
+	// ── channel-wide cursor + top msg id ──
+	TopMessageID  string `gorm:"column:top_message_id"  json:"top_message_id"`
+	ChannelMaxSeq int64  `gorm:"column:channel_max_seq" json:"channel_max_seq"`
+
+	// ── FIFO slices (filled in Go after Q2 + Q3, NOT scanned from Q1) ──
+	UrgentInChannel  []UrgentItem  `gorm:"-" json:"urgent_in_channel"`
+	MentionInChannel []MentionItem `gorm:"-" json:"mention_in_channel"`
+}
+
+// UrgentItem is a single entry of ChannelWithPreview.UrgentInChannel.
+// SenderID = the urger (whoever called POST /api/messages/urgent).
+// Content is the raw message text (UI may truncate for the banner).
+type UrgentItem struct {
+	MsgID     string    `gorm:"column:msg_id"     json:"msg_id"`
+	ChannelID string    `gorm:"column:channel_id" json:"-"` // scan key, not exposed
+	Seq       int64     `gorm:"column:seq"        json:"seq"`
+	SenderID  string    `gorm:"column:sender_id"  json:"sender_id"`
+	Content   string    `gorm:"column:content"    json:"content"`
+	CreatedAt time.Time `gorm:"column:created_at" json:"created_at"`
+}
+
+// MentionItem is a single entry of ChannelWithPreview.MentionInChannel.
+// MentionAll is the cached check "did the source message's mention_list
+// contain 'all'?" so the client doesn't have to inspect the array itself.
+type MentionItem struct {
+	MsgID      string         `gorm:"column:msg_id"       json:"msg_id"`
+	ChannelID  string         `gorm:"column:channel_id"   json:"-"` // scan key, not exposed
+	Seq        int64          `gorm:"column:seq"          json:"seq"`
+	SenderID   string         `gorm:"column:sender_id"    json:"sender_id"`
+	MentionAll bool           `gorm:"column:mention_all"  json:"mention_all"`
+	CreatedAt  time.Time      `gorm:"column:created_at"   json:"created_at"`
+	// raw mention_list kept for debugging; not part of the public contract.
+	MentionList pq.StringArray `gorm:"column:mention_list" json:"-"`
 }
 
 // ChannelRepo manages channels and their members.
@@ -348,16 +407,29 @@ func (r *gormChannelRepo) FindDM(ctx context.Context, userA, userB string) (*Cha
 	return &ch, nil
 }
 
-// ListByUserWithPreview returns channels for userID enriched with the last
-// message preview and the caller's unread count. Channels are ordered by
-// last activity (last message time, falling back to channel created_at).
+// ListByUserWithPreview returns channels for userID enriched with the caller's
+// full member view (read cursor, mute/top prefs, nickname, phantom counters),
+// the channel-wide top message preview + top_message_id + channel_max_seq,
+// and per-channel FIFO slices for unconfirmed urgent + @-caller mention
+// messages.
+//
+// Implemented as 3 round-trips (channels+member view+top-msg / urgent batch /
+// mention batch) to keep the SQL readable. Urgent + mention slices use
+// ROW_NUMBER() PARTITION BY channel_id to cap at 50 entries per channel
+// without N+1.
 //
 // M4: For DM channels, peer_user_id is the OTHER member's mm UserID (the
 // caller resolves the display name from cses Redis). Group channels keep
 // their own name and peer_user_id is empty.
+//
+// C007: client expects this single response to be sufficient for both cold
+// start and reconnect bootstrap — see harness card.
 func (r *gormChannelRepo) ListByUserWithPreview(ctx context.Context, userID string) ([]ChannelWithPreview, error) {
+	db := r.db.WithContext(ctx)
+
+	// ── Q1: channels + member view + top msg preview ─────────────────────
 	var result []ChannelWithPreview
-	err := r.db.WithContext(ctx).Raw(
+	err := db.Raw(
 		`SELECT
 		    c.id, c.type, c.name, c.avatar_url, c.seq, c.creator_id, c.team_id,
 		    c.created_at, c.updated_at,
@@ -371,13 +443,21 @@ func (r *gormChannelRepo) ListByUserWithPreview(ctx context.Context, userID stri
 		    GREATEST(
 		        (c.seq - cm.last_read_seq) - (cm.phantom_count - cm.phantom_at_read),
 		        0
-		    )                                               AS unread_count
+		    )                                               AS unread_count,
+		    cm.last_read_seq                                AS last_read_seq,
+		    cm.phantom_count                                AS phantom_count,
+		    cm.phantom_at_read                              AS phantom_at_read,
+		    cm.notify_pref                                  AS notify_pref,
+		    cm.is_top                                       AS is_top,
+		    cm.nick_name                                    AS nick_name,
+		    COALESCE(m.id, '')                              AS top_message_id,
+		    c.seq                                           AS channel_max_seq
 		 FROM channels c
 		 JOIN channel_members cm ON cm.channel_id = c.id AND cm.user_id = ?
 		 LEFT JOIN LATERAL (
-		     SELECT content, created_at
+		     SELECT id, content, created_at
 		     FROM messages
-		     WHERE channel_id = c.id
+		     WHERE channel_id = c.id AND deleted = FALSE
 		     ORDER BY seq DESC
 		     LIMIT 1
 		 ) m ON true
@@ -385,7 +465,82 @@ func (r *gormChannelRepo) ListByUserWithPreview(ctx context.Context, userID stri
 		userID, userID,
 	).Scan(&result).Error
 	if err != nil {
-		return nil, fmt.Errorf("list by user with preview: %w", err)
+		return nil, fmt.Errorf("list by user with preview Q1: %w", err)
+	}
+	if len(result) == 0 {
+		return result, nil
+	}
+
+	// ── Q2: urgent slice — unconfirmed urgent msgs across the caller's
+	//        channels, capped at 50 per channel (ASC by created_at).
+	var urgents []UrgentItem
+	err = db.Raw(
+		`SELECT msg_id, channel_id, seq, sender_id, content, created_at FROM (
+		    SELECT
+		        m.id          AS msg_id,
+		        m.channel_id  AS channel_id,
+		        m.seq         AS seq,
+		        m.sender_id   AS sender_id,
+		        m.content     AS content,
+		        m.created_at  AS created_at,
+		        ROW_NUMBER() OVER (PARTITION BY m.channel_id ORDER BY m.created_at ASC) AS rn
+		    FROM messages m
+		    JOIN channel_members cm ON cm.channel_id = m.channel_id AND cm.user_id = ?
+		    WHERE m.is_urgent = TRUE
+		      AND m.deleted   = FALSE
+		      AND NOT EXISTS (
+		          SELECT 1 FROM urgent_confirmations uc
+		          WHERE uc.message_id = m.id AND uc.user_id = ?
+		      )
+		 ) sub WHERE rn <= 50`,
+		userID, userID,
+	).Scan(&urgents).Error
+	if err != nil {
+		return nil, fmt.Errorf("list by user with preview Q2 urgent: %w", err)
+	}
+
+	// ── Q3: mention slice — msgs whose mention_list overlaps {caller, "all"},
+	//        capped at 50 per channel (DESC by created_at).
+	var mentions []MentionItem
+	err = db.Raw(
+		`SELECT msg_id, channel_id, seq, sender_id, mention_list, mention_all, created_at FROM (
+		    SELECT
+		        m.id            AS msg_id,
+		        m.channel_id    AS channel_id,
+		        m.seq           AS seq,
+		        m.sender_id     AS sender_id,
+		        m.mention_list  AS mention_list,
+		        (m.mention_list @> ARRAY['all']::text[]) AS mention_all,
+		        m.created_at    AS created_at,
+		        ROW_NUMBER() OVER (PARTITION BY m.channel_id ORDER BY m.created_at DESC) AS rn
+		    FROM messages m
+		    JOIN channel_members cm ON cm.channel_id = m.channel_id AND cm.user_id = ?
+		    WHERE m.deleted     = FALSE
+		      AND m.mention_list IS NOT NULL
+		      AND m.mention_list && ARRAY[?, 'all']::text[]
+		 ) sub WHERE rn <= 50`,
+		userID, userID,
+	).Scan(&mentions).Error
+	if err != nil {
+		return nil, fmt.Errorf("list by user with preview Q3 mention: %w", err)
+	}
+
+	// ── Stitch urgent + mention slices back onto their channel rows ──
+	idx := make(map[string]int, len(result))
+	for i := range result {
+		idx[result[i].ID] = i
+		result[i].UrgentInChannel = []UrgentItem{}
+		result[i].MentionInChannel = []MentionItem{}
+	}
+	for _, u := range urgents {
+		if i, ok := idx[u.ChannelID]; ok {
+			result[i].UrgentInChannel = append(result[i].UrgentInChannel, u)
+		}
+	}
+	for _, m := range mentions {
+		if i, ok := idx[m.ChannelID]; ok {
+			result[i].MentionInChannel = append(result[i].MentionInChannel, m)
+		}
 	}
 	return result, nil
 }
