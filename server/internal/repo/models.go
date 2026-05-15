@@ -106,6 +106,12 @@ type Message struct {
 	Deleted       bool            `gorm:"column:deleted;not null;default:false"                   json:"deleted,omitempty"`
 	DeletedAt     *time.Time      `gorm:"column:deleted_at"                                       json:"deleted_at,omitempty"`
 	IsUrgent      bool            `gorm:"column:is_urgent;not null;default:false"                 json:"is_urgent,omitempty"`
+	// MentionList carries @-mention recipients. NULL/empty = no mention;
+	// ["all"] = @everyone; ["uid1","uid2"] = @specific users. Indexed by GIN
+	// for `@>` containment queries (ChannelWithPreview.MentionInChannel).
+	// Wire format kept on WS push_msg envelope so on-line clients can
+	// append to their per-channel mention queue without re-fetching.
+	MentionList pq.StringArray `gorm:"column:mention_list;type:text[]"                         json:"mention_list,omitempty"`
 	// Props is a nullable JSONB payload used by system messages (msg_type=4)
 	// to describe what happened — e.g. {"sys_type":"member_joined","actor_id":"<24hex>","target_id":"<24hex>"}.
 	// Stored as a string so GORM stays decoupled from any JSONB helper type;
