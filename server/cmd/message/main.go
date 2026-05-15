@@ -244,17 +244,18 @@ func buildPushPayload(msg *repo.Message, phantomVariant bool) gateway.PushMsgPay
 		}
 	}
 	return gateway.PushMsgPayload{
-		PushID:    fmt.Sprintf("msg-%s-%d", msg.ChannelID, msg.Seq),
-		Type:      gateway.NoticeTypeForMsgType(msg.MsgType),
-		ChannelID: msg.ChannelID,
-		Seq:       msg.Seq,
-		ServerID:  msg.ID,
-		SenderID:  msg.SenderID,
-		Content:   msg.Content,
-		MsgType:   msg.MsgType,
-		VisibleTo: []string(msg.VisibleTo),
-		Props:     gateway.DerefStringPtr(msg.Props),
-		CreatedAt: msg.CreatedAt,
+		PushID:      fmt.Sprintf("msg-%s-%d", msg.ChannelID, msg.Seq),
+		Type:        gateway.NoticeTypeForMsgType(msg.MsgType),
+		ChannelID:   msg.ChannelID,
+		Seq:         msg.Seq,
+		ServerID:    msg.ID,
+		ClientMsgID: msg.ClientMsgID,
+		SenderID:    msg.SenderID,
+		Content:     msg.Content,
+		MsgType:     msg.MsgType,
+		VisibleTo:   []string(msg.VisibleTo),
+		Props:       gateway.DerefStringPtr(msg.Props),
+		CreatedAt:   msg.CreatedAt,
 	}
 }
 

@@ -151,12 +151,19 @@ type PushMsgPayload struct {
 	ChannelID string     `json:"channel_id"`
 	Seq       int64      `json:"seq"`
 	ServerID  string     `json:"server_msg_id"`
-	SenderID  string     `json:"sender_id"`
-	Content   string     `json:"content,omitempty"`
-	MsgType   int16      `json:"msg_type"` // 1=text/2=image/3=file/4=system/99=phantom
-	VisibleTo []string   `json:"visible_to,omitempty"`
-	Props     string     `json:"props,omitempty"` // raw JSONB; populated when MsgType=System
-	CreatedAt time.Time  `json:"created_at"`
+	// ClientMsgID is the sender's client-generated id (mirror of
+	// repo.Message.client_msg_id). Carried back to the sender so the
+	// optimistic UI can reconcile temporaryId → server_msg_id without
+	// relying on a separate send_ack frame on the HTTP send path.
+	// Empty for messages that have no client_msg_id (legacy / WS send
+	// without one).
+	ClientMsgID string     `json:"client_msg_id,omitempty"`
+	SenderID    string     `json:"sender_id"`
+	Content     string     `json:"content,omitempty"`
+	MsgType     int16      `json:"msg_type"` // 1=text/2=image/3=file/4=system/99=phantom
+	VisibleTo   []string   `json:"visible_to,omitempty"`
+	Props       string     `json:"props,omitempty"` // raw JSONB; populated when MsgType=System
+	CreatedAt   time.Time  `json:"created_at"`
 }
 
 // PushACKPayload is the client's acknowledgement of a PushMsgPayload.

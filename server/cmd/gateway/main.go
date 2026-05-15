@@ -443,17 +443,18 @@ func (p *hubMessagePusher) BroadcastMessage(channelID string, userIDs []string, 
 		return
 	}
 	payload := gateway.PushMsgPayload{
-		PushID:    fmt.Sprintf("http-%s-%d", msg.ChannelID, msg.Seq),
-		Type:      gateway.NoticeTypeForMsgType(msg.MsgType),
-		ChannelID: msg.ChannelID,
-		Seq:       msg.Seq,
-		ServerID:  msg.ID,
-		SenderID:  msg.SenderID,
-		Content:   msg.Content,
-		MsgType:   msg.MsgType,
-		VisibleTo: []string(msg.VisibleTo),
-		Props:     gateway.DerefStringPtr(msg.Props),
-		CreatedAt: msg.CreatedAt,
+		PushID:      fmt.Sprintf("http-%s-%d", msg.ChannelID, msg.Seq),
+		Type:        gateway.NoticeTypeForMsgType(msg.MsgType),
+		ChannelID:   msg.ChannelID,
+		Seq:         msg.Seq,
+		ServerID:    msg.ID,
+		ClientMsgID: msg.ClientMsgID,
+		SenderID:    msg.SenderID,
+		Content:     msg.Content,
+		MsgType:     msg.MsgType,
+		VisibleTo:   []string(msg.VisibleTo),
+		Props:       gateway.DerefStringPtr(msg.Props),
+		CreatedAt:   msg.CreatedAt,
 	}
 	p.xpod.broadcast(userIDs, channelID, gateway.TypePushMsg, payload)
 }
