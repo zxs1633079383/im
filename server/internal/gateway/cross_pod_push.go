@@ -73,6 +73,20 @@ func (h *Hub) CrossPodBroadcast(
 	}
 
 	remote := h.pushLocalAndCollectRemote(userIDs, msgType, rawPayload)
+	// 调试 log：打印每个 user 在本地 hub 的 sent 数量，便于诊断"明明在线但 sent=0"
+	if log != nil {
+		// 收集每个 user 的本地 conn 数（h.ConnsForUser）+ sent 结果
+		localStats := make(map[string]int, len(userIDs))
+		for _, uid := range userIDs {
+			localStats[uid] = len(h.ConnsForUser(uid))
+		}
+		log.Info("CrossPodBroadcast local stats",
+			"type", string(msgType),
+			"input_uids", userIDs,
+			"local_conns_per_uid", localStats,
+			"remote_after_local", remote,
+		)
+	}
 	if len(remote) == 0 {
 		return
 	}
@@ -137,8 +151,15 @@ func (h *Hub) crossPodBroadcastImpl(
 	}
 	buckets := bucketByGateway(gwMap, gatewayID)
 	if len(buckets) == 0 {
+		// 把 user_id / routing 内容打出来便于排查 "明明在线但本地 hub 找不到":
+		//   - userIDs: pushLocalAndCollectRemote 收集的 remote 队列（本地 sent=0 的 user）
+		//   - gwMap: routing.LookupBatch 查到的 user→gateways（含 selfGatewayID 才会被 bucketByGateway 排空）
+		//   - selfGatewayID: 当前 gateway 实例 id
 		log.Info("offline fanout deferred",
 			"uids", len(userIDs),
+			"user_ids", userIDs,
+			"gw_map", gwMap,
+			"self_gateway_id", gatewayID,
 			"type", string(msgType),
 		)
 		return
