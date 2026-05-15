@@ -24,6 +24,13 @@ const (
 	// carry. Clients holding more channels must batch across multiple calls.
 	// Contract locked, 对齐 docs/BACKEND.md §3.3; 改动前先改文档并通知前端.
 	MaxChannelsPerCall = 500
+	// SyncTooLongSeqDiff — v0.7.3 P-7.5: gap > this value → return
+	// `kind:{type:"too_long", reset_to: serverSeq}` so the client clears its
+	// local `message` rows for that channel and re-fetches the first screen
+	// via `messagesAround`. 设计参 TG `differenceTooLong` + TDLib
+	// MAX_CHANNEL_DIFFERENCE=100；10000 = SyncMsgLimit×200 是 fast-forward
+	// 也无意义的边界（user 离线 ≥ 一周或 在 万人群里时典型触发）。
+	SyncTooLongSeqDiff = 10000
 )
 
 // SyncChannelStore is the subset of repo.ChannelRepo SyncService needs.
@@ -55,17 +62,36 @@ type SyncParams struct {
 	Cursors []SyncCursor
 }
 
+// SyncEntryKind is the v0.7.3 4-branch tag (Empty / Full / Slice / TooLong)
+// the server writes on each per-channel delta. Wire form matches Rust client
+// `types_v2::SyncEntryKind` (internally tagged enum, `tag="type"`,
+// rename_all=snake_case):
+//
+//	{"type":"empty"}
+//	{"type":"full"}
+//	{"type":"slice"}
+//	{"type":"too_long","reset_to":N}
+//
+// `ResetTo` only carries a value when Type=="too_long"; omitempty drops it
+// for the other three.
+type SyncEntryKind struct {
+	Type    string `json:"type"`
+	ResetTo int64  `json:"reset_to,omitempty"`
+}
+
 // SyncChannelDelta is the per-channel sync result for one channel that has
-// changes. Field names mirror the legacy handler.SyncChannelResult exactly so
-// the JSON envelope is identical post-cut-over.
+// changes. v0.7.3 P-7.5 adds Kind + NextCursor (omitempty 渐进切换), preserving
+// the legacy HasMore field for old clients still doing fallback inference.
 //
 // contract locked, 对齐 docs/BACKEND.md §3.3; 改动前先改文档并通知前端.
 type SyncChannelDelta struct {
-	ID        string
-	ServerSeq int64
-	Unread    int64
-	Messages  []repo.Message
-	HasMore   bool
+	ID         string
+	ServerSeq  int64
+	Unread     int64
+	Messages   []repo.Message
+	HasMore    bool
+	Kind       *SyncEntryKind // v0.7.3 新字段：nil 时旧客户端 fallback default_for_legacy
+	NextCursor *int64         // 仅 Kind.Type=="slice" 时非 nil
 }
 
 // SyncResult bundles the per-channel deltas. The transport layer wraps this
@@ -145,30 +171,71 @@ func (s *SyncService) Sync(ctx context.Context, callerID string, p SyncParams) (
 			delta.Unread = unread
 		}
 
-		gap := serverSeq - clientSeq
-		switch {
-		case !known:
-			// New channel: fetch latest SyncMsgLimit, set has_more if there
-			// is older history beyond what we returned.
-			msgs, _ := s.fetchLatest(ctx, chID, callerID, serverSeq, SyncMsgLimit)
-			delta.Messages = msgs
-			delta.HasMore = serverSeq > int64(len(delta.Messages))
-		case gap <= SyncGapThreshold:
-			// Small gap: return all missed messages.
-			msgs, _ := s.messages.FetchForUser(ctx, chID, callerID, clientSeq, SyncGapThreshold)
-			delta.Messages = msgs
-		default:
-			// Large gap: fast-forward — return latest SyncMsgLimit + has_more.
-			msgs, _ := s.fetchLatest(ctx, chID, callerID, serverSeq, SyncMsgLimit)
-			delta.Messages = msgs
-			delta.HasMore = true
-		}
-
+		s.fillDeltaPayload(ctx, &delta, chID, callerID, clientSeq, known)
 		results = append(results, delta)
 	}
 
 	recordSyncMetrics(ctx, results)
 	return SyncResult{Channels: results}, nil
+}
+
+// fillDeltaPayload writes Messages / HasMore / Kind / NextCursor into delta
+// according to the v0.7.3 four-branch decision tree. Split out of Sync so
+// the main function stays under 60 lines per project Go style rules.
+//
+// Decision tree (参 TG `differenceDone` Empty/Slice/Full/TooLong + TDLib
+// MAX_CHANNEL_DIFFERENCE=100):
+//
+//  1. gap > SyncTooLongSeqDiff → too_long{reset_to=serverSeq}, no messages.
+//     Client clears local `message` rows for the channel + re-fetches first screen.
+//  2. unknown channel (first sync for this peer) → full with latest SyncMsgLimit.
+//     HasMore=true is set when the channel has older history; legacy clients
+//     still infer from HasMore, new clients see kind="full".
+//  3. small gap (<= SyncGapThreshold): return every missed message → empty if
+//     none, full otherwise.
+//  4. mid gap (SyncGapThreshold < gap <= SyncTooLongSeqDiff): slice — send
+//     SyncMsgLimit oldest-of-gap messages + next_cursor = last_in_slice.seq.
+func (s *SyncService) fillDeltaPayload(
+	ctx context.Context,
+	delta *SyncChannelDelta,
+	chID, callerID string,
+	clientSeq int64,
+	known bool,
+) {
+	gap := delta.ServerSeq - clientSeq
+
+	if known && gap > SyncTooLongSeqDiff {
+		delta.Kind = &SyncEntryKind{Type: "too_long", ResetTo: delta.ServerSeq}
+		return
+	}
+
+	switch {
+	case !known:
+		msgs, _ := s.fetchLatest(ctx, chID, callerID, delta.ServerSeq, SyncMsgLimit)
+		delta.Messages = msgs
+		delta.HasMore = delta.ServerSeq > int64(len(delta.Messages))
+		delta.Kind = &SyncEntryKind{Type: "full"}
+	case gap <= SyncGapThreshold:
+		msgs, _ := s.messages.FetchForUser(ctx, chID, callerID, clientSeq, SyncGapThreshold)
+		delta.Messages = msgs
+		if len(msgs) == 0 {
+			delta.Kind = &SyncEntryKind{Type: "empty"}
+		} else {
+			delta.Kind = &SyncEntryKind{Type: "full"}
+		}
+	default:
+		// Slice: SyncGapThreshold < gap ≤ SyncTooLongSeqDiff.
+		// FetchForUser already returns oldest-first (afterSeq+1 ascending), so
+		// the last element is the highest seq in the slice → next_cursor.
+		msgs, _ := s.messages.FetchForUser(ctx, chID, callerID, clientSeq, SyncMsgLimit)
+		delta.Messages = msgs
+		delta.HasMore = true
+		delta.Kind = &SyncEntryKind{Type: "slice"}
+		if n := len(msgs); n > 0 {
+			next := msgs[n-1].Seq
+			delta.NextCursor = &next
+		}
+	}
 }
 
 // recordSyncMetrics feeds the Grafana "Sync" row: response count (tagged

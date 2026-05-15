@@ -24,15 +24,30 @@ type syncChannelEntry struct {
 	Seq int64  `json:"seq"`
 }
 
-// syncChannelResult mirrors the legacy handler.SyncChannelResult exactly. The
-// `omitempty` tags on Messages + HasMore preserve the legacy wire format
-// (no-change channels never appear; small/large/new gap shape unchanged).
+// syncEntryKind is the wire form of `service.SyncEntryKind`. Field tags match
+// Rust client `types_v2::SyncEntryKind` (internally tagged enum):
+//
+//	{"type":"empty"} / {"type":"full"} / {"type":"slice"}
+//	{"type":"too_long","reset_to": <serverSeq>}
+type syncEntryKind struct {
+	Type    string `json:"type"`
+	ResetTo int64  `json:"reset_to,omitempty"`
+}
+
+// syncChannelResult — v0.7.3 P-7.5 adds Kind + NextCursor (omitempty so old
+// clients see legacy shape).
+//
+// Legacy clients infer from `messages` (Empty if empty, Full otherwise) and
+// `has_more`; new Rust client reads `kind` directly and recurses on slice with
+// `next_cursor`.
 type syncChannelResult struct {
-	ID        string         `json:"id"`
-	ServerSeq int64          `json:"server_seq"`
-	Unread    int64          `json:"unread"`
-	Messages  []repo.Message `json:"messages,omitempty"`
-	HasMore   bool           `json:"has_more,omitempty"`
+	ID         string         `json:"id"`
+	ServerSeq  int64          `json:"server_seq"`
+	Unread     int64          `json:"unread"`
+	Messages   []repo.Message `json:"messages,omitempty"`
+	HasMore    bool           `json:"has_more,omitempty"`
+	Kind       *syncEntryKind `json:"kind,omitempty"`
+	NextCursor *int64         `json:"next_cursor,omitempty"`
 }
 
 // syncResponse wraps the per-channel deltas in {"channels": [...]} — same
@@ -87,13 +102,25 @@ func RegisterSyncRoutes(authed *gin.RouterGroup, svc *service.SyncService, log *
 		out := make([]syncChannelResult, 0, len(result.Channels))
 		for _, d := range result.Channels {
 			out = append(out, syncChannelResult{
-				ID:        d.ID,
-				ServerSeq: d.ServerSeq,
-				Unread:    d.Unread,
-				Messages:  d.Messages,
-				HasMore:   d.HasMore,
+				ID:         d.ID,
+				ServerSeq:  d.ServerSeq,
+				Unread:     d.Unread,
+				Messages:   d.Messages,
+				HasMore:    d.HasMore,
+				Kind:       transcribeKind(d.Kind),
+				NextCursor: d.NextCursor,
 			})
 		}
 		c.JSON(200, syncResponse{Channels: out})
 	})
+}
+
+// transcribeKind maps the service-layer enum into the HTTP wire form. Returns
+// nil (omitempty drops the field) when the service layer didn't tag the entry —
+// preserves legacy wire shape so old clients keep working.
+func transcribeKind(k *service.SyncEntryKind) *syncEntryKind {
+	if k == nil {
+		return nil
+	}
+	return &syncEntryKind{Type: k.Type, ResetTo: k.ResetTo}
 }
