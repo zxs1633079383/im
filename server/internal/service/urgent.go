@@ -105,30 +105,38 @@ func (s *UrgentService) ConfirmUrgent(ctx context.Context, msgID string, callerI
 
 // CancelUrgent clears the urgent flag on msgID. Allowed when caller is the
 // original sender, OR caller is manager/owner of the channel.
-func (s *UrgentService) CancelUrgent(ctx context.Context, msgID string, callerID string) error {
+//
+// Returns the cancelled message so the HTTP layer can fan out a
+// urgent_cancelled event to online channel members (C007 Phase D). On
+// idempotent no-op (msg was not urgent), returns (msg, nil) so the handler
+// still has the channel context and skips the broadcast.
+func (s *UrgentService) CancelUrgent(ctx context.Context, msgID string, callerID string) (*repo.Message, error) {
 	ctx, span := tracer.Start(ctx, "UrgentService.CancelUrgent")
 	defer span.End()
 
 	m, err := s.messages.GetByID(ctx, msgID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if !m.IsUrgent {
-		return nil // idempotent no-op
+		return m, nil // idempotent no-op
 	}
 	if m.SenderID != callerID {
 		ok, err := s.mgr.IsManagerOrOwner(ctx, m.ChannelID, callerID)
 		if err != nil {
-			return fmt.Errorf("check manager: %w", err)
+			return nil, fmt.Errorf("check manager: %w", err)
 		}
 		if !ok {
 			if err := s.requireMember(ctx, m.ChannelID, callerID); err != nil {
-				return err
+				return nil, err
 			}
-			return ErrNotSender
+			return nil, ErrNotSender
 		}
 	}
-	return s.urgent.ClearUrgent(ctx, msgID)
+	if err := s.urgent.ClearUrgent(ctx, msgID); err != nil {
+		return nil, err
+	}
+	return m, nil
 }
 
 // ListConfirmations returns the user IDs that have confirmed msgID. Any member

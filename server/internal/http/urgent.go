@@ -9,11 +9,21 @@ import (
 	"im-server/internal/service"
 )
 
-// Urgent-related WS event type — plain string so this package stays decoupled
-// from the gateway package.
+// Urgent-related WS event types — plain strings so this package stays
+// decoupled from the gateway package.
 const (
-	EventUrgentPosted MessageEventType = "urgent_posted"
+	EventUrgentPosted    MessageEventType = "urgent_posted"
+	EventUrgentCancelled MessageEventType = "urgent_cancelled"
 )
+
+// UrgentCancelledPayload is the body of EventUrgentCancelled. Online clients
+// pop the matching msg_id from their per-channel urgent queue. CancellerID
+// is the user that called the cancel endpoint (sender or channel manager).
+type UrgentCancelledPayload struct {
+	MsgID       string `json:"msg_id"`
+	ChannelID   string `json:"channel_id"`
+	CancellerID string `json:"canceller_id"`
+}
 
 // sendUrgentReq is POST /api/messages/urgent body.
 type sendUrgentReq struct {
@@ -96,7 +106,7 @@ func RegisterUrgentRoutes(
 		if !ok {
 			return
 		}
-		err := svc.CancelUrgent(c.Request.Context(), msgID, uid)
+		msg, err := svc.CancelUrgent(c.Request.Context(), msgID, uid)
 		switch {
 		case errors.Is(err, repo.ErrNotFound):
 			c.JSON(404, gin.H{"error": "message not found"})
@@ -107,6 +117,16 @@ func RegisterUrgentRoutes(
 		case err != nil:
 			c.JSON(500, gin.H{"error": "internal error"})
 		default:
+			// Fan out urgent_cancelled so online clients pop their queue
+			// immediately; skip if msg was already not urgent (idempotent
+			// no-op) or broadcaster wasn't wired (tests).
+			if broadcaster != nil && msg != nil && msg.IsUrgent {
+				broadcaster.BroadcastToMembers(msg.ChannelID, EventUrgentCancelled, UrgentCancelledPayload{
+					MsgID:       msg.ID,
+					ChannelID:   msg.ChannelID,
+					CancellerID: uid,
+				})
+			}
 			c.JSON(200, gin.H{"status": "cancelled"})
 		}
 	})
