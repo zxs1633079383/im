@@ -12,16 +12,14 @@
 - 当前所处阶段、分支/tag、下一步决策点见 `SESSION.md`。
 - 技术栈、目录地图、文件职能见 `docs/ARCHITECTURE.md`。
 
-### 0.1 cses-client 工作目录（锁定，2026-05-01 用户拍板）
+### 0.1 cses-client 工作目录（锁定，2026-05-15 用户拍板）
 
-**唯一权威工作目录**：`/Users/mac28/workspace/angular/cses-client`
-**唯一权威分支**：`im-backend-switch`（HEAD `7c8a0c972`，与 `origin/im-backend-switch` 同步）
+**唯一权威工作目录**：`/Users/mac28/workspace/angular/temp/cses-client`
+**唯一权威分支**：`feat/im-reactor-2-offine`（HEAD `cfd9be31d`，仓库真实拼写少一个 l，不擅改）
 
-> **历史**：曾尝试切换到 `/Users/mac28/workspace/angular/temp/cses-client` + `tauri-new-im`，但 `tauri-new-im` 是从 `origin/tauri` 直切出来的，**完全没有**任何 cses-client 端的 Phase 0/1 基础设施（apiFlavor 切换、ImApiAdapter、route-table、字段名 imGatewayHttp、ws-normalizer、Rust ImSeqDataSource skeleton、isWrappedResponse 适配），而这些基础设施全部以 14 个有效 commit `e0d037470..7c8a0c972` 形态落在 `im-backend-switch` 上。
->
-> **结论**（2026-05-01 用户口头拍板，本节固化）：放弃 temp/cses-client + tauri-new-im 路线，回到 `angular/cses-client` + `im-backend-switch` 继续做 Phase 2-4。所有 SESSION.md / cutover 文档里 "已切到 temp/" 的措辞均作废，本节为准。
->
-> **后续提及 cses-client 工作目录**：一律指 `/Users/mac28/workspace/angular/cses-client` + `im-backend-switch`，无歧义。引用旧 `temp/cses-client` 仅作历史 commit 检索用途。
+**im 后端配套分支**：`feat-offline-push`（im 仓库根，HEAD `bfec05e`）
+
+**后续提及 cses-client 工作目录**：一律指 `/Users/mac28/workspace/angular/temp/cses-client` + `feat/im-reactor-2-offine`，无歧义。`angular/cses-client + im-backend-switch` 旧路线已废弃，不再作为参考。
 
 ---
 

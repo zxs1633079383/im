@@ -34,6 +34,7 @@ const (
 // ---- Outbound (server → client) ----
 
 const (
+	TypeHello    WSMessageType = "hello"    // server greets client on connect (carries connectionId)
 	TypePong     WSMessageType = "pong"
 	TypePushMsg  WSMessageType = "push_msg"  // server pushes a chat message
 	TypeSendACK  WSMessageType = "send_ack"  // server ACKs client's send
@@ -89,6 +90,17 @@ const (
 type WSFrame struct {
 	Type    WSMessageType `json:"type"`
 	Payload []byte        `json:"payload,omitempty"` // raw JSON of the specific payload
+}
+
+// HelloPayload is pushed by the server immediately after a successful WS
+// upgrade + hub register. The client uses ConnectionID as a session marker
+// and re-injects it into IM HTTP `connectionId` header for trace continuity.
+//
+// Spec: cses-client `handlers/hello.rs` (P-2) consumes this frame and lazily
+// spawns the sync_engine + enqueues SyncRequest::FullPull.
+type HelloPayload struct {
+	ConnectionID string `json:"connectionId"`
+	ServerTime   int64  `json:"server_time"` // unix ms, for client clock skew
 }
 
 // PingPayload is sent by the client every 15s.

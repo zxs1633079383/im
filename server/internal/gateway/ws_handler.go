@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/lib/pq"
 	"github.com/redis/go-redis/v9"
@@ -135,15 +136,31 @@ func (h *WsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.log.Warn("redis register failed", "error", err, "user_id", userID)
 	}
 
-	h.log.Info("ws connected", "user_id", userID, "device_id", deviceID)
+	// 5. Greet the client with a hello frame carrying a fresh connectionId.
+	//    The cses-client `handlers/hello.rs` (P-2) consumes this and lazily
+	//    spawns the sync_engine → enqueues SyncRequest::FullPull (cold start)
+	//    / reuses the existing engine to FullPull again (reconnect).
+	//    Push is best-effort: failure to enqueue (slow consumer) won't kill the
+	//    upgrade — the client will eventually request sync on the next pong tick.
+	connectionID := uuid.New().String()
+	if ok := conn.Push(TypeHello, HelloPayload{
+		ConnectionID: connectionID,
+		ServerTime:   time.Now().UnixMilli(),
+	}); !ok {
+		h.log.Warn("hello push failed (slow consumer / closed)",
+			"user_id", userID, "device_id", deviceID)
+	}
 
-	// 5. Start heartbeat loop (sends pings, closes conn on timeout).
+	h.log.Info("ws connected", "user_id", userID, "device_id", deviceID,
+		"connection_id", connectionID)
+
+	// 6. Start heartbeat loop (sends pings, closes conn on timeout).
 	go runHeartbeat(ctx, conn, h.channelSt, h.log)
 
-	// 6. Read pump runs in this goroutine until disconnect.
+	// 7. Read pump runs in this goroutine until disconnect.
 	h.readPump(conn)
 
-	// 7. Cleanup on disconnect.
+	// 8. Cleanup on disconnect.
 	conn.Close()
 	h.hub.Deregister(conn)
 	bgCtx := context.Background()
