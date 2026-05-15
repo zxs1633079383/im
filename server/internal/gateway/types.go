@@ -175,6 +175,11 @@ type PushMsgPayload struct {
 	MsgType     int16      `json:"msg_type"` // 1=text/2=image/3=file/4=system/99=phantom
 	VisibleTo   []string   `json:"visible_to,omitempty"`
 	Props       string     `json:"props,omitempty"` // raw JSONB; populated when MsgType=System
+	// IsUrgent + MentionList mirror the persisted message so an online client
+	// can update its per-channel urgent / mention queues directly from the
+	// push frame without a follow-up GET. C007 Phase C.
+	IsUrgent    bool       `json:"is_urgent,omitempty"`
+	MentionList []string   `json:"mention_list,omitempty"`
 	CreatedAt   time.Time  `json:"created_at"`
 }
 

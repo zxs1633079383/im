@@ -31,10 +31,13 @@ type MsgAttachStore interface {
 	AttachToMessage(ctx context.Context, messageID, fileID string) error
 }
 
+
 // SendParams is the input to MessageService.SendMessage.
 //
 // M4: SenderID is mm UserID; VisibleTo is []string of mm UserIDs; TeamID is
 // the team scope frozen at send time (denormalised from channels.team_id).
+// C007 Phase C: MentionList carries @-recipients (["all"] / ["uid",...] /
+// nil); persisted to messages.mention_list + forwarded onto push_msg.
 type SendParams struct {
 	ChannelID   string
 	SenderID    string
@@ -45,6 +48,7 @@ type SendParams struct {
 	VisibleTo   []string
 	ReplyTo     *string
 	FileIDs     []string
+	MentionList []string
 }
 
 // ForwardParams is the input to MessageService.ForwardMessages.
@@ -108,6 +112,7 @@ func (s *MessageService) SendMessage(ctx context.Context, p SendParams) (*repo.M
 		Content:     p.Content,
 		VisibleTo:   pq.StringArray(p.VisibleTo),
 		ReplyTo:     p.ReplyTo,
+		MentionList: pq.StringArray(p.MentionList),
 	}
 
 	if err := s.messages.Send(ctx, msg); err != nil {

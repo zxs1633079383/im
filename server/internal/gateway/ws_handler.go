@@ -406,6 +406,8 @@ func (h *WsHandler) handleSend(conn *Conn, payload json.RawMessage) {
 				MsgType:     pushMsg.MsgType,
 				VisibleTo:   pushMsg.VisibleTo,
 				Props:       DerefStringPtr(pushMsg.Props),
+				IsUrgent:    pushMsg.IsUrgent,
+				MentionList: []string(pushMsg.MentionList),
 				CreatedAt:   pushMsg.CreatedAt,
 			}
 			h.hub.PushToUser(m.UserID, TypePushMsg, pushPayload)

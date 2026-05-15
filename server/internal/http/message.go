@@ -88,6 +88,9 @@ type MessageRouteOpts struct {
 // clients continue to work after the cut-over.
 //
 // C012 P-D: ReplyTo / FileIDs migrate to TEXT (string) IDs.
+// C007 Phase C: MentionList added — ["all"] / ["uid",...] / nil. Forwarded
+// raw to repo.Message.MentionList and onto the WS push_msg envelope so
+// online clients can append to their per-channel mention queue.
 type sendMessageReq struct {
 	Content     string   `json:"content"`
 	ClientMsgID string   `json:"client_msg_id"`
@@ -95,6 +98,7 @@ type sendMessageReq struct {
 	VisibleTo   []string `json:"visible_to"`
 	ReplyTo     *string  `json:"reply_to"`
 	FileIDs     []string `json:"file_ids"`
+	MentionList []string `json:"mention_list,omitempty"`
 }
 
 // fetchMessagesResp wraps the slice in a {"messages": [...]} envelope to match
@@ -171,6 +175,7 @@ func RegisterMessageRoutes(authed *gin.RouterGroup, svc *service.MessageService,
 			VisibleTo:   in.VisibleTo,
 			ReplyTo:     in.ReplyTo,
 			FileIDs:     in.FileIDs,
+			MentionList: in.MentionList,
 		})
 		switch {
 		case errors.Is(err, service.ErrNotMember):

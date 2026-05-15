@@ -454,6 +454,8 @@ func (p *hubMessagePusher) BroadcastMessage(channelID string, userIDs []string, 
 		MsgType:     msg.MsgType,
 		VisibleTo:   []string(msg.VisibleTo),
 		Props:       gateway.DerefStringPtr(msg.Props),
+		IsUrgent:    msg.IsUrgent,
+		MentionList: []string(msg.MentionList),
 		CreatedAt:   msg.CreatedAt,
 	}
 	p.xpod.broadcast(userIDs, channelID, gateway.TypePushMsg, payload)

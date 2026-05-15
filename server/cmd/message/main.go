@@ -255,6 +255,8 @@ func buildPushPayload(msg *repo.Message, phantomVariant bool) gateway.PushMsgPay
 		MsgType:     msg.MsgType,
 		VisibleTo:   []string(msg.VisibleTo),
 		Props:       gateway.DerefStringPtr(msg.Props),
+		IsUrgent:    msg.IsUrgent,
+		MentionList: []string(msg.MentionList),
 		CreatedAt:   msg.CreatedAt,
 	}
 }
