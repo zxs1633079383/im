@@ -103,11 +103,17 @@ type MentionItem struct {
 // IncrementSeq and IncrementPhantomCount accept an optional *gorm.DB (nil ⇒
 // the repo's own connection). Pass a transaction to compose them inside a
 // MessageRepo write.
+//
+// C018: IncrementSeq + NextMessageSeq both back onto the per-channel
+// `channel_msg_seq_<sanitized-id>` PG sequence object. The old row-lock
+// `UPDATE channels SET seq=seq+1 RETURNING` form is retired — the public
+// signature stays the same so message.AllocSeqAndInsert needs no change.
 type ChannelRepo interface {
 	Create(ctx context.Context, ch *Channel) error
 	GetByID(ctx context.Context, id string) (*Channel, error)
 	Update(ctx context.Context, channelID string, name, avatarURL string) error
 	IncrementSeq(ctx context.Context, tx *gorm.DB, channelID string) (int64, error)
+	NextMessageSeq(ctx context.Context, tx *gorm.DB, channelID string) (int64, error)
 	AddMember(ctx context.Context, channelID string, userID string, role int16) error
 	RemoveMember(ctx context.Context, channelID string, userID string) error
 	GetMember(ctx context.Context, channelID string, userID string) (*ChannelMember, error)
@@ -208,16 +214,48 @@ func (r *gormChannelRepo) Update(ctx context.Context, channelID string, name, av
 	return nil
 }
 
-// IncrementSeq atomically bumps channels.seq and returns the new value.
-// If tx is nil, runs against the repo's own connection.
+// IncrementSeq atomically bumps the channel's message seq and returns the
+// new value. Kept as a name-stable wrapper around NextMessageSeq so the
+// many existing callers (MessageRepo.AllocSeqAndInsert and friends) don't
+// need to change.
+//
+// If tx is nil, runs against the repo's own connection. C018: see
+// NextMessageSeq for the underlying PG sequence semantics.
 func (r *gormChannelRepo) IncrementSeq(ctx context.Context, tx *gorm.DB, channelID string) (int64, error) {
+	return r.NextMessageSeq(ctx, tx, channelID)
+}
+
+// NextMessageSeq allocates the next message seq for channelID via the
+// per-channel PG sequence `channel_msg_seq_<sanitisedChannelID>`. Single
+// SELECT nextval(...) on a CACHE 50 sequence sustains 10k+ TPS per channel
+// (C018 §3), replacing the row-lock `UPDATE channels SET seq=seq+1
+// RETURNING` form that capped throughput at ~500 TPS.
+//
+// Identifier safety: PG cannot parameterise an identifier, so the seq
+// name is built via sanitizeID (defined in channel_event.go) which strips
+// every character outside [A-Za-z0-9_-]. An empty sanitised id is a
+// caller bug; we error out rather than fall through to a `nextval('')`.
+//
+// Transactionality caveat: sequence increments are NOT rolled back when
+// the surrounding tx aborts (PG sequences are intentionally
+// non-transactional to avoid lock contention). The result is occasional
+// gaps in messages.seq — sync semantics tolerate gaps because cursor
+// comparisons use `> last_seq` rather than `= last_seq + 1`.
+func (r *gormChannelRepo) NextMessageSeq(ctx context.Context, tx *gorm.DB, channelID string) (int64, error) {
+	safe := sanitizeID(channelID)
+	if safe == "" {
+		return 0, fmt.Errorf("next message seq: channelID sanitises to empty")
+	}
+	seqName := "channel_msg_seq_" + safe
 	var seq int64
+	// Double-quote inside the single-quoted text literal — UUID-shaped
+	// channel ids carry hyphens which PG would otherwise parse as the
+	// subtraction operator during the text→regclass implicit cast.
 	err := r.dbOr(ctx, tx).Raw(
-		`UPDATE channels SET seq = seq + 1 WHERE id = ? RETURNING seq`,
-		channelID,
+		fmt.Sprintf(`SELECT nextval('"%s"')`, seqName),
 	).Scan(&seq).Error
 	if err != nil {
-		return 0, fmt.Errorf("increment seq: %w", err)
+		return 0, fmt.Errorf("nextval msg: %w", err)
 	}
 	return seq, nil
 }

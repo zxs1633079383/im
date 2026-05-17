@@ -858,6 +858,64 @@ func (_c *ChannelRepoMock_MarkRead_Call) RunAndReturn(run func(context.Context, 
 	return _c
 }
 
+// NextMessageSeq provides a mock function with given fields: ctx, tx, channelID
+func (_m *ChannelRepoMock) NextMessageSeq(ctx context.Context, tx *gorm.DB, channelID string) (int64, error) {
+	ret := _m.Called(ctx, tx, channelID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for NextMessageSeq")
+	}
+
+	var r0 int64
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, *gorm.DB, string) (int64, error)); ok {
+		return rf(ctx, tx, channelID)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, *gorm.DB, string) int64); ok {
+		r0 = rf(ctx, tx, channelID)
+	} else {
+		r0 = ret.Get(0).(int64)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, *gorm.DB, string) error); ok {
+		r1 = rf(ctx, tx, channelID)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// ChannelRepoMock_NextMessageSeq_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'NextMessageSeq'
+type ChannelRepoMock_NextMessageSeq_Call struct {
+	*mock.Call
+}
+
+// NextMessageSeq is a helper method to define mock.On call
+//   - ctx context.Context
+//   - tx *gorm.DB
+//   - channelID string
+func (_e *ChannelRepoMock_Expecter) NextMessageSeq(ctx interface{}, tx interface{}, channelID interface{}) *ChannelRepoMock_NextMessageSeq_Call {
+	return &ChannelRepoMock_NextMessageSeq_Call{Call: _e.mock.On("NextMessageSeq", ctx, tx, channelID)}
+}
+
+func (_c *ChannelRepoMock_NextMessageSeq_Call) Run(run func(ctx context.Context, tx *gorm.DB, channelID string)) *ChannelRepoMock_NextMessageSeq_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(*gorm.DB), args[2].(string))
+	})
+	return _c
+}
+
+func (_c *ChannelRepoMock_NextMessageSeq_Call) Return(_a0 int64, _a1 error) *ChannelRepoMock_NextMessageSeq_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *ChannelRepoMock_NextMessageSeq_Call) RunAndReturn(run func(context.Context, *gorm.DB, string) (int64, error)) *ChannelRepoMock_NextMessageSeq_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // RemoveMember provides a mock function with given fields: ctx, channelID, userID
 func (_m *ChannelRepoMock) RemoveMember(ctx context.Context, channelID string, userID string) error {
 	ret := _m.Called(ctx, channelID, userID)
