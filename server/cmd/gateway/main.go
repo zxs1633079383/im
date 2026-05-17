@@ -304,9 +304,14 @@ func run() int {
 	imhttp.RegisterQuickReplyRoutes(authedAPI, quickReplySvc)
 
 	// Phase 7.5 cut-over: batch incremental sync. No real-time hooks — sync is
-	// pure pull, the algorithm + response shape are preserved verbatim from
-	// the legacy SyncHandler.
-	syncSvc := service.NewSyncService(channelRepo, messageRepo)
+	// pure pull. Phase P4 (C019): v2 wires the channel_event repo so
+	// /api/sync can dispatch v1 (legacy messages.seq cursor) and v2
+	// (event_seq cursor) from the same endpoint based on request body
+	// shape. channelEventRepo is created here at the read site (single
+	// consumer for sync — write side is owned by message/channel services
+	// elsewhere); wiring read-side here is safe.
+	channelEventRepo := repo.NewChannelEventRepo(gormDB)
+	syncSvc := service.NewSyncServiceV2(channelRepo, messageRepo, channelEventRepo)
 	imhttp.RegisterSyncRoutes(authedAPI, syncSvc, log)
 
 	// Phase 7.6 cut-over: multi-type search (messages/users/channels). No
