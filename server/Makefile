@@ -105,6 +105,19 @@ migrate-down:
 migrate-create:
 	migrate create -ext sql -dir migrations -seq $(name)
 
+# channel_event 回填工具（C017 / C018 落地）。给所有已存在 channel 创建对应的
+# channel_msg_seq_<id> / channel_event_seq_<id> PG sequence + 把历史 messages
+# 回填一条 EventTypeNew row 到 channel_event。幂等可重跑。
+#
+# 默认从 CWD/config.yaml 读 pg.dsn，可用 DATABASE_URL env 覆盖。先 dry-run 看
+# 计划，确认无误再去掉 DRY=1 真跑。
+.PHONY: migrate-channel-event-backfill migrate-channel-event-backfill-dry
+migrate-channel-event-backfill:
+	go run ./cmd/migrate-channel-event-backfill
+
+migrate-channel-event-backfill-dry:
+	go run ./cmd/migrate-channel-event-backfill -dry-run
+
 .PHONY: test test-unit test-cover
 test: test-unit
 
