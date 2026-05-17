@@ -581,6 +581,66 @@ func (_c *MessageRepoMock_GetByID_Call) RunAndReturn(run func(context.Context, s
 	return _c
 }
 
+// GetByIDsForUser provides a mock function with given fields: ctx, userID, ids
+func (_m *MessageRepoMock) GetByIDsForUser(ctx context.Context, userID string, ids []string) ([]repo.Message, error) {
+	ret := _m.Called(ctx, userID, ids)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetByIDsForUser")
+	}
+
+	var r0 []repo.Message
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, string, []string) ([]repo.Message, error)); ok {
+		return rf(ctx, userID, ids)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, string, []string) []repo.Message); ok {
+		r0 = rf(ctx, userID, ids)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]repo.Message)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, string, []string) error); ok {
+		r1 = rf(ctx, userID, ids)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// MessageRepoMock_GetByIDsForUser_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetByIDsForUser'
+type MessageRepoMock_GetByIDsForUser_Call struct {
+	*mock.Call
+}
+
+// GetByIDsForUser is a helper method to define mock.On call
+//   - ctx context.Context
+//   - userID string
+//   - ids []string
+func (_e *MessageRepoMock_Expecter) GetByIDsForUser(ctx interface{}, userID interface{}, ids interface{}) *MessageRepoMock_GetByIDsForUser_Call {
+	return &MessageRepoMock_GetByIDsForUser_Call{Call: _e.mock.On("GetByIDsForUser", ctx, userID, ids)}
+}
+
+func (_c *MessageRepoMock_GetByIDsForUser_Call) Run(run func(ctx context.Context, userID string, ids []string)) *MessageRepoMock_GetByIDsForUser_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(string), args[2].([]string))
+	})
+	return _c
+}
+
+func (_c *MessageRepoMock_GetByIDsForUser_Call) Return(_a0 []repo.Message, _a1 error) *MessageRepoMock_GetByIDsForUser_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *MessageRepoMock_GetByIDsForUser_Call) RunAndReturn(run func(context.Context, string, []string) ([]repo.Message, error)) *MessageRepoMock_GetByIDsForUser_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetReadStatsBatch provides a mock function with given fields: ctx, callerID, msgIDs
 func (_m *MessageRepoMock) GetReadStatsBatch(ctx context.Context, callerID string, msgIDs []string) ([]repo.ReadStat, error) {
 	ret := _m.Called(ctx, callerID, msgIDs)
