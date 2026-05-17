@@ -80,6 +80,15 @@ type MessageRepo interface {
 	GetReadStatsBatch(ctx context.Context, callerID string, msgIDs []string) ([]ReadStat, error)
 	SoftDelete(ctx context.Context, msgID string, callerID string) (*Message, error)
 	GetByID(ctx context.Context, id string) (*Message, error)
+	// GetByIDsForUser bulk-fetches messages by primary key with the same
+	// visibility filter FetchForUser applies (visible_to IS NULL OR userID is
+	// in visible_to OR userID is the sender). Used by Phase P4 sync v2 to
+	// hydrate the `messages` snapshot map referenced by `channel_event` rows
+	// (C019 §3.2 algorithm step 3). Returns an empty slice (not nil) when
+	// every id is filtered out; preserves caller-supplied id order is NOT
+	// guaranteed — callers must re-index by id (sync v2 builds a map keyed
+	// by `Message.ID`).
+	GetByIDsForUser(ctx context.Context, userID string, ids []string) ([]Message, error)
 	FetchAfter(ctx context.Context, channelID string, afterSeq int64, limit int) ([]Message, error)
 	FetchForUser(ctx context.Context, channelID string, userID string, afterSeq int64, limit int) ([]Message, error)
 	FetchBefore(ctx context.Context, channelID string, userID string, beforeSeq int64, limit int) ([]Message, error)
@@ -530,6 +539,31 @@ func (r *gormMessageRepo) GetByID(ctx context.Context, id string) (*Message, err
 		return nil, fmt.Errorf("get message by id: %w", err)
 	}
 	return &m, nil
+}
+
+// GetByIDsForUser bulk-loads messages by id with the same visibility predicate
+// as FetchForUser. Empty `ids` short-circuits to an empty slice (cheap).
+// Result order is dictated by Postgres — callers must re-index by id.
+func (r *gormMessageRepo) GetByIDsForUser(ctx context.Context, userID string, ids []string) ([]Message, error) {
+	ctx, span := tracer.Start(ctx, "MessageRepo.GetByIDsForUser")
+	defer span.End()
+
+	if len(ids) == 0 {
+		return []Message{}, nil
+	}
+	var out []Message
+	err := r.db.WithContext(ctx).Raw(
+		`SELECT id, channel_id, seq, client_msg_id, sender_id, msg_type, content,
+		        visible_to, reply_to, forwarded_from, props, created_at
+		 FROM messages
+		 WHERE id = ANY(?)
+		   AND (visible_to IS NULL OR ? = ANY(visible_to) OR sender_id = ?)`,
+		ids, userID, userID,
+	).Scan(&out).Error
+	if err != nil {
+		return nil, fmt.Errorf("get messages by ids for user: %w", err)
+	}
+	return out, nil
 }
 
 func (r *gormMessageRepo) FetchAfter(ctx context.Context, channelID string, afterSeq int64, limit int) ([]Message, error) {

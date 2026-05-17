@@ -9,49 +9,51 @@ import (
 	"im-server/internal/service"
 )
 
-// syncRequest mirrors the legacy handler.SyncRequest body shape exactly so
-// existing clients continue to work after the cut-over.
+// syncRequest is the /api/sync request body shape (C019 §3.1).
+//
+// 历史背景：v1 messages.seq cursor + 双轨 dispatch 已于 2026-05-17 cutover
+// 整族下线。本项目唯一 client = cses-client，已同步迁移到 event_seq。
 type syncRequest struct {
 	Channels []syncChannelEntry `json:"channels"`
 }
 
 // syncChannelEntry is one channel cursor from the client.
 //
-// C012 P-D: channel ID migrates to TEXT (string); Seq remains int64
-// (monotonic per-channel counter, not an entity ID).
+// C012 P-D: channel ID is TEXT (string); EventSeq is the
+// channel_event.event_seq cursor (C019 §3.1) — strictly monotonic per
+// channel, advanced by every server-emitted event.
 type syncChannelEntry struct {
-	ID  string `json:"id"`
-	Seq int64  `json:"seq"`
+	ID       string `json:"id"`
+	EventSeq int64  `json:"event_seq"`
 }
 
-// syncEntryKind is the wire form of `service.SyncEntryKind`. Field tags match
-// Rust client `types_v2::SyncEntryKind` (internally tagged enum):
+// syncEntryKind mirrors `service.SyncEntryKind` on the wire:
 //
-//	{"type":"empty"} / {"type":"full"} / {"type":"slice"}
-//	{"type":"too_long","reset_to": <serverSeq>}
+//	{"type":"empty"} / {"type":"events"} / {"type":"slice"}
+//	{"type":"too_long","reset_to": <serverEventSeq>}
 type syncEntryKind struct {
 	Type    string `json:"type"`
 	ResetTo int64  `json:"reset_to,omitempty"`
 }
 
-// syncChannelResult — v0.7.3 P-7.5 adds Kind + NextCursor (omitempty so old
-// clients see legacy shape).
+// syncChannelResult is the per-channel wire shape (C019 §3.1).
 //
-// Legacy clients infer from `messages` (Empty if empty, Full otherwise) and
-// `has_more`; new Rust client reads `kind` directly and recurses on slice with
-// `next_cursor`.
+// ServerEventSeq is the server-side channel_event high-water mark.
+// Events carries the channel_event rows; Messages is the bulk-hydrated
+// snapshot map keyed by message id (deduped — same id may be referenced
+// by NEW + EDIT events). Kind is always non-nil (required by C019 §3.1);
+// NextCursor is non-nil only when Kind.type=="slice".
 type syncChannelResult struct {
-	ID         string         `json:"id"`
-	ServerSeq  int64          `json:"server_seq"`
-	Unread     int64          `json:"unread"`
-	Messages   []repo.Message `json:"messages,omitempty"`
-	HasMore    bool           `json:"has_more,omitempty"`
-	Kind       *syncEntryKind `json:"kind,omitempty"`
-	NextCursor *int64         `json:"next_cursor,omitempty"`
+	ID             string                  `json:"id"`
+	ServerEventSeq int64                   `json:"server_event_seq"`
+	Unread         int64                   `json:"unread"`
+	Events         []repo.ChannelEvent     `json:"events,omitempty"`
+	Messages       map[string]repo.Message `json:"messages,omitempty"`
+	Kind           *syncEntryKind          `json:"kind"`
+	NextCursor     *int64                  `json:"next_cursor,omitempty"`
 }
 
-// syncResponse wraps the per-channel deltas in {"channels": [...]} — same
-// envelope as the legacy handler.SyncResponse.
+// syncResponse wraps the per-channel deltas in {"channels": [...]}.
 type syncResponse struct {
 	Channels []syncChannelResult `json:"channels"`
 }
@@ -87,7 +89,7 @@ func RegisterSyncRoutes(authed *gin.RouterGroup, svc *service.SyncService, log *
 
 		cursors := make([]service.SyncCursor, 0, len(in.Channels))
 		for _, ch := range in.Channels {
-			cursors = append(cursors, service.SyncCursor{ID: ch.ID, Seq: ch.Seq})
+			cursors = append(cursors, service.SyncCursor{ID: ch.ID, EventSeq: ch.EventSeq})
 		}
 
 		result, err := svc.Sync(c.Request.Context(), uid, service.SyncParams{Cursors: cursors})
@@ -97,30 +99,29 @@ func RegisterSyncRoutes(authed *gin.RouterGroup, svc *service.SyncService, log *
 			return
 		}
 
-		// Transcribe to the wire shape. Always emit a non-nil array so the
-		// JSON envelope matches the legacy handler when there are no deltas.
 		out := make([]syncChannelResult, 0, len(result.Channels))
 		for _, d := range result.Channels {
 			out = append(out, syncChannelResult{
-				ID:         d.ID,
-				ServerSeq:  d.ServerSeq,
-				Unread:     d.Unread,
-				Messages:   d.Messages,
-				HasMore:    d.HasMore,
-				Kind:       transcribeKind(d.Kind),
-				NextCursor: d.NextCursor,
+				ID:             d.ID,
+				ServerEventSeq: d.ServerEventSeq,
+				Unread:         d.Unread,
+				Events:         d.Events,
+				Messages:       d.Messages,
+				Kind:           transcribeKind(d.Kind),
+				NextCursor:     d.NextCursor,
 			})
 		}
 		c.JSON(200, syncResponse{Channels: out})
 	})
 }
 
-// transcribeKind maps the service-layer enum into the HTTP wire form. Returns
-// nil (omitempty drops the field) when the service layer didn't tag the entry —
-// preserves legacy wire shape so old clients keep working.
+// transcribeKind maps the service-layer enum into the HTTP wire form.
+// Kind is required by C019 §3.1 but we still tolerate nil defensively
+// against service-layer bugs — nil here drops the field via omitempty,
+// which a client would log as "malformed".
 func transcribeKind(k *service.SyncEntryKind) *syncEntryKind {
 	if k == nil {
 		return nil
 	}
-	return &syncEntryKind{Type: k.Type, ResetTo: k.ResetTo}
+	return &syncEntryKind{Type: string(k.Type), ResetTo: k.ResetTo}
 }
