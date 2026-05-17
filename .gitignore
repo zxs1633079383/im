@@ -16,6 +16,7 @@ server/config.yaml
 
 # Git worktrees
 .worktrees/
+/worktrees/
 .gitnexus
 
 # Claude Code local artifacts (never commit)

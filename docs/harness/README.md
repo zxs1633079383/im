@@ -27,6 +27,10 @@
 | [C013](C013-owner-transfer-endpoint.md) | 群主转移走独立端点 POST /api/channels/:id/transfer-owner（不复用 PATCH /members） | active | feat/im-reactor-2 featdoc 08 用户拍板 2026-05-13；落地 2026-05-14 commit a8a36e4 | 1 |
 | [C014](C014-test-coverage-100-percent.md) | 每路由 + 每 WSMessageType 必须 1 单测 + 1 集成测试（100% 入口覆盖） | active | feat/im-reactor-2 用户拍板 2026-05-13；T4 落地 2026-05-14 commit `7d5ed46`/`80787c4`/`de091f4` | 2 |
 | [C015](C015-testcontainers-redis-port-race.md) | testcontainers-go v0.35.0 redis module port-mapping race 必须 retry 兜底（FX1 沉淀） | active | FX1 复盘 2026-05-14：误诊 5+ 小时；merge `70a27b0` + retry helper `52246d9` | 1 |
+| [C016](C016-msg-update-single-gate-seq-design.md) | msg_update 类事件单闸门设计（server 严格 seq + CAS WHERE + DB PK 兜底，禁 RMW JSON 数组）；cses-client `handle_msg_updated` 必须 updated_at 单调判定 | active | /workspace/java/logs/2026-05-17.json | 1 |
+| [C017](C017-channel-event-append-only-log.md) | channel_event 是事件流水唯一入口；任何 mutation 必须同事务 append 一行（解决离线 edit/delete 漏 sync） | active | /workspace/java/logs/2026-05-17.json | 1 |
+| [C018](C018-pg-sequence-vs-row-lock-seq.md) | channels.seq + channel_event_seq 必须用 PG sequence 对象（nextval），禁 row-lock RETURNING 形态（万人群 1k QPS 瓶颈） | active | /workspace/java/logs/2026-05-17.json | 1 |
+| [C019](C019-sync-cursor-event-seq.md) | sync 算法 cursor 字段锁定 event_seq；4 分支 kind（empty/events/slice/too_long），TooLong 阈值 10000 | active | /workspace/java/logs/2026-05-17.json | 1 |
 
 ### 1.1 跨仓镜像 / autonomous 串行依赖（feat/im-reactor-2）
 
