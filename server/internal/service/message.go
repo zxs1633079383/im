@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/lib/pq"
+	"gorm.io/gorm"
 
 	"im-server/internal/repo"
 )
@@ -19,9 +20,17 @@ var (
 
 // MsgChannelStore is the subset of repo.ChannelRepo needed by MessageService.
 // M4: user-id args are mm UserIDs (24-hex strings).
+//
+// MarkRead is retained as a fallback for callers that did not wire a
+// ChannelEventRepo into MessageService (the legacy code path).
+// MarkReadTx + WithinTx are used by the modern code path so the
+// channel_members UPDATE and the EventTypeReadMark channel_event INSERT
+// share a single transaction (C017 §3.1).
 type MsgChannelStore interface {
 	GetMember(ctx context.Context, channelID string, userID string) (*repo.ChannelMember, error)
 	MarkRead(ctx context.Context, channelID string, userID string, seq int64) error
+	MarkReadTx(ctx context.Context, tx *gorm.DB, channelID string, userID string, seq int64) (int64, error)
+	WithinTx(ctx context.Context, fn func(tx *gorm.DB) error) error
 	GetByID(ctx context.Context, id string) (*repo.Channel, error)
 	ListMembers(ctx context.Context, channelID string) ([]repo.ChannelMember, error)
 }
@@ -64,14 +73,26 @@ type ForwardResult struct {
 
 // MessageService implements message send/fetch/read/forward.
 type MessageService struct {
-	messages repo.MessageRepo
-	channels MsgChannelStore
-	files    MsgAttachStore
+	messages     repo.MessageRepo
+	channels     MsgChannelStore
+	files        MsgAttachStore
+	channelEvent repo.ChannelEventRepo
 }
 
 // NewMessageService wires the supplied repos.
 func NewMessageService(messages repo.MessageRepo, channels MsgChannelStore, files MsgAttachStore) *MessageService {
 	return &MessageService{messages: messages, channels: channels, files: files}
+}
+
+// AttachChannelEventRepo enables co-transactional EventTypeReadMark append on
+// MarkRead. Without it, MarkRead falls back to the legacy non-transactional
+// UPDATE channel_members path (which still writes the read cursor, but does
+// NOT add a channel_event row — offline-sync misses the read advance for
+// clients that haven't fetched in a while). Production wiring calls this in
+// cmd/gateway/main.go; some unit tests intentionally leave it nil because
+// they don't exercise the offline-sync path.
+func (s *MessageService) AttachChannelEventRepo(repo repo.ChannelEventRepo) {
+	s.channelEvent = repo
 }
 
 // SendMessage persists a new message after verifying the caller is a member.
@@ -162,6 +183,16 @@ func (s *MessageService) FetchAround(ctx context.Context, channelID string, call
 }
 
 // MarkRead updates the caller's last_read_seq to the channel's current seq.
+//
+// Modern path (channelEvent != nil): UPDATE channel_members + append
+// EventTypeReadMark channel_event in the SAME tx (C017 §3.1). The event row
+// is what powers other-device read-cursor echo through the offline-sync
+// pipeline; without it, a client that was offline at the time of the read
+// will reconnect, see last_read_seq update from another device's bootstrap
+// only by GET /api/channels (slower), not by /api/sync incremental walk.
+//
+// Legacy path (channelEvent == nil): one-shot UPDATE channel_members. Tests
+// that don't exercise sync still pass this way.
 func (s *MessageService) MarkRead(ctx context.Context, channelID string, callerID string) (int64, error) {
 	ctx, span := tracer.Start(ctx, "MessageService.MarkRead")
 	defer span.End()
@@ -173,8 +204,39 @@ func (s *MessageService) MarkRead(ctx context.Context, channelID string, callerI
 	if err != nil {
 		return 0, err
 	}
-	if err := s.channels.MarkRead(ctx, channelID, callerID, ch.Seq); err != nil {
-		return 0, fmt.Errorf("mark read: %w", err)
+	if s.channelEvent == nil {
+		// Legacy path — no co-transactional event append.
+		if err := s.channels.MarkRead(ctx, channelID, callerID, ch.Seq); err != nil {
+			return 0, fmt.Errorf("mark read: %w", err)
+		}
+		return ch.Seq, nil
+	}
+	err = s.channels.WithinTx(ctx, func(tx *gorm.DB) error {
+		rows, err := s.channels.MarkReadTx(ctx, tx, channelID, callerID, ch.Seq)
+		if err != nil {
+			return fmt.Errorf("mark read tx: %w", err)
+		}
+		if rows == 0 {
+			// No-op: caller is not a member (defensive — requireMember above
+			// should have caught it) or seq was already past. Either way we
+			// MUST NOT append a channel_event row for a non-existent read
+			// advance (would mislead sync into reporting a phantom cursor).
+			return nil
+		}
+		seq, err := s.channelEvent.NextEventSeq(ctx, tx, channelID)
+		if err != nil {
+			return fmt.Errorf("alloc read-mark event seq: %w", err)
+		}
+		return s.channelEvent.AppendEvent(ctx, tx, &repo.ChannelEvent{
+			ChannelID: channelID,
+			EventSeq:  seq,
+			EventType: repo.EventTypeReadMark,
+			ActorID:   callerID,
+			CreatedAt: time.Now().UnixMilli(),
+		})
+	})
+	if err != nil {
+		return 0, err
 	}
 	return ch.Seq, nil
 }
