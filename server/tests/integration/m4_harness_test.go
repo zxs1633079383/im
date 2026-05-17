@@ -81,6 +81,7 @@ func newM4Env(t *testing.T) *m4env {
 	routing := repo.NewRouting(rdb, "test-gw")
 
 	engine := buildEngine(buildEngineDeps{
+		db:            db,
 		rdb:           rdb,
 		channels:      channelRepo,
 		messages:      messageRepo,
@@ -152,6 +153,7 @@ func openTestRedis(t *testing.T) redis.UniversalClient {
 // here when a new endpoint family joins Batch-B/C/D/E so test files stay
 // untouched.
 type buildEngineDeps struct {
+	db            *gorm.DB // 2026-05-17 Phase P4 cleanup: SyncService 需 channel_event repo
 	rdb           redis.UniversalClient
 	channels      repo.ChannelRepo
 	messages      repo.MessageRepo
@@ -218,7 +220,14 @@ func buildEngine(d buildEngineDeps) *gin.Engine {
 		ReadSyncer:  &localReadSyncPusher{hub: d.hub},
 	})
 
-	syncSvc := service.NewSyncService(d.channels, d.messages)
+	// Phase P4 cleanup (2026-05-17): NewSyncService 砍掉 v1 fallback 后
+	// 必须传 channel_event repo。集成测试 fixtures 暂未生产 channel_event
+	// 行，但 GetMemberChannelEventSeqs 返回空 map 时 Sync 自然走 0 channels 出
+	// 参；body 形状从 v1 (server_seq / messages) 变成 v2 (server_event_seq
+	// / events)，会让 TestM4Sync_HappyPath / TestM4MessageSendThenSync 红 ——
+	// 留给主对话或后续 Phase 重写断言。当前 fix 仅保证 build 绿。
+	channelEvents := repo.NewChannelEventRepo(d.db)
+	syncSvc := service.NewSyncService(d.channels, d.messages, channelEvents)
 	imhttp.RegisterSyncRoutes(authed, syncSvc, log)
 
 	friendSvc := service.NewFriendService(d.friends)
