@@ -16,6 +16,12 @@
 3. **PG sequence 强制**（C018）：禁 `UPDATE channels SET seq=seq+1 RETURNING`，必须 `nextval('xxx_<id>')`
 4. **同事务原则**（C017）：业务表 mutation 与 `INSERT channel_event` 必须在**同一个 tx**
 5. **commit message** 用 Conventional Commits 中文 body（参 `~/.claude/rules/common/git-workflow.md §Commit Body 结构化模板`），≥ 3 文件改动必须 5 段结构化 body
+6. **集成测试纪律**（2026-05-17 沉淀，参 `~/.claude/rules/common/performance.md §集成测试触发时机`）：
+   - 中途编码**禁止**跑 `-tags=integration`（testcontainers PG 启停 = 单 phase 60-70% 耗时）
+   - 单元测试 OK：`go test -race -short ./internal/repo/... ./internal/service/...`（commit 前一次）
+   - 集成测试**仅在 phase 完成前最后一次**跑：`go test -tags=integration -race -count=1 -timeout=180s ./tests/integration/...`
+   - 跑前确认 `DATABASE_URL` env 或 `config.yaml.pg.dsn` 指向 dev PG（不新起 testcontainers）
+   - 集成测试出错 → 记 ISSUE.md / NEED_FIX.md 不阻塞自己 phase；主对话 Stage merge 时统一处理
 
 ## 2. Phase 拆分（dependency DAG）
 
