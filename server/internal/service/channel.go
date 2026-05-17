@@ -41,12 +41,33 @@ type ChannelService struct {
 	// frames (gap #4 + #5). nil = no real-time broadcast (the integration /
 	// unit tests don't wire a hub).
 	broadcaster ChannelMemberBroadcaster
+	// channelEvent is the per-channel PG sequence provisioner (C018 §3.2).
+	// When non-nil, every newly created channel (CreateGroup, CreateOrGetDM,
+	// CreateTopic) is provisioned with `channel_msg_seq_<id>` +
+	// `channel_event_seq_<id>` inside the same tx — without this the channel's
+	// first message INSERT fails with `relation "channel_msg_seq_<uuid>" does
+	// not exist` (P3 NEED_FOLLOWUP). Wired in production via
+	// cmd/gateway/main.go::AttachChannelEventRepo; left nil only in older
+	// unit tests that don't exercise the per-channel sequence path.
+	channelEvent repo.ChannelEventRepo
 }
 
 // NewChannelService wires the supplied repos. messages may be nil — when nil,
-// system-message emission is disabled (handy for older tests).
+// system-message emission is disabled (handy for older tests). channelEvent
+// stays nil until AttachChannelEventRepo is called by the wiring layer.
 func NewChannelService(channels repo.ChannelRepo, messages repo.MessageRepo) *ChannelService {
 	return &ChannelService{channels: channels, messages: messages}
+}
+
+// AttachChannelEventRepo wires the channel_event repo so channel creation
+// paths (CreateGroup / CreateOrGetDM / CreateTopic) provision per-channel
+// PG sequences inside the same tx as the channels INSERT. Production wiring
+// calls this in cmd/gateway/main.go; unit tests that don't exercise the
+// per-channel sequence path may safely leave it nil — in that case
+// CreateGroup / CreateOrGetDM short-circuit to the legacy non-tx path that
+// only writes the channel row + members (matches pre-P2 behaviour).
+func (s *ChannelService) AttachChannelEventRepo(r repo.ChannelEventRepo) {
+	s.channelEvent = r
 }
 
 // MemberWithUser is a thin wrapper around ChannelMember kept for transport
@@ -65,6 +86,19 @@ type AddedMember struct {
 // CreateGroup creates a Group channel, adds creatorID as owner, then adds the
 // remaining memberIDs as plain members. teamID denormalises onto the channel
 // row (frozen at creation); empty string stores SQL NULL ("public pool").
+//
+// When channelEvent is attached (production), the channel INSERT + per-channel
+// PG sequence provisioning (channel_msg_seq_<id>, channel_event_seq_<id>) +
+// owner / member fan-out all run inside a single WithinTx so partial failure
+// rolls back the channel row — see C018 §3.2. Anchor system messages stay
+// outside the tx (postSys allocates its own seq), matching the legacy
+// behaviour: a failure there does not undo the channel.
+//
+// When channelEvent is nil (older unit tests), we fall back to the legacy
+// non-tx path: bare s.channels.Create + AddMember in sequence. Skipping the
+// sequence provisioning here is intentional — tests that don't wire a real
+// PG would fail under tx-mocked WithinTx, and they don't drive the per-
+// channel-sequence read path anyway.
 func (s *ChannelService) CreateGroup(ctx context.Context, creatorID, teamID, name string, memberIDs []string) (*repo.Channel, []AddedMember, error) {
 	ctx, span := tracer.Start(ctx, "ChannelService.CreateGroup")
 	defer span.End()
@@ -75,27 +109,61 @@ func (s *ChannelService) CreateGroup(ctx context.Context, creatorID, teamID, nam
 		CreatorID: creatorID,
 		TeamID:    nullIfEmpty(teamID),
 	}
-	if err := s.channels.Create(ctx, ch); err != nil {
-		return nil, nil, fmt.Errorf("create group: %w", err)
-	}
-	if err := s.channels.AddMember(ctx, ch.ID, creatorID, repo.MemberRoleOwner); err != nil {
-		return nil, nil, fmt.Errorf("add owner: %w", err)
-	}
-
 	added := make([]AddedMember, 0, len(memberIDs))
-	for _, uid := range memberIDs {
-		if uid == "" || uid == creatorID {
-			continue
+
+	if s.channelEvent != nil {
+		err := s.channels.WithinTx(ctx, func(tx *gorm.DB) error {
+			if err := s.channels.CreateTx(ctx, tx, ch); err != nil {
+				return fmt.Errorf("create group: %w", err)
+			}
+			if err := s.channelEvent.CreateChannelSequences(ctx, tx, ch.ID); err != nil {
+				return fmt.Errorf("create group sequences: %w", err)
+			}
+			if err := s.channels.AddMemberTx(ctx, tx, ch.ID, creatorID, repo.MemberRoleOwner); err != nil {
+				return fmt.Errorf("add owner: %w", err)
+			}
+			for _, uid := range memberIDs {
+				if uid == "" || uid == creatorID {
+					continue
+				}
+				if err := s.channels.AddMemberTx(ctx, tx, ch.ID, uid, repo.MemberRoleMember); err != nil {
+					// Continue on duplicate / per-user failures to match the
+					// legacy "best-effort fan-out" semantics — the OnConflict
+					// DO NOTHING clause keeps the tx happy.
+					continue
+				}
+				added = append(added, AddedMember{UserID: uid})
+			}
+			return nil
+		})
+		if err != nil {
+			return nil, nil, err
 		}
-		if err := s.channels.AddMember(ctx, ch.ID, uid, repo.MemberRoleMember); err != nil {
-			continue
+	} else {
+		// Legacy non-tx fallback (channelEvent not wired — older tests).
+		if err := s.channels.Create(ctx, ch); err != nil {
+			return nil, nil, fmt.Errorf("create group: %w", err)
 		}
-		added = append(added, AddedMember{UserID: uid})
+		if err := s.channels.AddMember(ctx, ch.ID, creatorID, repo.MemberRoleOwner); err != nil {
+			return nil, nil, fmt.Errorf("add owner: %w", err)
+		}
+		for _, uid := range memberIDs {
+			if uid == "" || uid == creatorID {
+				continue
+			}
+			if err := s.channels.AddMember(ctx, ch.ID, uid, repo.MemberRoleMember); err != nil {
+				continue
+			}
+			added = append(added, AddedMember{UserID: uid})
+		}
 	}
 
 	// Anchor system messages so /api/sync replays the channel's history
 	// symmetrically: one channel_created at seq=1 and a member_joined per
-	// non-creator member.
+	// non-creator member. Kept outside the creation tx because postSys
+	// allocates its own per-message seq via the new PG sequence — the
+	// sequence object only exists after the CreateChannelSequences call
+	// inside the tx above commits.
 	_ = s.postSys(ctx, nil, ch.ID, creatorID, ch.TeamID, channelCreatedProps(creatorID, ch.Name))
 	for _, m := range added {
 		_ = s.postSys(ctx, nil, ch.ID, creatorID, ch.TeamID, memberJoinedProps(creatorID, m.UserID))
@@ -106,6 +174,12 @@ func (s *ChannelService) CreateGroup(ctx context.Context, creatorID, teamID, nam
 // CreateOrGetDM returns the existing DM between callerID and otherUserID, or
 // creates a fresh one. teamID is the caller's team scope, frozen onto the
 // channel row.
+//
+// When channelEvent is attached, the new-DM path runs INSERT channel +
+// CreateChannelSequences + AddMemberTx(caller) + AddMemberTx(peer) inside a
+// single WithinTx — same shape as CreateGroup. Falls back to the legacy
+// non-tx path when channelEvent is nil (older unit tests that mock the
+// individual Create/AddMember calls separately).
 func (s *ChannelService) CreateOrGetDM(ctx context.Context, callerID, otherUserID, teamID string) (*repo.Channel, bool, error) {
 	ctx, span := tracer.Start(ctx, "ChannelService.CreateOrGetDM")
 	defer span.End()
@@ -127,6 +201,30 @@ func (s *ChannelService) CreateOrGetDM(ctx context.Context, callerID, otherUserI
 		CreatorID: callerID,
 		TeamID:    nullIfEmpty(teamID),
 	}
+
+	if s.channelEvent != nil {
+		err := s.channels.WithinTx(ctx, func(tx *gorm.DB) error {
+			if err := s.channels.CreateTx(ctx, tx, ch); err != nil {
+				return fmt.Errorf("create dm: %w", err)
+			}
+			if err := s.channelEvent.CreateChannelSequences(ctx, tx, ch.ID); err != nil {
+				return fmt.Errorf("create dm sequences: %w", err)
+			}
+			if err := s.channels.AddMemberTx(ctx, tx, ch.ID, callerID, repo.MemberRoleMember); err != nil {
+				return fmt.Errorf("add dm caller: %w", err)
+			}
+			if err := s.channels.AddMemberTx(ctx, tx, ch.ID, otherUserID, repo.MemberRoleMember); err != nil {
+				return fmt.Errorf("add dm peer: %w", err)
+			}
+			return nil
+		})
+		if err != nil {
+			return nil, false, err
+		}
+		return ch, true, nil
+	}
+
+	// Legacy non-tx fallback (channelEvent not wired — older tests).
 	if err := s.channels.Create(ctx, ch); err != nil {
 		return nil, false, fmt.Errorf("create dm: %w", err)
 	}
