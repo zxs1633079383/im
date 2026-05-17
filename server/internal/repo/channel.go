@@ -110,6 +110,15 @@ type MentionItem struct {
 // signature stays the same so message.AllocSeqAndInsert needs no change.
 type ChannelRepo interface {
 	Create(ctx context.Context, ch *Channel) error
+	// CreateTx is the tx-aware variant of Create. The INSERT runs inside the
+	// caller's transaction so the channel row creation can be composed
+	// atomically with sibling writes (per-channel PG sequence provisioning
+	// via ChannelEventRepo.CreateChannelSequences, owner / initial member
+	// AddMemberTx fan-out, anchor system messages). Falls back to the repo's
+	// own connection when tx is nil so existing non-tx callers stay safe.
+	// (P2-followup: CreateGroup / CreateOrGetDM / CreateTopic compose this
+	// with CreateChannelSequences in one tx — see C018 §3.2.)
+	CreateTx(ctx context.Context, tx *gorm.DB, ch *Channel) error
 	GetByID(ctx context.Context, id string) (*Channel, error)
 	Update(ctx context.Context, channelID string, name, avatarURL string) error
 	IncrementSeq(ctx context.Context, tx *gorm.DB, channelID string) (int64, error)
@@ -187,7 +196,15 @@ func (r *gormChannelRepo) dbOr(ctx context.Context, tx *gorm.DB) *gorm.DB {
 }
 
 func (r *gormChannelRepo) Create(ctx context.Context, ch *Channel) error {
-	if err := r.db.WithContext(ctx).Create(ch).Error; err != nil {
+	return r.CreateTx(ctx, nil, ch)
+}
+
+// CreateTx implements ChannelRepo.CreateTx — INSERT against the caller's tx
+// (or the repo's own connection when tx is nil). Pure delegate to GORM's
+// Create with no extra normalisation; see the interface doc for why callers
+// thread this inside WithinTx.
+func (r *gormChannelRepo) CreateTx(ctx context.Context, tx *gorm.DB, ch *Channel) error {
+	if err := r.dbOr(ctx, tx).Create(ch).Error; err != nil {
 		return fmt.Errorf("create channel: %w", err)
 	}
 	return nil

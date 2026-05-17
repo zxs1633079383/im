@@ -228,6 +228,54 @@ func (_c *ChannelRepoMock_CreateTopic_Call) RunAndReturn(run func(context.Contex
 	return _c
 }
 
+// CreateTx provides a mock function with given fields: ctx, tx, ch
+func (_m *ChannelRepoMock) CreateTx(ctx context.Context, tx *gorm.DB, ch *repo.Channel) error {
+	ret := _m.Called(ctx, tx, ch)
+
+	if len(ret) == 0 {
+		panic("no return value specified for CreateTx")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, *gorm.DB, *repo.Channel) error); ok {
+		r0 = rf(ctx, tx, ch)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// ChannelRepoMock_CreateTx_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CreateTx'
+type ChannelRepoMock_CreateTx_Call struct {
+	*mock.Call
+}
+
+// CreateTx is a helper method to define mock.On call
+//   - ctx context.Context
+//   - tx *gorm.DB
+//   - ch *repo.Channel
+func (_e *ChannelRepoMock_Expecter) CreateTx(ctx interface{}, tx interface{}, ch interface{}) *ChannelRepoMock_CreateTx_Call {
+	return &ChannelRepoMock_CreateTx_Call{Call: _e.mock.On("CreateTx", ctx, tx, ch)}
+}
+
+func (_c *ChannelRepoMock_CreateTx_Call) Run(run func(ctx context.Context, tx *gorm.DB, ch *repo.Channel)) *ChannelRepoMock_CreateTx_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(*gorm.DB), args[2].(*repo.Channel))
+	})
+	return _c
+}
+
+func (_c *ChannelRepoMock_CreateTx_Call) Return(_a0 error) *ChannelRepoMock_CreateTx_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *ChannelRepoMock_CreateTx_Call) RunAndReturn(run func(context.Context, *gorm.DB, *repo.Channel) error) *ChannelRepoMock_CreateTx_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // FindDM provides a mock function with given fields: ctx, userA, userB
 func (_m *ChannelRepoMock) FindDM(ctx context.Context, userA string, userB string) (*repo.Channel, error) {
 	ret := _m.Called(ctx, userA, userB)
