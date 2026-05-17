@@ -24,11 +24,19 @@ func (fakeChannelStore) GetMember(_ context.Context, _, _ string) (*repo.Channel
 
 // fakeMsgStore returns a configurable slice for FetchForUser. Calls are
 // recorded so tests can assert which arm of the decision tree ran.
+//
+// byIDsOut feeds the v2-only GetByIDsForUser path — fillDeltaPayload (v1)
+// tests leave it nil so the empty default returns []; the SyncV2 fixtures
+// populate it to verify per-channel hydration.
 type fakeMsgStore struct {
-	out        []repo.Message
-	lastAfter  int64
-	lastLimit  int
-	callCount  int
+	out       []repo.Message
+	lastAfter int64
+	lastLimit int
+	callCount int
+
+	byIDsOut    []repo.Message
+	byIDsLast   []string
+	byIDsCalled int
 }
 
 func (f *fakeMsgStore) FetchForUser(
@@ -42,6 +50,14 @@ func (f *fakeMsgStore) FetchForUser(
 		return f.out[:limit], nil
 	}
 	return f.out, nil
+}
+
+func (f *fakeMsgStore) GetByIDsForUser(
+	_ context.Context, _ string, ids []string,
+) ([]repo.Message, error) {
+	f.byIDsCalled++
+	f.byIDsLast = ids
+	return f.byIDsOut, nil
 }
 
 func buildDeltaFixture(serverSeq int64) *SyncChannelDelta {
