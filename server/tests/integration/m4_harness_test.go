@@ -64,7 +64,8 @@ func newM4Env(t *testing.T) *m4env {
 	rdb := openTestRedis(t)
 
 	channelRepo := repo.NewChannelRepo(db)
-	messageRepo := repo.NewMessageRepo(db, channelRepo)
+	channelEventRepo := repo.NewChannelEventRepo(db)
+	messageRepo := repo.NewMessageRepo(db, channelRepo, channelEventRepo)
 	friendRepo := repo.NewFriendshipRepo(db)
 	fileRepo := repo.NewFileRepo(db)
 	favoriteRepo := repo.NewFavoriteRepo(db)
@@ -83,6 +84,7 @@ func newM4Env(t *testing.T) *m4env {
 	engine := buildEngine(buildEngineDeps{
 		rdb:           rdb,
 		channels:      channelRepo,
+		channelEvents: channelEventRepo,
 		messages:      messageRepo,
 		friends:       friendRepo,
 		files:         fileRepo,
@@ -154,6 +156,7 @@ func openTestRedis(t *testing.T) redis.UniversalClient {
 type buildEngineDeps struct {
 	rdb           redis.UniversalClient
 	channels      repo.ChannelRepo
+	channelEvents repo.ChannelEventRepo
 	messages      repo.MessageRepo
 	friends       repo.FriendshipRepo
 	files         repo.FileRepo
@@ -212,6 +215,10 @@ func buildEngine(d buildEngineDeps) *gin.Engine {
 	imhttp.RegisterChannelTransferOwnerRoute(authed, channelSvc, log)
 
 	messageSvc := service.NewMessageService(d.messages, d.channels, d.files)
+	// C017 §3.1: MarkRead must append EventTypeReadMark in the same tx as
+	// the channel_members UPDATE so the offline-sync cursor picks up the
+	// cross-device read echo. Tests that exercise sync rely on this.
+	messageSvc.AttachChannelEventRepo(d.channelEvents)
 	imhttp.RegisterMessageRoutes(authed, messageSvc, imhttp.MessageRouteOpts{
 		Broadcaster: msgBroadcaster,
 		Pusher:      &localMessagePusher{hub: d.hub},
