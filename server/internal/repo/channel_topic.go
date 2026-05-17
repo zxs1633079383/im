@@ -31,15 +31,39 @@ type CreateTopicParams struct {
 // Topic channels share the messages table + seq counter and the
 // channel_members table with ordinary channels; discrimination is
 // channels.root_id IS NOT NULL.
+//
+// 这里走 repo 自带连接开一笔事务后委托给 CreateTopicTx；CreateTopicTx 在 tx
+// 非 nil 时直接复用 caller 的事务（P2.3：让 ChannelService.CreateTopic 把
+// CreateChannelSequences 挂在同一事务里）。
 func (r *gormChannelRepo) CreateTopic(ctx context.Context, p CreateTopicParams) (*Channel, error) {
 	if p.ParentID == "" {
 		return nil, fmt.Errorf("create topic: empty parent_id")
 	}
-	var topic Channel
+	var topic *Channel
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		return insertTopicTx(tx, p, &topic)
+		var inner error
+		topic, inner = r.CreateTopicTx(ctx, tx, p)
+		return inner
 	})
 	if err != nil {
+		return nil, err
+	}
+	return topic, nil
+}
+
+// CreateTopicTx 是 CreateTopic 的 tx-aware 变体（P2.3）。tx 非 nil 时
+// 直接走 caller 事务，让 ChannelService.CreateTopic 能把 channel 创建 +
+// CreateChannelSequences + 成员 fan-out 全部串在同一笔 tx 内。tx 为 nil
+// 时退化为 r.db（仅给那些不需要事务的内部 caller 用）；外层
+// gormChannelRepo.CreateTopic 还会自己开一笔 tx 包住调用，所以
+// `tx == nil + 通过 CreateTopic 进入` 路径仍然原子。
+func (r *gormChannelRepo) CreateTopicTx(ctx context.Context, tx *gorm.DB, p CreateTopicParams) (*Channel, error) {
+	if p.ParentID == "" {
+		return nil, fmt.Errorf("create topic: empty parent_id")
+	}
+	var topic Channel
+	db := r.dbOr(ctx, tx)
+	if err := insertTopicTx(db, p, &topic); err != nil {
 		return nil, err
 	}
 	return &topic, nil

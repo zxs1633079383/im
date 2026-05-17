@@ -144,6 +144,14 @@ type ChannelRepo interface {
 	// M3-A Topic (子群聊) 能力。CreateTopic 原子地创建 topic channel + 批量
 	// 注册成员；ListTopics 返回 parentID 下所有 topic（按 id 排序）。
 	CreateTopic(ctx context.Context, params CreateTopicParams) (*Channel, error)
+	// CreateTopicTx 是 CreateTopic 的 tx-aware 形态：topic channel + 初始成员
+	// 全部用 caller 提供的 tx 写入，让 service 层把 CreateChannelSequences
+	// 也挂在同一个 tx 内（C018 §3.2）。topic 创建后第一条消息走
+	// `nextval('"channel_msg_seq_<id>"')`，sequence 对象必须在 channel 行
+	// commit 同时存在，否则首条消息 INSERT 失败
+	// `relation "channel_msg_seq_<uuid>" does not exist`。
+	// tx 为 nil 时退化为 CreateTopic 的现有非事务行为（兼容老 caller）。
+	CreateTopicTx(ctx context.Context, tx *gorm.DB, params CreateTopicParams) (*Channel, error)
 	ListTopics(ctx context.Context, parentID string) ([]Channel, error)
 
 	// AddMemberTx / RemoveMemberTx are tx-aware siblings of AddMember /
