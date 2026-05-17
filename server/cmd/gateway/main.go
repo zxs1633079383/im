@@ -226,6 +226,14 @@ func run() int {
 	// (legacy WithEventPusher) so newly added members still receive a
 	// real-time WebSocket "added" event.
 	channelSvc := service.NewChannelService(channelRepo, messageRepo)
+	// P2-followup: every newly-created channel (CreateGroup / CreateOrGetDM)
+	// must also provision its `channel_msg_seq_<id>` + `channel_event_seq_<id>`
+	// PG sequences inside the same tx as the channels INSERT — otherwise the
+	// very first push_msg / channel_event hit by that channel fails with
+	// `relation "channel_msg_seq_<uuid>" does not exist` (P3 NEED_FOLLOWUP /
+	// C018 §3.2). Wiring channelEventRepo here keeps the dev / test fixtures
+	// that omit this attach on the legacy non-tx fallback path.
+	channelSvc.AttachChannelEventRepo(channelEventRepo)
 	imhttp.RegisterChannelRoutes(authedAPI, channelSvc, &hubChannelEventPusher{xpod: xpod})
 
 	// M2-A: fine-grained channel governance (patch, managers, pins, role/notify).

@@ -207,6 +207,12 @@ func buildEngine(d buildEngineDeps) *gin.Engine {
 	reactionPusher := &localReactionPusher{hub: d.hub, channels: d.channels}
 
 	channelSvc := service.NewChannelService(d.channels, d.messages)
+	// P2-followup: mirror cmd/gateway/main.go — provision per-channel PG
+	// sequences (channel_msg_seq_<id> + channel_event_seq_<id>) inside the
+	// channel-creation tx. Without this, every integration test that creates
+	// a fresh channel + sends a message fails at nextval('channel_msg_seq_…')
+	// with `relation does not exist` (TestM4Sync_HappyPath / TestM4Reaction*).
+	channelSvc.AttachChannelEventRepo(d.channelEvents)
 	imhttp.RegisterChannelRoutes(authed, channelSvc, channelPusher)
 	// v0.7.3 gap #4 / C013: wire the channel_member_updated broadcaster so
 	// AddMember / RemoveMember / LeaveChannel / TransferOwner fan WS frames.
