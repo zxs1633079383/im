@@ -248,8 +248,11 @@ func (r *gormChannelRepo) NextMessageSeq(ctx context.Context, tx *gorm.DB, chann
 	}
 	seqName := "channel_msg_seq_" + safe
 	var seq int64
+	// Double-quote inside the single-quoted text literal — UUID-shaped
+	// channel ids carry hyphens which PG would otherwise parse as the
+	// subtraction operator during the text→regclass implicit cast.
 	err := r.dbOr(ctx, tx).Raw(
-		fmt.Sprintf(`SELECT nextval('%s')`, seqName),
+		fmt.Sprintf(`SELECT nextval('"%s"')`, seqName),
 	).Scan(&seq).Error
 	if err != nil {
 		return 0, fmt.Errorf("nextval msg: %w", err)

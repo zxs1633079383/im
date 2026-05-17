@@ -173,10 +173,13 @@ func (r *gormChannelEventRepo) NextEventSeq(ctx context.Context, tx *gorm.DB, ch
 	var seq int64
 	// PG identifiers cannot be parameterised; sanitizeID already restricts
 	// the name charset to [A-Za-z0-9_-] so direct interpolation is safe.
-	// Per-channel SQL keeps the planner cache hot and avoids cross-version
-	// text→regclass cast surprises.
+	// The seq name must be double-quoted *inside* the single-quoted text
+	// literal because UUID-shaped channel ids carry hyphens, which PG
+	// otherwise parses as the subtraction operator during the implicit
+	// text→regclass cast. CREATE SEQUENCE uses the same quoting (see
+	// CreateChannelSequences below).
 	err := r.dbOr(ctx, tx).Raw(
-		fmt.Sprintf(`SELECT nextval('%s')`, seqName),
+		fmt.Sprintf(`SELECT nextval('"%s"')`, seqName),
 	).Scan(&seq).Error
 	if err != nil {
 		return 0, fmt.Errorf("nextval event: %w", err)
@@ -267,14 +270,16 @@ func (r *gormChannelEventRepo) CreateChannelSequences(
 
 	db := r.dbOr(ctx, tx)
 	// %s injection-safe — safe is already sanitised; identifiers are not
-	// parameterisable in PG, so format-then-Exec is the only option.
+	// parameterisable in PG, so format-then-Exec is the only option. We
+	// double-quote the identifier so UUID-shaped channel ids (which carry
+	// hyphens, otherwise parsed as the subtraction operator) survive.
 	if err := db.Exec(
-		fmt.Sprintf(`CREATE SEQUENCE IF NOT EXISTS %s START 1 CACHE 50`, msgSeq),
+		fmt.Sprintf(`CREATE SEQUENCE IF NOT EXISTS "%s" START 1 CACHE 50`, msgSeq),
 	).Error; err != nil {
 		return fmt.Errorf("create msg sequence: %w", err)
 	}
 	if err := db.Exec(
-		fmt.Sprintf(`CREATE SEQUENCE IF NOT EXISTS %s START 1 CACHE 100`, eventSeq),
+		fmt.Sprintf(`CREATE SEQUENCE IF NOT EXISTS "%s" START 1 CACHE 100`, eventSeq),
 	).Error; err != nil {
 		return fmt.Errorf("create event sequence: %w", err)
 	}

@@ -195,13 +195,15 @@ func processChannel(ctx context.Context, db *sql.DB, channelID string, dryRun bo
 	defer func() { _ = tx.Rollback() }()
 
 	startMsg := maxMsgSeq + 1
+	// Double-quote identifiers so UUID-shaped channel ids (which contain
+	// hyphens) survive PG identifier parsing.
 	if _, err := tx.ExecContext(ctx,
-		fmt.Sprintf(`CREATE SEQUENCE IF NOT EXISTS %s START %d CACHE 50`, msgSeq, startMsg),
+		fmt.Sprintf(`CREATE SEQUENCE IF NOT EXISTS "%s" START %d CACHE 50`, msgSeq, startMsg),
 	); err != nil {
 		return 0, fmt.Errorf("create msg seq: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx,
-		fmt.Sprintf(`CREATE SEQUENCE IF NOT EXISTS %s START 1 CACHE 100`, eventSeq),
+		fmt.Sprintf(`CREATE SEQUENCE IF NOT EXISTS "%s" START 1 CACHE 100`, eventSeq),
 	); err != nil {
 		return 0, fmt.Errorf("create event seq: %w", err)
 	}
@@ -257,7 +259,7 @@ func processChannel(ctx context.Context, db *sql.DB, channelID string, dryRun bo
 	}
 	if maxEventSeq > 0 {
 		if _, err := tx.ExecContext(ctx,
-			fmt.Sprintf(`SELECT setval('%s', %d)`, eventSeq, maxEventSeq),
+			fmt.Sprintf(`SELECT setval('"%s"', %d)`, eventSeq, maxEventSeq),
 		); err != nil {
 			return 0, fmt.Errorf("setval event seq: %w", err)
 		}
