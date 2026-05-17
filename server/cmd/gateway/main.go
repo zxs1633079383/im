@@ -312,11 +312,8 @@ func run() int {
 	// Phase 7.5 cut-over: batch incremental sync. No real-time hooks — sync is
 	// pure pull. Phase P4 (C019) reshaped the algorithm to use
 	// channel_event.event_seq as the cursor; v1 (messages.seq cursor) was
-	// integrally retired in the 2026-05-17 cutover. channelEventRepo is
-	// created here at the read site (single consumer for sync — write side
-	// is owned by message/channel services elsewhere); wiring read-side
-	// here is safe.
-	channelEventRepo := repo.NewChannelEventRepo(gormDB)
+	// integrally retired in the 2026-05-17 cutover. channelEventRepo was
+	// already created at line 102 (P3 wiring for messageSvc); reuse it here.
 	syncSvc := service.NewSyncService(channelRepo, messageRepo, channelEventRepo)
 	imhttp.RegisterSyncRoutes(authedAPI, syncSvc, log)
 
