@@ -20,3 +20,4 @@ packages:
       FileRepo:
       FavoriteRepo:
       ChannelGovernanceRepo:
+      ChannelEventRepo:
