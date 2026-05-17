@@ -228,6 +228,66 @@ func (_c *ChannelRepoMock_CreateTopic_Call) RunAndReturn(run func(context.Contex
 	return _c
 }
 
+// CreateTopicTx provides a mock function with given fields: ctx, tx, params
+func (_m *ChannelRepoMock) CreateTopicTx(ctx context.Context, tx *gorm.DB, params repo.CreateTopicParams) (*repo.Channel, error) {
+	ret := _m.Called(ctx, tx, params)
+
+	if len(ret) == 0 {
+		panic("no return value specified for CreateTopicTx")
+	}
+
+	var r0 *repo.Channel
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, *gorm.DB, repo.CreateTopicParams) (*repo.Channel, error)); ok {
+		return rf(ctx, tx, params)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, *gorm.DB, repo.CreateTopicParams) *repo.Channel); ok {
+		r0 = rf(ctx, tx, params)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*repo.Channel)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, *gorm.DB, repo.CreateTopicParams) error); ok {
+		r1 = rf(ctx, tx, params)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// ChannelRepoMock_CreateTopicTx_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CreateTopicTx'
+type ChannelRepoMock_CreateTopicTx_Call struct {
+	*mock.Call
+}
+
+// CreateTopicTx is a helper method to define mock.On call
+//   - ctx context.Context
+//   - tx *gorm.DB
+//   - params repo.CreateTopicParams
+func (_e *ChannelRepoMock_Expecter) CreateTopicTx(ctx interface{}, tx interface{}, params interface{}) *ChannelRepoMock_CreateTopicTx_Call {
+	return &ChannelRepoMock_CreateTopicTx_Call{Call: _e.mock.On("CreateTopicTx", ctx, tx, params)}
+}
+
+func (_c *ChannelRepoMock_CreateTopicTx_Call) Run(run func(ctx context.Context, tx *gorm.DB, params repo.CreateTopicParams)) *ChannelRepoMock_CreateTopicTx_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(*gorm.DB), args[2].(repo.CreateTopicParams))
+	})
+	return _c
+}
+
+func (_c *ChannelRepoMock_CreateTopicTx_Call) Return(_a0 *repo.Channel, _a1 error) *ChannelRepoMock_CreateTopicTx_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *ChannelRepoMock_CreateTopicTx_Call) RunAndReturn(run func(context.Context, *gorm.DB, repo.CreateTopicParams) (*repo.Channel, error)) *ChannelRepoMock_CreateTopicTx_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // CreateTx provides a mock function with given fields: ctx, tx, ch
 func (_m *ChannelRepoMock) CreateTx(ctx context.Context, tx *gorm.DB, ch *repo.Channel) error {
 	ret := _m.Called(ctx, tx, ch)
