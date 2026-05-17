@@ -51,7 +51,7 @@ P3 + P4 done
 - `server/internal/repo/mocks/channel_event_repo_mock.go`（新建，mock for 后续 service 用）
 
 **文件黑名单（禁改）**：
-- `SESSION.md` / `CLAUDE.md` / `README.md`（主对话最后写）
+- `/SESSION.md` / `/CLAUDE.md` / `/README.md`（**仅根目录**这 3 个；子目录的 CLAUDE.md 可改，详见 §6 黑名单语义）
 - `server/internal/service/*.go`（留给 P3）
 - `server/internal/http/*.go`（留给 P3）
 - 已有 migration 文件（P1 已落，禁改）
@@ -64,6 +64,20 @@ P3 + P4 done
 - [ ] mocks 跑通
 - [ ] cargo test / make test PASS（不引入新依赖前提下）
 - [ ] commit chain ≥ 3，每个都 5 段结构化 body
+
+### 跨项目契约协调（NEED_FIX 模式 / 2026-05-17 新增）
+
+任何 phase 的 agent 都遵守：若发现需要另一个仓库改动才能完成本任务：
+
+1. **不要阻塞自己**。在 worktree 根写 `NEED_<OTHER_PROJECT>_FIX.md`，内容：
+   - 一句话说明 gap（哪个字段缺 / 哪个 endpoint 行为不对）
+   - 期望另一仓库改哪个文件 / 加哪个字段 / 期望返回结构 / 期望函数签名
+   - 当前你用的临时 mock/stub（让 main 知道接口落地后你怎么切回真接口）
+2. **继续推进**自己 phase 内可做部分（用 mock 占位）
+3. **主对话 cron 巡检**会扫 `worktrees/*/NEED_*.md`，命中 → fork 另一仓库的轻量级协调 worktree 修复
+4. **修复完**会在你 worktree 内写 `RESOLVED_<gap-id>.md`，你切真接口即可
+
+**反模式**：阻塞 / 退回 main 等 / 把对端 gap 当成 phase 失败。
 
 ### Phase P3：mutation handlers 切换
 
@@ -80,7 +94,8 @@ P3 + P4 done
 - `server/internal/http/message.go`（仅依赖注入调整，不改路由签名）
 
 **黑名单**：
-- 同上 + `server/internal/service/sync.go`（留给 P4）
+- **仅根目录** `/SESSION.md` / `/CLAUDE.md` / `/README.md` + `server/internal/service/sync.go`（留给 P4）
+- 子目录的 CLAUDE.md（如 `docs/CLAUDE.md`、`server/internal/CLAUDE.md` 如果存在）允许改
 
 **完成标准**：
 - [ ] 所有 mutation 路径都 INSERT channel_event 同事务
@@ -114,11 +129,11 @@ P3 + P4 done
 - [ ] v1 legacy 集成测试不退化
 - [ ] §4 grep 通过（C019）
 
-### Phase P5：cses-client cursor migration
+### Phase P5：cses-client cursor migration（与 P4 真正并行）
 
-**worktree 路径**：`worktrees/p5-event-cursor/`（在 cses-client repo 内）
+**worktree 路径**：`worktrees/p5-event-cursor/`（在 **cses-client repo** 内，不是 im repo）
 **branch**：`feat-p5-event-cursor-migration`
-**前置**：P4 wire 稳定（v2 wire 字段定义已固化）
+**前置**：~~P4 wire 稳定~~ **改为：P4 启动同时启动**，wire 契约不阻塞 — agent 直接按 C019 §3.1 wire 契约编码，发现 P4 实际实现有差异 → 写 `NEED_IM_SERVER_FIX.md` 不阻塞自己进度
 **预估**：1.5d
 
 **文件白名单**（cses-client repo）：
@@ -132,7 +147,7 @@ P3 + P4 done
 - `src-tauri/migrations/*.sql` 或 cses-client migration 入口
 
 **黑名单**：
-- `SESSION.md` / `CLAUDE.md` / `README.md`
+- **仅根目录** `/SESSION.md` / `/CLAUDE.md` / `/README.md`（子目录如 `src-tauri/CLAUDE.md` / `src/pages/message-v3/CLAUDE.md` 允许改）
 - `src/**/*.ts`（Angular 层留主对话处理，可能涉及 UI）
 
 **完成标准**：
