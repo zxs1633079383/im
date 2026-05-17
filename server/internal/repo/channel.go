@@ -120,6 +120,13 @@ type ChannelRepo interface {
 	ListMembers(ctx context.Context, channelID string) ([]ChannelMember, error)
 	ListByUser(ctx context.Context, userID string) ([]Channel, error)
 	MarkRead(ctx context.Context, channelID string, userID string, seq int64) error
+	// MarkReadTx is the tx-aware variant of MarkRead. Composed with
+	// ChannelEventRepo.AppendEvent at the service layer (MessageService.MarkRead)
+	// so the channel_members UPDATE and the EventTypeReadMark channel_event
+	// INSERT share one transaction (C017 §3.1). Returns the row count actually
+	// touched so callers can detect "no-op" cases (non-member, already past
+	// seq) and skip the event append.
+	MarkReadTx(ctx context.Context, tx *gorm.DB, channelID string, userID string, seq int64) (int64, error)
 	IncrementPhantomCount(ctx context.Context, tx *gorm.DB, channelID string, excludeUserIDs []string) error
 	FindDM(ctx context.Context, userA, userB string) (*Channel, error)
 	ListByUserWithPreview(ctx context.Context, userID string) ([]ChannelWithPreview, error)
@@ -393,6 +400,27 @@ func (r *gormChannelRepo) MarkRead(ctx context.Context, channelID string, userID
 		return fmt.Errorf("mark read: %w", err)
 	}
 	return nil
+}
+
+// MarkReadTx implements ChannelRepo.MarkReadTx. Same UPDATE as MarkRead but
+// runs inside the caller's tx and returns rows-affected so callers can
+// short-circuit the channel_event append when the row didn't move.
+//
+// Composition site: service.MessageService.MarkRead — see C017 §3.2 for the
+// rationale (channel_members UPDATE + EventTypeReadMark INSERT must be
+// co-transactional or other devices may see a phantom read cursor that
+// doesn't actually move the server-side read position).
+func (r *gormChannelRepo) MarkReadTx(ctx context.Context, tx *gorm.DB, channelID string, userID string, seq int64) (int64, error) {
+	res := r.dbOr(ctx, tx).Exec(
+		`UPDATE channel_members
+		 SET last_read_seq = ?, phantom_at_read = phantom_count
+		 WHERE user_id = ? AND channel_id = ?`,
+		seq, userID, channelID,
+	)
+	if res.Error != nil {
+		return 0, fmt.Errorf("mark read tx: %w", res.Error)
+	}
+	return res.RowsAffected, nil
 }
 
 // IncrementPhantomCount bumps phantom_count for every member of channelID

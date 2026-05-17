@@ -858,6 +858,66 @@ func (_c *ChannelRepoMock_MarkRead_Call) RunAndReturn(run func(context.Context, 
 	return _c
 }
 
+// MarkReadTx provides a mock function with given fields: ctx, tx, channelID, userID, seq
+func (_m *ChannelRepoMock) MarkReadTx(ctx context.Context, tx *gorm.DB, channelID string, userID string, seq int64) (int64, error) {
+	ret := _m.Called(ctx, tx, channelID, userID, seq)
+
+	if len(ret) == 0 {
+		panic("no return value specified for MarkReadTx")
+	}
+
+	var r0 int64
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, *gorm.DB, string, string, int64) (int64, error)); ok {
+		return rf(ctx, tx, channelID, userID, seq)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, *gorm.DB, string, string, int64) int64); ok {
+		r0 = rf(ctx, tx, channelID, userID, seq)
+	} else {
+		r0 = ret.Get(0).(int64)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, *gorm.DB, string, string, int64) error); ok {
+		r1 = rf(ctx, tx, channelID, userID, seq)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// ChannelRepoMock_MarkReadTx_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'MarkReadTx'
+type ChannelRepoMock_MarkReadTx_Call struct {
+	*mock.Call
+}
+
+// MarkReadTx is a helper method to define mock.On call
+//   - ctx context.Context
+//   - tx *gorm.DB
+//   - channelID string
+//   - userID string
+//   - seq int64
+func (_e *ChannelRepoMock_Expecter) MarkReadTx(ctx interface{}, tx interface{}, channelID interface{}, userID interface{}, seq interface{}) *ChannelRepoMock_MarkReadTx_Call {
+	return &ChannelRepoMock_MarkReadTx_Call{Call: _e.mock.On("MarkReadTx", ctx, tx, channelID, userID, seq)}
+}
+
+func (_c *ChannelRepoMock_MarkReadTx_Call) Run(run func(ctx context.Context, tx *gorm.DB, channelID string, userID string, seq int64)) *ChannelRepoMock_MarkReadTx_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(*gorm.DB), args[2].(string), args[3].(string), args[4].(int64))
+	})
+	return _c
+}
+
+func (_c *ChannelRepoMock_MarkReadTx_Call) Return(_a0 int64, _a1 error) *ChannelRepoMock_MarkReadTx_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *ChannelRepoMock_MarkReadTx_Call) RunAndReturn(run func(context.Context, *gorm.DB, string, string, int64) (int64, error)) *ChannelRepoMock_MarkReadTx_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // NextMessageSeq provides a mock function with given fields: ctx, tx, channelID
 func (_m *ChannelRepoMock) NextMessageSeq(ctx context.Context, tx *gorm.DB, channelID string) (int64, error) {
 	ret := _m.Called(ctx, tx, channelID)
