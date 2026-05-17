@@ -95,25 +95,37 @@ type MessageRepo interface {
 }
 
 type gormMessageRepo struct {
-	db      *gorm.DB
-	channel ChannelRepo
+	db           *gorm.DB
+	channel      ChannelRepo
+	channelEvent ChannelEventRepo
 }
 
 // NewMessageRepo returns a GORM-backed MessageRepo. The ChannelRepo is used
-// to compose IncrementSeq + IncrementPhantomCount inside the Send transaction.
-func NewMessageRepo(db *gorm.DB, channel ChannelRepo) MessageRepo {
-	return &gormMessageRepo{db: db, channel: channel}
+// to compose IncrementSeq + IncrementPhantomCount inside the Send transaction;
+// the optional ChannelEventRepo is composed inside Send / UpdateContent /
+// SoftDelete / PostSystemMessage to append a row to the channel_event
+// append-only log in the SAME transaction as the underlying business
+// mutation (harness C017 §3.1). Passing nil disables event append — callers
+// that wire nil opt out of the offline-sync timeline entirely (only the M4
+// integration harness and a handful of legacy tests still do).
+func NewMessageRepo(db *gorm.DB, channel ChannelRepo, channelEvent ChannelEventRepo) MessageRepo {
+	return &gormMessageRepo{db: db, channel: channel, channelEvent: channelEvent}
 }
 
-// Send runs idempotency check, seq allocation, insert, and phantom_count
-// bump in a single transaction. See MessageRepo.Send for semantics.
+// Send runs idempotency check, seq allocation, insert, phantom_count bump,
+// and channel_event append (EventTypeNew) — all in a single transaction.
+// See MessageRepo.Send for semantics.
 //
 // Send delegates the UPDATE channels + INSERT messages atomic pair to
 // AllocSeqAndInsert so there is a single primitive owning seq monotonicity.
+// The channel_event row is appended in the SAME tx so a crash between the
+// message INSERT and the event INSERT rolls both back; this is the C017 §3.1
+// "co-transactional" guarantee that powers offline-sync correctness.
 func (r *gormMessageRepo) Send(ctx context.Context, msg *Message) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		// 1. Idempotency: short-circuit if (channel_id, client_msg_id)
-		//    already exists.
+		//    already exists. Idempotent retries MUST NOT append a second
+		//    channel_event row — the original Send already appended one.
 		if msg.ClientMsgID != "" {
 			var existing Message
 			err := tx.Select("id", "seq").
@@ -129,13 +141,20 @@ func (r *gormMessageRepo) Send(ctx context.Context, msg *Message) error {
 			}
 		}
 
-		// 2+3. AllocSeqAndInsert does UPDATE channels SET seq=seq+1 RETURNING +
-		//      INSERT messages inside the passed tx — see docs/BACKEND.md §4.1.
+		// 2+3. AllocSeqAndInsert does nextval seq + INSERT messages inside the
+		//      passed tx — see docs/BACKEND.md §4.1.
 		if _, err := r.AllocSeqAndInsert(ctx, tx, msg); err != nil {
 			return err
 		}
 
-		// 4. Directed message: bump phantom_count for every member NOT in
+		// 4. Append EventTypeNew in the SAME tx (C017 §3.1). Failure here
+		//    rolls the message INSERT back, so the client never sees a
+		//    "ghost message" that sync can't replay.
+		if err := r.appendMessageEvent(ctx, tx, msg.ChannelID, msg.ID, msg.SenderID, EventTypeNew); err != nil {
+			return err
+		}
+
+		// 5. Directed message: bump phantom_count for every member NOT in
 		//    visible_to (sender stays included so they don't see a phantom
 		//    of their own message).
 		if msg.VisibleTo != nil {
@@ -146,6 +165,37 @@ func (r *gormMessageRepo) Send(ctx context.Context, msg *Message) error {
 		}
 		return nil
 	})
+}
+
+// appendMessageEvent is the C017 §3.2 helper used by every mutation handler
+// that needs to write a single ChannelEvent row inside the caller's tx. The
+// channelEvent field is optional (nil-safe) for legacy wiring; callers that
+// pass nil ChannelEventRepo at construction time keep their pre-channel-event
+// behaviour. msgID may be empty when the event has no associated message
+// (reaction / read_mark — currently unused at the message-repo layer but the
+// signature already accommodates it).
+func (r *gormMessageRepo) appendMessageEvent(
+	ctx context.Context, tx *gorm.DB,
+	channelID string, msgID string, actorID string, eventType EventType,
+) error {
+	if r.channelEvent == nil {
+		return nil
+	}
+	seq, err := r.channelEvent.NextEventSeq(ctx, tx, channelID)
+	if err != nil {
+		return fmt.Errorf("alloc event seq: %w", err)
+	}
+	evt := &ChannelEvent{
+		ChannelID: channelID,
+		EventSeq:  seq,
+		EventType: eventType,
+		ActorID:   actorID,
+		CreatedAt: time.Now().UnixMilli(),
+	}
+	if msgID != "" {
+		evt.MsgID = &msgID
+	}
+	return r.channelEvent.AppendEvent(ctx, tx, evt)
 }
 
 // AllocSeqAndInsert is the unique entry point for allocating the next
@@ -209,10 +259,16 @@ func (r *gormMessageRepo) AllocSeqAndInsert(ctx context.Context, tx *gorm.DB, ms
 // PostSystemMessage implements MessageRepo.PostSystemMessage.
 //
 // It validates props["sys_type"] is a non-empty string, marshals props to JSON
-// (stored in messages.props), constructs a Message with MsgType=System, and
-// delegates to AllocSeqAndInsert so seq monotonicity is preserved and the
-// optional external tx is reused. Empty content is intentional — the client
-// renders from props["sys_type"] + the remaining fields.
+// (stored in messages.props), constructs a Message with MsgType=System,
+// delegates to AllocSeqAndInsert so seq monotonicity is preserved, and
+// appends a channel_event row of EventTypeMember in the SAME transaction
+// (C017 §3.1) so member joined/left/kicked + channel rename/close events are
+// visible to the offline-sync timeline. tx != nil reuses the caller's
+// transaction; tx == nil opens a fresh transaction internally so the message
+// INSERT + the event INSERT remain co-transactional.
+//
+// Empty content is intentional — the client renders from props["sys_type"]
+// + the remaining fields.
 func (r *gormMessageRepo) PostSystemMessage(
 	ctx context.Context, tx *gorm.DB,
 	channelID string, senderID string, teamID *string, props map[string]any,
@@ -237,19 +293,36 @@ func (r *gormMessageRepo) PostSystemMessage(
 		MsgType:   MsgTypeSystem,
 		Props:     &propsStr,
 	}
-	if _, err := r.AllocSeqAndInsert(ctx, tx, msg); err != nil {
-		return nil, fmt.Errorf("post system message: %w", err)
+
+	// Compose insert + event append inside one tx. When the caller already
+	// supplies a tx, we reuse it directly; otherwise open a fresh one.
+	insertAndEvent := func(innerTx *gorm.DB) error {
+		if _, err := r.AllocSeqAndInsert(ctx, innerTx, msg); err != nil {
+			return fmt.Errorf("post system message: %w", err)
+		}
+		return r.appendMessageEvent(ctx, innerTx, channelID, msg.ID, senderID, EventTypeMember)
+	}
+	if tx != nil {
+		if err := insertAndEvent(tx.WithContext(ctx)); err != nil {
+			return nil, err
+		}
+		return msg, nil
+	}
+	if err := r.db.WithContext(ctx).Transaction(func(newTx *gorm.DB) error {
+		return insertAndEvent(newTx)
+	}); err != nil {
+		return nil, err
 	}
 	return msg, nil
 }
 
 // UpdateContent sets content + updated_at=now() for msgID when callerID is the
-// sender and the message is not already soft-deleted. Returns the refreshed
-// row. Errors:
+// sender and the message is not already soft-deleted, and appends a
+// channel_event row of EventTypeEdit in the SAME transaction (C017 §3.1).
+// Returns the refreshed row. Errors:
 //   - ErrNotFound when the message does not exist.
-//   - ErrNotMember sentinel is NOT returned by the repo layer — callers who
-//     need a "caller is not sender" distinction should detect 0 rows updated
-//     as "forbidden" and surface their own error.
+//   - ErrForbidden when the caller is not the sender.
+//   - ErrGone when the message is already soft-deleted.
 //
 // The returned *Message reflects the post-update state (including the new
 // updated_at value) so callers can echo it in the WS msg_updated payload.
@@ -268,15 +341,21 @@ func (r *gormMessageRepo) UpdateContent(ctx context.Context, msgID string, calle
 		return nil, ErrGone
 	}
 	now := time.Now().UTC()
-	res := r.db.WithContext(ctx).
-		Model(&Message{}).
-		Where("id = ? AND sender_id = ? AND deleted = FALSE", msgID, callerID).
-		Updates(map[string]any{"content": content, "updated_at": now})
-	if res.Error != nil {
-		return nil, fmt.Errorf("update content: %w", res.Error)
-	}
-	if res.RowsAffected == 0 {
-		return nil, ErrNotFound
+	err = r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		res := tx.Model(&Message{}).
+			Where("id = ? AND sender_id = ? AND deleted = FALSE", msgID, callerID).
+			Updates(map[string]any{"content": content, "updated_at": now})
+		if res.Error != nil {
+			return fmt.Errorf("update content: %w", res.Error)
+		}
+		if res.RowsAffected == 0 {
+			return ErrNotFound
+		}
+		// Same-tx channel_event append: failure rolls the CAS UPDATE back.
+		return r.appendMessageEvent(ctx, tx, existing.ChannelID, msgID, callerID, EventTypeEdit)
+	})
+	if err != nil {
+		return nil, err
 	}
 	existing.Content = content
 	existing.UpdatedAt = &now
@@ -284,11 +363,13 @@ func (r *gormMessageRepo) UpdateContent(ctx context.Context, msgID string, calle
 }
 
 // SoftDelete sets deleted=true + deleted_at=now() for msgID when callerID is
-// the sender. Returns the refreshed row so the caller can fan out the
-// msg_deleted WS event. Errors:
+// the sender, and appends a channel_event row of EventTypeDelete in the
+// SAME transaction (C017 §3.1). Returns the refreshed row so the caller
+// can fan out the msg_deleted WS event. Errors:
 //   - ErrNotFound when the message does not exist.
 //   - ErrForbidden when the caller is not the sender.
-//   - ErrGone when the message is already soft-deleted (idempotent no-op).
+//   - ErrGone when the message is already soft-deleted (idempotent no-op,
+//     no second channel_event row is appended).
 func (r *gormMessageRepo) SoftDelete(ctx context.Context, msgID string, callerID string) (*Message, error) {
 	ctx, span := tracer.Start(ctx, "MessageRepo.SoftDelete")
 	defer span.End()
@@ -302,19 +383,32 @@ func (r *gormMessageRepo) SoftDelete(ctx context.Context, msgID string, callerID
 	}
 	if existing.Deleted {
 		// Idempotent: treat as success, but signal "already gone" so the
-		// transport layer can skip the push fan-out.
+		// transport layer can skip the push fan-out. No channel_event is
+		// appended because the original SoftDelete already appended one.
 		return existing, ErrGone
 	}
 	now := time.Now().UTC()
-	res := r.db.WithContext(ctx).
-		Model(&Message{}).
-		Where("id = ? AND sender_id = ? AND deleted = FALSE", msgID, callerID).
-		Updates(map[string]any{"deleted": true, "deleted_at": now})
-	if res.Error != nil {
-		return nil, fmt.Errorf("soft delete: %w", res.Error)
+	var raced bool
+	err = r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		res := tx.Model(&Message{}).
+			Where("id = ? AND sender_id = ? AND deleted = FALSE", msgID, callerID).
+			Updates(map[string]any{"deleted": true, "deleted_at": now})
+		if res.Error != nil {
+			return fmt.Errorf("soft delete: %w", res.Error)
+		}
+		if res.RowsAffected == 0 {
+			// Concurrent delete lost the race — equivalent to ErrGone.
+			// Surface via a sentinel boolean so we can still commit the
+			// (empty) tx and return ErrGone outside it.
+			raced = true
+			return nil
+		}
+		return r.appendMessageEvent(ctx, tx, existing.ChannelID, msgID, callerID, EventTypeDelete)
+	})
+	if err != nil {
+		return nil, err
 	}
-	if res.RowsAffected == 0 {
-		// Concurrent delete lost the race — equivalent to ErrGone.
+	if raced {
 		existing.Deleted = true
 		return existing, ErrGone
 	}

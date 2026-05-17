@@ -99,7 +99,8 @@ func run() int {
 	// from Mattermost cookieId + the cses Redis "User" hash.
 	userSettingsRepo := repo.NewUserSettingsRepo(gormDB)
 	channelRepo := repo.NewChannelRepo(gormDB)
-	messageRepo := repo.NewMessageRepo(gormDB, channelRepo)
+	channelEventRepo := repo.NewChannelEventRepo(gormDB)
+	messageRepo := repo.NewMessageRepo(gormDB, channelRepo, channelEventRepo)
 	friendRepo := repo.NewFriendshipRepo(gormDB)
 	favoriteRepo := repo.NewFavoriteRepo(gormDB)
 	fileRepo := repo.NewFileRepo(gormDB)
@@ -239,6 +240,11 @@ func run() int {
 	// echoes read receipts to other devices of the same user, and the file
 	// repo handles attachment linkage on send.
 	messageSvc := service.NewMessageService(messageRepo, channelRepo, fileRepo)
+	// Wire the channel_event repo so MarkRead writes EventTypeReadMark in
+	// the same transaction as the channel_members UPDATE (C017 §3.1).
+	// Without this call MessageService falls back to the legacy non-tx path
+	// and offline-sync misses cross-device read-cursor echoes.
+	messageSvc.AttachChannelEventRepo(channelEventRepo)
 	msgBroadcaster := &hubEventBroadcaster{xpod: xpod, svc: messageSvc}
 	userPusher := &hubUserEventPusher{xpod: xpod}
 	imhttp.RegisterChannelGovernanceRoutes(authedAPI, governanceSvc,

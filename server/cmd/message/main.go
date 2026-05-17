@@ -314,7 +314,8 @@ func run() int {
 	}()
 
 	channelRepo := repo.NewChannelRepo(gormDB)
-	messageRepo := repo.NewMessageRepo(gormDB, channelRepo)
+	channelEventRepo := repo.NewChannelEventRepo(gormDB)
+	messageRepo := repo.NewMessageRepo(gormDB, channelRepo, channelEventRepo)
 
 	// Connect to Pulsar
 	pulsarClient, err := imPulsar.New(cfg.Pulsar.URL, log)
