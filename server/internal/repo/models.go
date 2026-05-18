@@ -34,6 +34,15 @@ type Channel struct {
 	Notice        string    `gorm:"column:notice;not null;default:''"                       json:"notice"`
 	Purpose       string    `gorm:"column:purpose;not null;default:''"                      json:"purpose"`
 	PictureURL    string    `gorm:"column:picture_url;not null;default:''"                  json:"picture_url"`
+	// Picture stores the avatar payload for cses-avatar three-mode rendering.
+	// Stored as JSONB in PG; marshalled/unmarshalled as json.RawMessage so the
+	// Go layer passes the blob through verbatim without re-encoding.
+	//   USER    → {"userIds":["<uid1>","<uid2>"]}
+	//   NAME    → {"color":"#RRGGBB","text":"<首字符>"}
+	//   PICTURE → {"url":"<url>"}
+	Picture     string    `gorm:"column:picture;type:jsonb;not null;default:'{}'"         json:"picture"`
+	// PictureType discriminates the Picture payload: "USER" | "NAME" | "PICTURE" | ""
+	PictureType  string    `gorm:"column:picture_type;type:varchar(15);not null;default:''" json:"picture_type"`
 	Props         string    `gorm:"column:props;type:jsonb;not null;default:'{}'"           json:"props"`
 	Orient        int16     `gorm:"column:orient;not null;default:0"                        json:"orient"`
 	Permission    int16     `gorm:"column:permission;not null;default:0"                    json:"permission"`

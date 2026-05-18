@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"unicode/utf8"
 
 	"gorm.io/gorm"
 
@@ -104,10 +105,12 @@ func (s *ChannelService) CreateGroup(ctx context.Context, creatorID, teamID, nam
 	defer span.End()
 
 	ch := &repo.Channel{
-		Type:      repo.ChannelTypeGroup,
-		Name:      name,
-		CreatorID: creatorID,
-		TeamID:    nullIfEmpty(teamID),
+		Type:        repo.ChannelTypeGroup,
+		Name:        name,
+		CreatorID:   creatorID,
+		TeamID:      nullIfEmpty(teamID),
+		PictureType: "NAME",
+		Picture:     groupNamePicture(name),
 	}
 	added := make([]AddedMember, 0, len(memberIDs))
 
@@ -197,9 +200,11 @@ func (s *ChannelService) CreateOrGetDM(ctx context.Context, callerID, otherUserI
 	}
 
 	ch := &repo.Channel{
-		Type:      repo.ChannelTypeDM,
-		CreatorID: callerID,
-		TeamID:    nullIfEmpty(teamID),
+		Type:        repo.ChannelTypeDM,
+		CreatorID:   callerID,
+		TeamID:      nullIfEmpty(teamID),
+		PictureType: "USER",
+		Picture:     dmUserPicture(callerID, otherUserID),
 	}
 
 	if s.channelEvent != nil {
@@ -426,4 +431,29 @@ func nullIfEmpty(s string) *string {
 		return nil
 	}
 	return &s
+}
+
+// firstRune returns the first UTF-8 rune of s as a string, or "#" when s is empty.
+func firstRune(s string) string {
+	if s == "" {
+		return "#"
+	}
+	r, size := utf8.DecodeRuneInString(s)
+	if r == utf8.RuneError && size <= 1 {
+		return "#"
+	}
+	return string(r)
+}
+
+// groupNamePicture builds the default NAME-type picture JSONB blob for a group channel.
+// Returns a raw JSON string ready to be stored in channels.picture.
+func groupNamePicture(name string) string {
+	text := firstRune(name)
+	return `{"color":"#5B9BFF","text":"` + text + `"}`
+}
+
+// dmUserPicture builds the default USER-type picture JSONB blob for a DM channel.
+// Includes both parties so the client can pick the non-self party's avatar.
+func dmUserPicture(callerID, peerID string) string {
+	return `{"userIds":["` + callerID + `","` + peerID + `"]}`
 }

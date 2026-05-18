@@ -36,15 +36,17 @@ type channelTopPayload struct {
 // pointer so we can distinguish "omitted" from "explicit zero value". Props
 // arrives as a raw JSON object we pass through verbatim to the repo layer.
 type patchChannelReq struct {
-	Name       *string          `json:"name,omitempty"`
-	AvatarURL  *string          `json:"avatar_url,omitempty"`
-	Notice     *string          `json:"notice,omitempty"`
-	Purpose    *string          `json:"purpose,omitempty"`
-	PictureURL *string          `json:"picture_url,omitempty"`
-	Props      *json.RawMessage `json:"props,omitempty"`
-	Orient     *int16           `json:"orient,omitempty"`
-	Permission *int16           `json:"permission,omitempty"`
-	IsTop      *bool            `json:"is_top,omitempty"`
+	Name        *string          `json:"name,omitempty"`
+	AvatarURL   *string          `json:"avatar_url,omitempty"`
+	Notice      *string          `json:"notice,omitempty"`
+	Purpose     *string          `json:"purpose,omitempty"`
+	PictureURL  *string          `json:"picture_url,omitempty"`
+	Picture     *json.RawMessage `json:"picture,omitempty"`     // cses-avatar payload JSONB
+	PictureType *string          `json:"picture_type,omitempty"` // "USER" | "NAME" | "PICTURE"
+	Props       *json.RawMessage `json:"props,omitempty"`
+	Orient      *int16           `json:"orient,omitempty"`
+	Permission  *int16           `json:"permission,omitempty"`
+	IsTop       *bool            `json:"is_top,omitempty"`
 }
 
 // patchMemberReq is the body of PATCH /api/channels/:id/members/:user_id.
@@ -60,14 +62,19 @@ type patchMemberReq struct {
 // struct. Props is stored as a jsonb string so we re-marshal the raw json.
 func (p patchChannelReq) toRepoFields() service.PatchChannelFields {
 	f := service.PatchChannelFields{
-		Name:       p.Name,
-		AvatarURL:  p.AvatarURL,
-		Notice:     p.Notice,
-		Purpose:    p.Purpose,
-		PictureURL: p.PictureURL,
-		Orient:     p.Orient,
-		Permission: p.Permission,
-		IsTop:      p.IsTop,
+		Name:        p.Name,
+		AvatarURL:   p.AvatarURL,
+		Notice:      p.Notice,
+		Purpose:     p.Purpose,
+		PictureURL:  p.PictureURL,
+		PictureType: p.PictureType,
+		Orient:      p.Orient,
+		Permission:  p.Permission,
+		IsTop:       p.IsTop,
+	}
+	if p.Picture != nil {
+		s := string(*p.Picture)
+		f.Picture = &s
 	}
 	if p.Props != nil {
 		s := string(*p.Props)

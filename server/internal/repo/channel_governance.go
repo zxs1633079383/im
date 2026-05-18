@@ -14,15 +14,17 @@ import (
 // layer uses the zero-value-pointer convention instead of an any-keyed map to
 // preserve type-safety at the caller boundary.
 type PatchChannelFields struct {
-	Name       *string
-	AvatarURL  *string
-	Notice     *string
-	Purpose    *string
-	PictureURL *string
-	Props      *string // raw JSON string
-	Orient     *int16
-	Permission *int16
-	IsTop      *bool
+	Name        *string
+	AvatarURL   *string
+	Notice      *string
+	Purpose     *string
+	PictureURL  *string
+	Picture     *string // raw JSON blob: {"userIds":[...]}, {"color":...,"text":...}, or {"url":...}
+	PictureType *string // "USER" | "NAME" | "PICTURE"
+	Props       *string // raw JSON string
+	Orient      *int16
+	Permission  *int16
+	IsTop       *bool
 }
 
 // ChannelGovernanceRepo exposes the M2 governance operations — fine-grained
@@ -76,6 +78,12 @@ func (r *gormChannelGovernanceRepo) PatchChannel(ctx context.Context, channelID 
 	}
 	if p.PictureURL != nil {
 		updates["picture_url"] = *p.PictureURL
+	}
+	if p.Picture != nil {
+		updates["picture"] = *p.Picture
+	}
+	if p.PictureType != nil {
+		updates["picture_type"] = *p.PictureType
 	}
 	if p.Props != nil {
 		updates["props"] = *p.Props
