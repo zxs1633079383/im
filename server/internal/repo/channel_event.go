@@ -18,6 +18,7 @@ package repo
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"regexp"
@@ -66,6 +67,37 @@ type ChannelEvent struct {
 // table is partitioned — INSERT/SELECT against `channel_event` is the only
 // supported path; talking to `channel_event_pXX` directly is not portable.
 func (ChannelEvent) TableName() string { return "channel_event" }
+
+// MarshalJSON ensures the Payload field is emitted as raw JSON, not as a
+// base64-encoded string.
+//
+// 2026-05-18 (root-cause fix): Go's encoding/json default behaviour for
+// `[]byte` fields is to base64-encode them as a JSON string — fine for opaque
+// binary blobs but breaks our jsonb wire contract, since cses-client's
+// dispatch_sync_delta (handlers_v2/sync.rs) deserialises Payload directly
+// as `MemberEventPayload` / `ReadMarkPayload` typed structs. Without this
+// override the client sees `payload: "eyJtZW1iZXJzIjogW3siLi4uIn0="` (base64
+// string) and fails with `invalid type: string, expected struct ...`.
+//
+// The alias-embedding trick (type Alias ChannelEvent; struct { Alias; Payload
+// json.RawMessage }) shadows the inherited []byte field with a json.RawMessage
+// at the marshal layer, which writes the bytes verbatim. Storage (PG jsonb
+// column) and GORM unmarshal stay on []byte so no schema or read-path change
+// is required.
+func (e ChannelEvent) MarshalJSON() ([]byte, error) {
+	type Alias ChannelEvent
+	var raw json.RawMessage
+	if len(e.Payload) > 0 {
+		raw = json.RawMessage(e.Payload)
+	}
+	return json.Marshal(struct {
+		Alias
+		Payload json.RawMessage `json:"payload,omitempty"`
+	}{
+		Alias:   Alias(e),
+		Payload: raw,
+	})
+}
 
 // ChannelSequenceMeta maps the channel_sequence_meta table — bookkeeping
 // for the dynamic per-channel PG sequences created by CreateChannelSequences.
