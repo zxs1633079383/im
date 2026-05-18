@@ -51,10 +51,14 @@ func TestM4MessageSendThenSync(t *testing.T) {
 	sent.Value("visible_to").Array().ContainsAll(senderID, recvID)
 
 	// Receiver pulls via /sync from cursor=0 → must see the message.
+	// C019 §3.1 wire shape: cursor field is `event_seq`; per-channel result
+	// has `server_event_seq` (event high-water mark, not message seq);
+	// `messages` is a map keyed by msg_id (deduped); `events` array holds
+	// the channel_event rows that reference those messages.
 	sync := successBody(env.expect.POST("/api/sync").
 		WithHeader(middleware.MMCookieHeader, cookieRecv).
 		WithJSON(map[string]any{
-			"channels": []map[string]any{{"id": channelID, "seq": 0}},
+			"channels": []map[string]any{{"id": channelID, "event_seq": 0}},
 		}).
 		Expect().Status(200))
 
@@ -62,8 +66,13 @@ func TestM4MessageSendThenSync(t *testing.T) {
 	channels.Length().IsEqual(1)
 	first := channels.Value(0).Object()
 	first.Value("id").String().IsEqual(channelID)
-	first.Value("server_seq").Number().IsEqual(1)
-	msgs := first.Value("messages").Array()
-	msgs.Length().IsEqual(1)
-	msgs.Value(0).Object().Value("sender_id").IsEqual(senderID)
+	first.Value("server_event_seq").Number().Ge(1)
+	first.Value("kind").Object().Value("type").String().IsEqual("events")
+	msgs := first.Value("messages").Object()
+	msgs.NotEmpty()
+	// Pick the only message in the map and assert sender_id.
+	msgs.Iter()
+	for _, v := range msgs.Iter() {
+		v.Object().Value("sender_id").IsEqual(senderID)
+	}
 }

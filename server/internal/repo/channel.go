@@ -273,6 +273,14 @@ func (r *gormChannelRepo) IncrementSeq(ctx context.Context, tx *gorm.DB, channel
 // non-transactional to avoid lock contention). The result is occasional
 // gaps in messages.seq — sync semantics tolerate gaps because cursor
 // comparisons use `> last_seq` rather than `= last_seq + 1`.
+//
+// 2026-05-18 (E2E fix): also UPDATE channels.seq = GREATEST(seq, new_seq)
+// in the same tx so legacy readers (ChannelService.MarkRead returning
+// ch.Seq, ListByUserWithPreview unread_count using c.seq) stay correct.
+// Pre-fix: channels.seq was a stale column (last bumped pre-C018), causing
+// MarkRead → 0 and unread_count always 0 in production. Cost: 1 extra
+// UPDATE per Send (negligible vs message INSERT). The GREATEST guard makes
+// the write idempotent across concurrent Send paths.
 func (r *gormChannelRepo) NextMessageSeq(ctx context.Context, tx *gorm.DB, channelID string) (int64, error) {
 	safe := sanitizeID(channelID)
 	if safe == "" {
@@ -288,6 +296,15 @@ func (r *gormChannelRepo) NextMessageSeq(ctx context.Context, tx *gorm.DB, chann
 	).Scan(&seq).Error
 	if err != nil {
 		return 0, fmt.Errorf("nextval msg: %w", err)
+	}
+	// Mirror to channels.seq so legacy readers stay correct. GREATEST
+	// guards against concurrent Send paths that may advance the sequence
+	// out of order (PG sequences are non-transactional).
+	if err := r.dbOr(ctx, tx).Exec(
+		`UPDATE channels SET seq = GREATEST(seq, ?) WHERE id = ?`,
+		seq, channelID,
+	).Error; err != nil {
+		return 0, fmt.Errorf("mirror channels.seq: %w", err)
 	}
 	return seq, nil
 }
@@ -523,6 +540,11 @@ func (r *gormChannelRepo) ListByUserWithPreview(ctx context.Context, userID stri
 	err := db.Raw(
 		`SELECT
 		    c.id, c.type, c.name, c.avatar_url, c.seq, c.creator_id, c.team_id,
+		    c.notice, c.purpose, c.picture_url,
+		    c.picture::text AS picture, c.picture_type,
+		    c.props::text  AS props,
+		    c.orient, c.permission, c.root_id, c.root_message_id,
+		    c.deleted_at,
 		    c.created_at, c.updated_at,
 		    CASE WHEN c.type = 1 THEN (
 		        SELECT peer_cm.user_id FROM channel_members peer_cm

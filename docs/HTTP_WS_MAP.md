@@ -1,28 +1,42 @@
 # HTTP ↔ WebSocket 推送对应矩阵
 
 > 压测、E2E、客户端联调必读。每条 HTTP 请求触发哪些 WS 事件、谁收到、是否跨 pod，全部锁定在这里。
+>
+> **最后更新**：2026-05-18（E2E 全跑 + cses-client v0.7.5 联调）。覆盖 87 routes + 23 outbound WS types。
 
 ## 矩阵
 
 | # | HTTP | WS 事件 | 接收方 | 跨 pod | 备注 |
 |---|------|---------|--------|--------|------|
-| 1 | `POST /api/channels/:id/messages` | `push_msg` | 频道所有**在线**成员（含 sender 以外） | ✅ | 最热路径。payload 含 seq/msg_id/content |
-| 2 | `POST /api/channels/:id/read` | `read_sync` | **同一用户**的其他在线设备 | ✅ | 单设备压测无法验证 |
+| 1 | `POST /api/channels/:id/messages` | `push_msg` | 频道所有**在线**成员（含 sender 以外） | ✅ | 最热路径。payload 含 seq/msg_id/content/`mention_list`/`is_urgent`/`client_msg_id` |
+| 2 | `POST /api/channels/:id/read` | `read_sync` | **同一用户**的其他在线设备 | ✅ | 单设备压测无法验证；payload `{channel_id, read_seq}` |
 | 3 | `DELETE /api/messages/:id` | `msg_deleted` | 频道所有成员 | ✅ | payload 含 msg_id + channel_id |
 | 4 | `PATCH /api/messages/:id` | `msg_updated` | 频道所有成员 | ✅ | payload 含 msg_id + content |
-| 5 | `POST /api/channels/:id/members` | `channel_event` (type=added) | 被加的用户 | ✅ | 现有成员不收 |
-| 6 | `DELETE /api/channels/:id/members/:uid` | `channel_event` (type=removed) | 被移除的用户 | ✅ | |
-| 7 | `POST /api/channels/:id/leave` | `channel_event` (type=removed) | 离开者自己（多设备同步） | ✅ | |
-| 8 | `PUT /api/channels/:id` | `channel_event` (type=updated) | 所有成员 | ✅ | M3 新增语义 |
-| 9 | `POST /api/friends/request` | `friend_event` (type=request) | 被请求方 | ✅ | payload 含 from_user_id |
-| 10 | `POST /api/friends/accept` | `friend_event` (type=accepted) | 原请求方 | ✅ | |
-| 11 | `POST /api/friends/reject` | `friend_event` (type=rejected) | 原请求方 | ✅ | |
-| 12 | `POST /api/announcements` | `announcement_posted` | 频道所有成员 | ✅ | M2 新增 |
-| 13 | `POST /api/messages/urgent` | `urgent_posted` | 频道所有成员 | ✅ | M2 |
-| 14 | `POST /api/approvals` / `/accept` / `/reject` | `approval_updated` | 发起方 + 审批方 | ✅ | M2 |
-| 15 | `POST /api/notifications` (内部调用) | `notification_received` | 指定 user_id | ✅ | M2 |
-| 16 | `POST /api/channels/:id/topics` (M3) | 发送 `push_msg` 系统消息到 topic | topic 成员 | ✅ | 复用 push_msg 不升协议 |
-| 17 | `GET /api/presence?channel_id=X` (M3) | 无 | — | — | 仅 HTTP，查 Redis routing |
+| 5 | `POST /api/channels/:id/members` | `channel_event(added)` + `channel_member_updated(join)` | added 用户收 `channel_event`；channel 全员收 `channel_member_updated` | ✅ | 双管齐下 |
+| 6 | `DELETE /api/channels/:id/members/:uid` | `channel_member_updated(kick)` | 频道所有成员（含被踢用户） | ✅ | |
+| 7 | `POST /api/channels/:id/leave` | `channel_member_updated(leave)` | 频道所有成员 | ✅ | |
+| 8 | `PUT /api/channels/:id` | `channel_info_updated` | 所有成员 | ✅ | payload = 完整 Channel JSON |
+| 9 | `PATCH /api/channels/:id` | `channel_info_updated` | 所有成员 | ✅ | 部分字段更新 |
+| 10 | `POST /api/channels/:id/transfer-owner` (C013) | `channel_member_updated(owner_transfer)` + opt `channel_member_updated(leave)` | 频道所有成员 | ✅ | 同事务 atomic |
+| 11 | `PATCH /api/channels/:id/members/:uid/nickname` | `channel_member_updated(nickname)` | 频道所有成员 | ✅ | |
+| 12 | `DELETE /api/channels/:id` (close) | `channel_closed` | 频道所有成员 | ✅ | payload `{channel_id, actor_id, deleted_at}` |
+| 13 | `POST /api/friends/request` | `friend_event(request)` | 被请求方 | ✅ | payload 含 from_user_id |
+| 14 | `POST /api/friends/accept` | `friend_event(accepted)` | 原请求方 | ✅ | |
+| 15 | `POST /api/friends/reject` | `friend_event(rejected)` | 原请求方 | ✅ | |
+| 16 | `POST /api/announcements` | `announcement_posted` | 频道所有成员 | ✅ | payload = 完整 Announcement JSON |
+| 17 | `POST /api/messages/urgent` | `urgent_posted` | 频道所有成员 | ✅ | payload = 完整 Message JSON (`is_urgent:true`) |
+| 18 | `POST /api/messages/:id/urgent/cancel` | `urgent_cancelled` (C007 Phase D) | 频道所有成员 | ✅ | BroadcastToMembers |
+| 19 | `POST /api/approvals` / `/approve` / `/reject` | `approval_updated` | 发起方 + 审批方 | ✅ | M2 |
+| 20 | `POST /api/notifications` (内部调用) | `notification_received` | 指定 user_id | ✅ | M2 |
+| 21 | `POST /api/messages/scheduled` | `schedule_created` | sender 自己 + 频道成员 | ✅ | payload `{channel_id, scheduled_id, has_schedule_post:true}` |
+| 22 | `DELETE /api/messages/scheduled/:id` | `schedule_canceled` | 同上 | ✅ | |
+| 23 | `POST /api/messages/:id/reactions` | `reaction_added` | 频道所有成员 | ✅ | payload `{channel_id, message_id, user_id, emoji}` |
+| 24 | `DELETE /api/messages/:id/reactions/:emoji` | `reaction_removed` | 同上 | ✅ | |
+| 25 | `POST /api/channels/:id/topics` | 系统 `push_msg(NOTICE)` 到 topic | topic 成员 | ✅ | 复用 push_msg |
+| 26 | `POST /api/sync` (offline catchup) | — (HTTP 响应) | — | — | C019 wire shape：`{channels: [{id, server_event_seq, events[], messages{id:msg}, kind, next_cursor?}]}` |
+| 27 | `GET /api/presence?channel_id=X` | — | — | — | 仅 HTTP，查 Redis routing |
+| 28 | `WS hello` 帧 | server → client | 单 client | — | server 主动下发，懒启动 sync_engine |
+| 29 | `WS pong` 帧 | server → client | 单 client | — | server 回 ping，携带 channel_seqs map 供 diff sync |
 
 ## 无 WS 推送的 HTTP（仅读）
 

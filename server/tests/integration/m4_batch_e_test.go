@@ -110,10 +110,13 @@ func TestM4Sync_HappyPath(t *testing.T) {
 	channelID := env.seedDM(cookieA, idB)
 	env.seedMessage(channelID, idA, "sync-batch-e")
 
+	// C019 §3.1 wire shape: cursor field is `event_seq` (not `seq`);
+	// per-channel result carries `server_event_seq` (channel_event high-water
+	// mark) + `messages` map keyed by msg_id + `events` array + `kind` enum.
 	body := successBody(env.expect.POST("/api/sync").
 		WithHeader(middleware.MMCookieHeader, cookieA).
 		WithJSON(map[string]any{
-			"channels": []map[string]any{{"id": channelID, "seq": 0}},
+			"channels": []map[string]any{{"id": channelID, "event_seq": 0}},
 		}).
 		Expect().Status(200))
 
@@ -121,7 +124,9 @@ func TestM4Sync_HappyPath(t *testing.T) {
 	channels.Length().IsEqual(1)
 	first := channels.Value(0).Object()
 	first.Value("id").String().IsEqual(channelID)
-	first.Value("server_seq").Number().Gt(0)
+	first.Value("server_event_seq").Number().Gt(0)
+	first.Value("kind").Object().Value("type").String().IsEqual("events")
+	first.Value("messages").Object().NotEmpty()
 }
 
 // ---------------------------------------------------------------------------

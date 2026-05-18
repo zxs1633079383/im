@@ -31,6 +31,7 @@
 | [C017](C017-channel-event-append-only-log.md) | channel_event 是事件流水唯一入口；任何 mutation 必须同事务 append 一行（解决离线 edit/delete 漏 sync） | active | /workspace/java/logs/2026-05-17.json | 1 |
 | [C018](C018-pg-sequence-vs-row-lock-seq.md) | channels.seq + channel_event_seq 必须用 PG sequence 对象（nextval），禁 row-lock RETURNING 形态（万人群 1k QPS 瓶颈） | active | /workspace/java/logs/2026-05-17.json | 1 |
 | [C019](C019-sync-cursor-event-seq.md) | sync 算法 cursor 字段锁定 event_seq；4 分支 kind（empty/events/slice/too_long），TooLong 阈值 10000 | active | /workspace/java/logs/2026-05-17.json | 1 |
+| [C020](C020-channels-seq-mirror-pg-sequence.md) | channels.seq 必须与 PG sequence 同步镜像（NextMessageSeq 内同事务 UPDATE channels SET seq=GREATEST(seq,?)）；C018 漏 mirror 导致 MarkRead 返 0、unread_count 永远 0 | active | E2E 实测 2026-05-18 + PG 50% 行漂移 | 1 |
 
 ### 1.1 跨仓镜像 / autonomous 串行依赖（feat/im-reactor-2）
 
