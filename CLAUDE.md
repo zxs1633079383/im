@@ -78,6 +78,29 @@ Skill(skill="go-concurrency-patterns")
 - 热路径基准：`go test -bench . -benchmem` 给出数字，不写"感觉更快了"。
 - httpexpect v2 陷阱：**`GET(path+"?q=v")` 会 URL-encode `?` → 必须用 `.WithQuery("q", "v")`**（已踩过，见 commit `43c05ab`）。
 
+### 1.9 编译触发约束（强约束 / 2026-05-18 用户拍板）
+
+> **本仓与 cses-client 仓相反**：im 仓改完代码**主对话主动跑 `go build`** 验证；
+> cses-client 仓改完代码**主对话禁止主动跑** cargo check / npm test 等（由用户决定）。
+
+**im 仓 (本仓) 规则**：
+
+- 改完任何 `server/**/*.go` → **立即跑** `cd server && go build ./...` 验证
+- 改完 service / repo / http layer → 自动跑相关 `go test -run` 定向测试（非全量）
+- 编译错立刻自己修，不输出给用户决定
+
+**Why**：
+- Go build 单次 < 30s（vs Rust cargo check 1-3 min），成本可接受
+- Go 强类型 + 严格 vet 让编译就能 catch 90% 的回归 bug
+- 用户明确：im 仓允许自动验证，cses-client 仓不允许
+
+**测试 cadence**：
+- 单元测试（无外部依赖）→ 改完跑相关 `go test -run "TestXxx" ./internal/...`
+- 集成测试（依赖 PG / Pulsar）→ **不主动跑**，输出命令给用户
+- `go test -race ./...` 全量 → 不主动跑，phase 完成时输出建议
+
+**唯一例外**：用户明确说"不要跑 go build"或"不要跑测试"时尊重用户指令。
+
 ---
 
 ## 2. 写前端 (Angular / Tauri Rust) 的规则
