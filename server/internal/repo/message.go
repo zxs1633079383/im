@@ -160,7 +160,8 @@ func (r *gormMessageRepo) Send(ctx context.Context, msg *Message) error {
 		// 4. Append EventTypeNew in the SAME tx (C017 §3.1). Failure here
 		//    rolls the message INSERT back, so the client never sees a
 		//    "ghost message" that sync can't replay.
-		if err := r.appendMessageEvent(ctx, tx, msg.ChannelID, msg.ID, msg.SenderID, EventTypeNew); err != nil {
+		// EventTypeNew 不带 payload —— 客户端通过 msg_id 从 delta.messages map 查消息体
+		if err := r.appendMessageEvent(ctx, tx, msg.ChannelID, msg.ID, msg.SenderID, EventTypeNew, nil); err != nil {
 			return err
 		}
 
@@ -182,11 +183,20 @@ func (r *gormMessageRepo) Send(ctx context.Context, msg *Message) error {
 // channelEvent field is optional (nil-safe) for legacy wiring; callers that
 // pass nil ChannelEventRepo at construction time keep their pre-channel-event
 // behaviour. msgID may be empty when the event has no associated message
-// (reaction / read_mark — currently unused at the message-repo layer but the
-// signature already accommodates it).
+// (reaction / read_mark).
+//
+// 2026-05-18 (root-cause fix): added `payload []byte` parameter so callers
+// can co-write the event-type-specific payload JSON in the same transaction.
+// Pass nil for events that intentionally have no payload (e.g. EventTypeNew /
+// Edit / Delete, where the msg_id → messages row carries the full body).
+// EventTypeReadMark / Member / Reaction etc. MUST pass a non-nil payload —
+// the client's dispatch_sync_delta dispatcher (cses-client handlers_v2/sync.rs)
+// requires it to drive last_read_seq advance / member roster replace / reaction
+// counters. Forgetting the payload here = sync hard-error on the client.
 func (r *gormMessageRepo) appendMessageEvent(
 	ctx context.Context, tx *gorm.DB,
 	channelID string, msgID string, actorID string, eventType EventType,
+	payload []byte,
 ) error {
 	if r.channelEvent == nil {
 		return nil
@@ -204,6 +214,9 @@ func (r *gormMessageRepo) appendMessageEvent(
 	}
 	if msgID != "" {
 		evt.MsgID = &msgID
+	}
+	if len(payload) > 0 {
+		evt.Payload = payload
 	}
 	return r.channelEvent.AppendEvent(ctx, tx, evt)
 }
@@ -310,7 +323,18 @@ func (r *gormMessageRepo) PostSystemMessage(
 		if _, err := r.AllocSeqAndInsert(ctx, innerTx, msg); err != nil {
 			return fmt.Errorf("post system message: %w", err)
 		}
-		return r.appendMessageEvent(ctx, innerTx, channelID, msg.ID, senderID, EventTypeMember)
+		// 2026-05-18 (root-cause fix): EventTypeMember MUST carry a payload
+		// containing change_type + target_id + roster snapshot so cses-client
+		// dispatch_sync_delta (handlers_v2/sync.rs) can drive
+		// channel_member_repo::apply_member_change → replace_full_roster.
+		// roster snapshot 必须用 innerTx 而非 r.db 查 channel_members，确保
+		// 同 tx 内的 RemoveMember/AddMember DML 对 ListMembers 可见
+		// (PostgreSQL READ COMMITTED 不读未提交，必须复用同一 tx)。
+		memberPayload, err := buildMemberEventPayload(ctx, innerTx, channelID, sysType, props)
+		if err != nil {
+			return fmt.Errorf("build member event payload: %w", err)
+		}
+		return r.appendMessageEvent(ctx, innerTx, channelID, msg.ID, senderID, EventTypeMember, memberPayload)
 	}
 	if tx != nil {
 		if err := insertAndEvent(tx.WithContext(ctx)); err != nil {
@@ -324,6 +348,96 @@ func (r *gormMessageRepo) PostSystemMessage(
 		return nil, err
 	}
 	return msg, nil
+}
+
+// buildMemberEventPayload constructs the JSON payload for an EventTypeMember
+// channel_event row. The shape mirrors cses-client `MemberEventPayload`
+// (src-tauri/src/features/im/types_v2.rs:892):
+//
+//	{
+//	  "change_type": "join" | "leave" | "kick" | "nickname",
+//	  "target_id":   "<mm UserID>",
+//	  "nick_name":   "<optional, only for change_type=nickname>",
+//	  "members": [
+//	    { "user_id": "...", "role": 1, "nick_name": "...?",
+//	      "is_top": false, "notify_pref": 0 },
+//	    ...
+//	  ]
+//	}
+//
+// members 是 post-change roster snapshot —— cses-client
+// channel_member_repo::apply_member_change 用它 replace_full_roster，所以
+// 本函数必须在 caller 的 tx 上下文查 channel_members（同 tx 已 DML 可见），
+// 不能用 r.db。
+func buildMemberEventPayload(
+	ctx context.Context, tx *gorm.DB,
+	channelID string, sysType string, props map[string]any,
+) ([]byte, error) {
+	var members []ChannelMember
+	if err := tx.WithContext(ctx).
+		Where("channel_id = ?", channelID).
+		Find(&members).Error; err != nil {
+		return nil, fmt.Errorf("list members for member event payload: %w", err)
+	}
+
+	summary := make([]map[string]any, 0, len(members))
+	for _, m := range members {
+		item := map[string]any{
+			"user_id":     m.UserID,
+			"role":        m.Role,
+			"is_top":      m.IsTop,
+			"notify_pref": m.NotifyPref,
+		}
+		if m.NickName != "" {
+			item["nick_name"] = m.NickName
+		}
+		summary = append(summary, item)
+	}
+
+	payload := map[string]any{
+		"change_type": mapSysTypeToChangeType(sysType),
+		"target_id":   stringFromProps(props, "target_id"),
+		"members":     summary,
+	}
+	if nickName := stringFromProps(props, "nick_name"); nickName != "" {
+		payload["nick_name"] = nickName
+	}
+	return json.Marshal(payload)
+}
+
+// mapSysTypeToChangeType maps server-side sys_type (member_joined / member_left
+// / member_removed / member_nickname / channel_created / channel_updated /
+// channel_closed / owner_transferred) to the cses-client wire enum
+// (join / leave / kick / nickname). Unknown sys_types fall through to "join"
+// so the client triggers a full roster replace — safe default since payload.members
+// is always the authoritative post-change snapshot.
+func mapSysTypeToChangeType(sysType string) string {
+	switch sysType {
+	case SysTypeMemberJoined:
+		return "join"
+	case SysTypeMemberLeft:
+		return "leave"
+	case SysTypeMemberRemoved:
+		return "kick"
+	case SysTypeMemberNickname:
+		return "nickname"
+	default:
+		// channel_created / channel_updated / channel_closed / owner_transferred 等
+		// 走 "join" 兜底：cses-client MemberChangeType match 默认走 Join 分支 →
+		// replace_full_roster(members) —— 用最新 roster 全量替换本地。
+		return "join"
+	}
+}
+
+// stringFromProps returns props[key] as a non-empty string, or "" if missing
+// / not-a-string / empty.
+func stringFromProps(props map[string]any, key string) string {
+	v, ok := props[key]
+	if !ok {
+		return ""
+	}
+	s, _ := v.(string)
+	return s
 }
 
 // UpdateContent sets content + updated_at=now() for msgID when callerID is the
@@ -362,7 +476,8 @@ func (r *gormMessageRepo) UpdateContent(ctx context.Context, msgID string, calle
 			return ErrNotFound
 		}
 		// Same-tx channel_event append: failure rolls the CAS UPDATE back.
-		return r.appendMessageEvent(ctx, tx, existing.ChannelID, msgID, callerID, EventTypeEdit)
+		// EventTypeEdit 不带 payload —— 客户端通过 msg_id 重读 messages 行拿新内容
+		return r.appendMessageEvent(ctx, tx, existing.ChannelID, msgID, callerID, EventTypeEdit, nil)
 	})
 	if err != nil {
 		return nil, err
@@ -413,7 +528,8 @@ func (r *gormMessageRepo) SoftDelete(ctx context.Context, msgID string, callerID
 			raced = true
 			return nil
 		}
-		return r.appendMessageEvent(ctx, tx, existing.ChannelID, msgID, callerID, EventTypeDelete)
+		// EventTypeDelete 不带 payload —— 客户端通过 msg_id 标 revoke=true
+		return r.appendMessageEvent(ctx, tx, existing.ChannelID, msgID, callerID, EventTypeDelete, nil)
 	})
 	if err != nil {
 		return nil, err

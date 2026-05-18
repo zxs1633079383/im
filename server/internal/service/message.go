@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -227,12 +228,23 @@ func (s *MessageService) MarkRead(ctx context.Context, channelID string, callerI
 		if err != nil {
 			return fmt.Errorf("alloc read-mark event seq: %w", err)
 		}
+		// 2026-05-18 (root-cause fix): EventTypeReadMark MUST carry payload
+		// `{ "read_seq": <int64> }` — cses-client dispatch_sync_delta
+		// (handlers_v2/sync.rs) reads payload.read_seq to advance the caller's
+		// channel_member.last_read_seq on other devices. Without payload the
+		// other devices would silently miss the read-cursor advance and the
+		// "unread badge" stays stale until next GET /api/channels.
+		payload, err := json.Marshal(map[string]any{"read_seq": ch.Seq})
+		if err != nil {
+			return fmt.Errorf("marshal read-mark payload: %w", err)
+		}
 		return s.channelEvent.AppendEvent(ctx, tx, &repo.ChannelEvent{
 			ChannelID: channelID,
 			EventSeq:  seq,
 			EventType: repo.EventTypeReadMark,
 			ActorID:   callerID,
 			CreatedAt: time.Now().UnixMilli(),
+			Payload:   payload,
 		})
 	})
 	if err != nil {
