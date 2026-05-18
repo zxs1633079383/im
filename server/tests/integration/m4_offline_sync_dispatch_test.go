@@ -57,19 +57,18 @@ func syncPullEvents(t *testing.T, env *m4env, cookie, channelID string, afterSeq
 	ch.Value("kind").Object().Value("type").IsEqual("events")
 	events := ch.Value("events").Array()
 
-	out := make([]map[string]any, 0, int(events.Length().Raw()))
-	for i := 0; i < int(events.Length().Raw()); i++ {
-		evObj := events.Value(i).Object()
-		ev := map[string]any{
-			"event_seq":  evObj.Value("event_seq").Number().Raw(),
-			"event_type": evObj.Value("event_type").Number().Raw(),
-			"actor_id":   evObj.Value("actor_id").String().Raw(),
+	// Use Raw() on the array (returns []interface{}) and pick fields from
+	// the resulting maps — avoids re-traversing the JSON tree per event and
+	// lets us inspect optional keys (msg_id) without httpexpect's ContainsKey
+	// assertion path (which is for assertion, not branching).
+	raw := events.Raw()
+	out := make([]map[string]any, 0, len(raw))
+	for _, item := range raw {
+		m, ok := item.(map[string]any)
+		if !ok {
+			continue
 		}
-		// msg_id is optional (ReadMark / Member can omit).
-		if evObj.ContainsKey("msg_id") {
-			ev["msg_id"] = evObj.Value("msg_id").String().Raw()
-		}
-		out = append(out, ev)
+		out = append(out, m)
 	}
 	return out
 }
