@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/lib/pq"
 	"gorm.io/gorm"
 )
 
@@ -558,7 +559,7 @@ func (r *gormMessageRepo) GetByIDsForUser(ctx context.Context, userID string, id
 		 FROM messages
 		 WHERE id = ANY(?)
 		   AND (visible_to IS NULL OR ? = ANY(visible_to) OR sender_id = ?)`,
-		ids, userID, userID,
+		pq.Array(ids), userID, userID,
 	).Scan(&out).Error
 	if err != nil {
 		return nil, fmt.Errorf("get messages by ids for user: %w", err)
