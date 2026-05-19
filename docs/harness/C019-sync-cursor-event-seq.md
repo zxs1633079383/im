@@ -13,7 +13,12 @@ applies_to:
   - server/internal/repo/channel_event.go
   - cses-client mirror: src-tauri/src/features/im/sync_engine.rs
   - cses-client mirror: src-tauri/src/features/im/types_v2.rs
-inline_target: docs/CSES_CLIENT_对接All-case实践.md  # 协议契约
+inline_target: ~/.claude/rules/golang/testing.md#sync-协议测试模板im--event-log-ssot-场景来源im-项目-c019-实测落地
+inline_staged_at: 2026-05-19            # 规则原文 pre-stage inline 进全局 testing.md（早于 active→merged 标准 30 天观察期）
+merge_observation_until: 2026-06-18     # 自 2026-05-19 起连续 30 天零新复现 → status: merged
+post_inline_evidence:
+  - 27 集成测试 in server/tests/integration/m4_offline_sync_*_test.go
+  - tag v0.7.3-test-coverage-100 实测全绿（1173.959s, 0 FAIL）
 ---
 
 ## 1. 触发场景

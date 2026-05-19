@@ -4,6 +4,29 @@
 
 ---
 
+## [2026-05-19] inline-staged | C019 → ~/.claude/rules/golang/testing.md#sync-协议测试模板
+
+C019 (`sync 算法 cursor 字段锁定 event_seq + 4 分支 kind + TooLong 阈值 10000`) 规则原文
+pre-stage inline 进 `~/.claude/rules/golang/testing.md` 「Sync 协议测试模板」小节，覆盖：
+
+- wire 字段命名（event_seq 锁定，禁 seq）
+- 必备测试矩阵（4 kind + 5 触发场景 + 5 dispatch + TooLong 兜底 + Validation/Auth + co-tx）
+- TooLong 测试技巧（PG sequence setval 避免 10001 真消息）
+- co-tx exactly-1 断言模板
+- 3 条 grep gate（json:"seq" / EventTooLongThreshold 常量 / kind 字面量）
+- 5 条绝对禁止
+
+**晋升 active → merged 还差**：
+- 自 2026-05-19 起连续 30 天零新复现（观察终点 **2026-06-18**）
+- frontmatter `merge_observation_until` 已锁日期
+
+**Pre-inline 而非完全 merged 的理由**：本次 v0.7.3-test-coverage-100 任务的 27 集成
+测试（`server/tests/integration/m4_offline_sync_*_test.go`）是 C019 契约最完整的实测落地，
+全绿，规则文本可信度足够 inline；但标准 lifecycle 要求 30 天观察期，因此 frontmatter
+保留 `status: active` + `inline_staged_at: 2026-05-19` + `merge_observation_until: 2026-06-18`。
+
+---
+
 ## [2026-05-07] activate | C008 drafting → active
 
 由 Batch-A/B/C/D/E 落地（Batch-E autonomous agent 跑中）+ `scripts/check-handler-coverage.sh`

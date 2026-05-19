@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	stdhttp "net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 )
@@ -56,6 +57,19 @@ func responseEnvelope() gin.HandlerFunc {
 		if status == 0 {
 			status = stdhttp.StatusOK
 		}
+
+		// Content-Type 后置检测：handler 走 c.DataFromReader 写二进制流
+		// （如 GET /api/files/<id> 图片 / 文件下载），ContentType 是 image/* /
+		// application/octet-stream / video/* 等非 JSON 类型。这种响应不能用
+		// json.RawMessage 包装（silently fail body 变空）—— 原样字节流透传。
+		// 4xx 错误路径走 c.JSON 设 ContentType=application/json 仍走 envelope。
+		ct := bw.ResponseWriter.Header().Get("Content-Type")
+		if ct != "" && !strings.HasPrefix(ct, "application/json") {
+			bw.ResponseWriter.WriteHeader(status)
+			_, _ = bw.ResponseWriter.Write(bw.body.Bytes())
+			return
+		}
+
 		wrapped := wrapResponse(status, bw.body.Bytes())
 
 		bw.ResponseWriter.Header().Set("Content-Type", "application/json; charset=utf-8")
@@ -65,7 +79,11 @@ func responseEnvelope() gin.HandlerFunc {
 }
 
 // shouldSkipEnvelope returns true for paths whose response shape is not
-// JSON-wrapped (liveness / metrics).
+// JSON-wrapped (liveness / metrics / WebSocket).
+//
+// 二进制响应（如 GET /api/files/<id> 的 c.DataFromReader 流）通过中间件主流程
+// 内的 Content-Type 后置检测分流，**不**在此处按 path 前缀 skip——因为同一路径
+// 的 4xx 错误仍走 c.JSON 返回 application/json，需要 envelope wrap。
 func shouldSkipEnvelope(path string) bool {
 	switch path {
 	case "/healthz", "/readyz", "/metrics":
