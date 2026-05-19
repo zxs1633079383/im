@@ -21,8 +21,8 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$script_dir/.."  # script lives in server/scripts/
 
 # Thresholds — bump only after a corresponding test addition lands.
-MIN_ROUTES="${MIN_ROUTES:-84}"
-MIN_TESTS="${MIN_TESTS:-190}"
+MIN_ROUTES="${MIN_ROUTES:-88}"
+MIN_TESTS="${MIN_TESTS:-410}"
 
 route_count="$(grep -rEn 'authed\.(GET|POST|PUT|PATCH|DELETE)' internal/http/ \
     --include='*.go' | grep -v _test.go | wc -l | tr -d ' ')"

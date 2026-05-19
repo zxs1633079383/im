@@ -49,11 +49,11 @@ func transferOwnerEndpoint(c *gin.Context, svc *service.ChannelService, log *slo
 	}
 	var in transferOwnerReq
 	if err := c.ShouldBindJSON(&in); err != nil {
+		// gin binding `required` tag 在此处早返 400（包括 NewOwnerID 缺失 / 类型
+		// 错误 / JSON 语法错误）。已删除后续 `if in.NewOwnerID == ""` 的死代码 422
+		// 分支以锁定单一 400 契约；详见 docs/harness/C013 + tag v0.7.3-test-coverage-100
+		// commit message §3。
 		c.JSON(400, gin.H{"error": "invalid JSON"})
-		return
-	}
-	if in.NewOwnerID == "" {
-		c.JSON(422, gin.H{"error": "new_owner_id is required"})
 		return
 	}
 	if in.NewOwnerID == uid {
